@@ -3,7 +3,7 @@
 //
 // Public API (re-exported by migrate/arcmenu.ts):
 //   ArcMenuSnapshot, MigrationItem, SkippedItem, FolderPlan, MigrationPlan
-//   planMigration(snapshot, spawnDefaults?): MigrationPlan
+//   planMigration(snapshot, spawnDefaults?, env?): MigrationPlan, PlanEnv, INT_RANGES
 //   describeItem(item): string, describePlan(plan): string[]
 //
 // Rules: only keys the user actually changed in ArcMenu (`snapshot.values`) are migrated, so
@@ -12,9 +12,17 @@
 // `show-activities-button`, which is migrated from its effective value even when untouched,
 // because ArcMenu hides the Activities button by default and the user would otherwise see it
 // reappear.
+//
+// Also: integer keys with a schema <range> are clamped (INT_RANGES, with a warning); an app id
+// that would appear twice across pinned-apps and its folders keeps its first position;
+// `prefs-visible-page` is deliberately not migrated (ArcMenu's page order differs).
+//
+// planMigration(snapshot, spawnDefaults?, env?): env.iconExists(file) lets the caller veto a
+// button icon that is not on disk (this module cannot touch the file system).
 
 import {ARCMENU_ID_PREFIX, ShortcutId, SPAWN_ID_PREFIX} from '../core/constants.js';
 import {resolveButtonIcon} from '../core/icons.js';
+import {isValidFolderId} from '../core/folderId.js';
 import type {Entry, SettingKey} from '../core/settings.js';
 
 export const ARCMENU_UUID = 'arcmenu@arcmenu.com';
@@ -53,6 +61,19 @@ export interface MigrationPlan {
     skipped: SkippedItem[];
     warnings: string[];
 }
+
+export interface PlanEnv {
+    /** Is this `menu-button-icon` value usable (bundled file / absolute path exists)? Default: yes. */
+    iconExists?(value: string): boolean;
+}
+
+/** Integer keys whose Spawn schema has a <range> (kept in sync by tests/migrate.test.js). */
+export const INT_RANGES: Readonly<Record<string, readonly [min: number, max: number]>> = {
+    'menu-height': [360, 1600],
+    'menu-width-adjustment': [-350, 800],
+    'left-panel-width': [420, 1200],
+    'right-panel-width': [180, 600],
+};
 
 // ------------------------------------------------------------------------------------------
 // Value kinds for keys that are copied as-is (same name, same format).
@@ -135,11 +156,7 @@ const SAME_NAME: ReadonlyArray<readonly [SettingKey, Kind]> = [
     ['menu-button-hover-fg-color', 'bs'],
     ['menu-button-active-bg-color', 'bs'],
     ['menu-button-active-fg-color', 'bs'],
-    ['prefs-visible-page', 'i'],
 ];
-
-/** Highest page index in prefs.ts PAGES; `prefs-visible-page` is clamped to it. */
-const LAST_PREFS_PAGE = 6;
 
 function isInt(v: unknown): v is number {
     return typeof v === 'number' && Number.isInteger(v);
@@ -215,6 +232,7 @@ const SKIP_EXACT: Readonly<Record<string, string>> = {
     'searchbar-default-top-location': 'only the bottom-location key is read',
     'hide-overview-on-startup': 'not part of v1',
     'hide-overview-on-arcmenu-open': 'not part of v1',
+    'prefs-visible-page': "ArcMenu's page order differs from Spawn's",
     'enable-unity-homescreen': NO_LAYOUT,
     'pop-folders-data': NO_LAYOUT,
     'pop-default-view': NO_LAYOUT,
@@ -276,6 +294,27 @@ export function convertEntries(entries: Entry[], where: string, warnings: string
     return out;
 }
 
+const REPEATABLE = new Set<string>([ShortcutId.SEPARATOR, ShortcutId.SPACER]);
+
+/** Drops repeated ids (separators and spacers may repeat); `seen` is shared across lists. */
+export function dedupeEntries(entries: Entry[], where: string, warnings: string[], seen: Set<string> = new Set()): Entry[] {
+    const out: Entry[] = [];
+    for (const entry of entries) {
+        if (!REPEATABLE.has(entry.id)) {
+            if (seen.has(entry.id)) {
+                warnings.push(`${where}: '${label(entry)}' appears more than once; only the first one is kept`);
+                continue;
+            }
+            seen.add(entry.id);
+        }
+        out.push(entry);
+    }
+    return out;
+}
+
+/** Accelerators that are only a modifier key (e.g. 'Super_R') would swallow normal typing. */
+const BARE_MODIFIER = /^(Shift|Control|Alt|Super|Meta|Hyper|ISO_Level\d_Shift|Caps_Lock|Num_Lock)(_[LR]|_Lock)?$/;
+
 // ------------------------------------------------------------------------------------------
 
 const CLICK_ACTION: Readonly<Record<string, 'Menu' | 'None'>> = {ArcMenu: 'Menu', ContextMenu: 'None', None: 'None'};
@@ -290,7 +329,7 @@ export function convertButtonIcon(value: string): string | null {
     return resolved.name;
 }
 
-export function planMigration(snapshot: ArcMenuSnapshot, spawnDefaults?: Partial<Record<SettingKey, unknown>>): MigrationPlan {
+export function planMigration(snapshot: ArcMenuSnapshot, spawnDefaults?: Partial<Record<SettingKey, unknown>>, env: PlanEnv = {}): MigrationPlan {
     const values = snapshot.values;
     const defaults = snapshot.defaults ?? {};
     const plan: MigrationPlan = {items: [], folders: [], skipped: [], warnings: []};
@@ -318,8 +357,12 @@ export function planMigration(snapshot: ArcMenuSnapshot, spawnDefaults?: Partial
             skip(key, 'unexpected value format');
             continue;
         }
-        if (key === 'prefs-visible-page') {
-            add(key, key, Math.min(Math.max(v as number, 0), LAST_PREFS_PAGE));
+        const range = INT_RANGES[key];
+        if (range && isInt(v)) {
+            const clamped = Math.min(Math.max(v, range[0]), range[1]);
+            if (clamped !== v)
+                plan.warnings.push(`${key}: ${v} is outside Spawn's range ${range[0]}..${range[1]}; using ${clamped}`);
+            add(key, key, clamped);
             continue;
         }
         add(key, key, v);
@@ -346,15 +389,24 @@ export function planMigration(snapshot: ArcMenuSnapshot, spawnDefaults?: Partial
     if (typeof show === 'boolean')
         add('hide-activities-button', 'show-activities-button', !show);
 
-    // Hotkeys: Super_L + overlay flag -> super-key-toggle, anything else -> menu-hotkey.
+    // Hotkeys: Super_L + overlay flag -> super-key-toggle, anything else -> spawn-hotkey.
     if (isSet('arcmenu-hotkey') || isSet('arcmenu-hotkey-overlay-key-enabled')) {
         const keys = effective('arcmenu-hotkey');
         const overlay = effective('arcmenu-hotkey-overlay-key-enabled');
         if (Array.isArray(keys) && keys.every(k => typeof k === 'string') && typeof overlay === 'boolean') {
             const hotkeys = keys as string[];
             add('super-key-toggle', 'arcmenu-hotkey-overlay-key-enabled', overlay && hotkeys.includes('Super_L'));
-            const others = hotkeys.filter(k => k !== 'Super_L' && k !== '');
-            add('menu-hotkey', 'arcmenu-hotkey', others);
+            const others: string[] = [];
+            for (const k of hotkeys) {
+                if (k === 'Super_L' || k === '' || others.includes(k))
+                    continue;
+                if (BARE_MODIFIER.test(k)) {
+                    plan.warnings.push(`arcmenu-hotkey: '${k}' is a bare modifier key and was not imported`);
+                    continue;
+                }
+                others.push(k);
+            }
+            add('spawn-hotkey', 'arcmenu-hotkey', others);
             if (!overlay && hotkeys.includes('Super_L'))
                 plan.warnings.push('ArcMenu had the Super key listed but disabled; the Super key toggle is off.');
         } else {
@@ -383,9 +435,13 @@ export function planMigration(snapshot: ArcMenuSnapshot, spawnDefaults?: Partial
     if (isSet('menu-button-icon')) {
         const v = values['menu-button-icon'];
         const mapped = typeof v === 'string' ? convertButtonIcon(v) : null;
+        const isFile = mapped !== null && (mapped.startsWith('/') || mapped.endsWith('.svg'));
         if (mapped === null) {
             skip('menu-button-icon', 'icon is not available in Spawn');
             plan.warnings.push(`menu-button-icon: unsupported icon '${String(v)}'; keeping the default icon`);
+        } else if (isFile && env.iconExists && !env.iconExists(mapped)) {
+            skip('menu-button-icon', 'icon file is not bundled with Spawn');
+            plan.warnings.push(`menu-button-icon: '${mapped}' is not bundled with Spawn; keeping the default icon`);
         } else {
             add('menu-button-icon', 'menu-button-icon', mapped);
         }
@@ -411,7 +467,7 @@ export function planMigration(snapshot: ArcMenuSnapshot, spawnDefaults?: Partial
             skip(key, 'unexpected value format');
             continue;
         }
-        add(key, key, convertEntries(v, key, plan.warnings));
+        add(key, key, dedupeEntries(convertEntries(v, key, plan.warnings), key, plan.warnings));
     }
 
     if (isSet('pinned-apps')) {
@@ -419,18 +475,39 @@ export function planMigration(snapshot: ArcMenuSnapshot, spawnDefaults?: Partial
         if (!isEntryList(v)) {
             skip('pinned-apps', 'unexpected value format');
         } else {
-            const pinned = convertEntries(v, 'pinned-apps', plan.warnings);
-            add('pinned-apps', 'pinned-apps', pinned);
-            for (const entry of pinned) {
+            // An app lives in exactly one place: top level first, then the folders in order.
+            const seen = new Set<string>();
+            const converted = convertEntries(v, 'pinned-apps', plan.warnings).filter(entry => {
+                if (entry.isFolder === 'true' && !isValidFolderId(entry.id)) {
+                    plan.warnings.push(`pinned-apps: dropped folder '${label(entry)}' (invalid folder id '${entry.id}')`);
+                    return false;
+                }
+                return true;
+            });
+            const kept = new Set<Entry>(dedupeEntries(converted.filter(e => e.isFolder !== 'true'), 'pinned-apps', plan.warnings, seen));
+            const folderIds = new Set<string>();
+            const top = converted.filter(entry => {
+                if (entry.isFolder !== 'true')
+                    return kept.has(entry);
+                if (folderIds.has(entry.id)) {
+                    plan.warnings.push(`pinned-apps: folder '${label(entry)}' is listed more than once; only the first one is kept`);
+                    return false;
+                }
+                folderIds.add(entry.id);
+                return true;
+            });
+            add('pinned-apps', 'pinned-apps', top);
+            for (const entry of top) {
                 if (entry.isFolder !== 'true')
                     continue;
                 const contents = snapshot.folders[entry.id];
                 if (!contents)
                     plan.warnings.push(`Folder '${label(entry)}' has no stored contents; it will be empty`);
+                const where = `folder '${label(entry)}'`;
                 plan.folders.push({
                     uuid: entry.id,
                     name: entry.name ?? '',
-                    pinnedApps: convertEntries(contents ?? [], `folder '${label(entry)}'`, plan.warnings),
+                    pinnedApps: dedupeEntries(convertEntries(contents ?? [], where, plan.warnings), where, plan.warnings, seen),
                 });
             }
         }

@@ -4,10 +4,20 @@
 //   captureShortcut(parent, current): Promise<string | null | undefined>
 //     resolves to the accelerator string ('<Super>space'), '' to clear it, or undefined if
 //     the user cancelled. (null is never returned; the union keeps callers explicit.)
+//     A global shortcut needs Ctrl, Alt or Super (Shift alone would steal normal typing), except
+//     for the F1-F12 and Menu keys.
 
 import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk?version=4.0';
 import Gtk from 'gi://Gtk?version=4.0';
+
+const GLOBAL_MODS = Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK | Gdk.ModifierType.SUPER_MASK | Gdk.ModifierType.META_MASK;
+
+function isAllowed(keyval: number, mask: number): boolean {
+    if (keyval >= Gdk.KEY_F1 && keyval <= Gdk.KEY_F12 || keyval === Gdk.KEY_Menu)
+        return true;
+    return (mask & GLOBAL_MODS) !== 0;
+}
 
 export function captureShortcut(parent: Gtk.Widget, current: string): Promise<string | null | undefined> {
     return new Promise(resolve => {
@@ -31,6 +41,13 @@ export function captureShortcut(parent: Gtk.Widget, current: string): Promise<st
             justify: Gtk.Justification.CENTER,
             wrap: true,
         });
+        const warning = new Gtk.Label({
+            label: 'Use Ctrl, Alt or Super with the key, so the shortcut does not interfere with typing.',
+            css_classes: ['dim-label', 'caption'],
+            justify: Gtk.Justification.CENTER,
+            wrap: true,
+            visible: false,
+        });
         const shown = new Gtk.ShortcutLabel({
             accelerator: current,
             halign: Gtk.Align.CENTER,
@@ -38,6 +55,7 @@ export function captureShortcut(parent: Gtk.Widget, current: string): Promise<st
         });
         const apply = new Gtk.Button({label: 'Set Shortcut', halign: Gtk.Align.CENTER, sensitive: false, css_classes: ['suggested-action', 'pill']});
         box.append(hint);
+        box.append(warning);
         box.append(shown);
         box.append(apply);
         toolbar.set_content(box);
@@ -58,6 +76,11 @@ export function captureShortcut(parent: Gtk.Widget, current: string): Promise<st
             const lower = Gdk.keyval_to_lower(keyval);
             if (!Gtk.accelerator_valid(lower, mask) || mask === 0)
                 return true; // modifier-only or unmodified keys are not accepted
+            if (!isAllowed(lower, mask)) {
+                warning.set_visible(true);
+                return true;
+            }
+            warning.set_visible(false);
             pending = Gtk.accelerator_name(lower, mask);
             shown.set_accelerator(pending);
             apply.set_sensitive(true);

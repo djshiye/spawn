@@ -29,7 +29,6 @@ export function createAppearancePage(ctx: PrefsContext): Adw.PreferencesPage {
     const colourKeys: SettingKey[] = [
         'menu-background-color', 'menu-foreground-color', 'menu-border-color', 'menu-separator-color',
         'menu-item-hover-bg-color', 'menu-item-hover-fg-color', 'menu-item-active-bg-color', 'menu-item-active-fg-color',
-        'menu-border-width', 'menu-border-radius', 'menu-font-size',
     ];
     const menu = group(ctx, 'Menu colours', [
         colorRow(ctx, 'menu-background-color', 'Background'),
@@ -47,7 +46,7 @@ export function createAppearancePage(ctx: PrefsContext): Adw.PreferencesPage {
         spinRow(ctx, 'menu-border-width', 'Border width', 0, 5),
         spinRow(ctx, 'menu-border-radius', 'Corner radius', 0, 25),
         spinRow(ctx, 'menu-font-size', 'Font size', 8, 18),
-    ]);
+    ], {reset: ['menu-border-width', 'menu-border-radius', 'menu-font-size']});
     page.add(shape);
 
     // Colours and shape only make sense with the override on.

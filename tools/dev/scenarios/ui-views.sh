@@ -8,7 +8,7 @@ expect_state "categories view" layout.view categories
 screenshot ui-allapps
 ui_call ShowView default >/dev/null; sleep 0.4
 echo "-- All Apps button (click), then Escape goes back"
-click 87 577
+click_class spawn-nav-button 0
 expect_state "All Apps button opens the categories view" layout.view categories
 key Down; key Down; key Down 0.6
 screenshot ui-allapps-kb

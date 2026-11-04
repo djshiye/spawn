@@ -3,18 +3,22 @@
 // Public API:
 //   lookupApp(services, id)                   Shell.App for a desktop id, or null
 //   ownedScope(parent, label)                 child scope + release() that also unregisters it from `parent`
+//   displayName(app, settings)                app name, or its GenericName when apps-show-generic-names is on
 //   launchApp(app, settings, newWindow)       activate or open a new window, per activate-on-launch
 //   iconSizeFor(settings, key, fallback)      icon-size-* setting (-1 = default) -> px
 //   symbolicGIcon(icon)                       themed icon with its "-symbolic" variants tried first
+//   applyScrollSettings(scroll, settings)     scrollbars-visible / -overlay / scrollview-fade-effect, live
 //   scrollIntoView(scroll, actor)             scroll a St.ScrollView so `actor` is visible
 //   isCtrlPressed()                           Ctrl held during the current event
 //   isTruncated(label)                        is the label's text cut off with an ellipsis
 //   clear(actor)                              destroy every child of a container
+//   applyTone(actor, probe?)                  add/remove "spawn-light" on `actor` when the shell theme's
+//                                             foreground at `probe` is dark (light shell theme)
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import Shell from 'gi://Shell';
-import type St from 'gi://St';
+import St from 'gi://St';
 
 import {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
@@ -36,6 +40,17 @@ export function ownedScope(parent: Scope, label: string): {scope: Scope; release
     return {scope, release};
 }
 
+export function displayName(app: Shell.App, settings: SpawnSettings): string {
+    const name = app.get_name() ?? '';
+    if (!settings.get('apps-show-generic-names'))
+        return name;
+    try {
+        return app.get_app_info()?.get_generic_name() || name;
+    } catch {
+        return name;
+    }
+}
+
 export function launchApp(app: Shell.App, settings: SpawnSettings, newWindow: boolean): void {
     const canOpenNew = app.state === Shell.AppState.RUNNING && app.can_open_new_window();
     if (canOpenNew && (newWindow || !settings.get('activate-on-launch')))
@@ -55,6 +70,15 @@ export function symbolicGIcon(icon: Gio.Icon | null): Gio.Icon | null {
         return Gio.ThemedIcon.new_from_names([...names.map(n => `${n}-symbolic`), ...names]);
     }
     return icon;
+}
+
+export function applyScrollSettings(scroll: St.ScrollView, settings: SpawnSettings): void {
+    scroll.vscrollbar_policy = settings.get('scrollbars-visible') ? St.PolicyType.AUTOMATIC : St.PolicyType.EXTERNAL;
+    scroll.overlay_scrollbars = settings.get('scrollbars-overlay');
+    if (settings.get('scrollview-fade-effect'))
+        scroll.add_style_class_name('vfade');
+    else
+        scroll.remove_style_class_name('vfade');
 }
 
 export function scrollIntoView(scroll: St.ScrollView | null, actor: Clutter.Actor): void {
@@ -100,4 +124,27 @@ export function isTruncated(label: St.Label): boolean {
 export function clear(actor: Clutter.Actor): void {
     for (const child of actor.get_children())
         child.destroy();
+}
+
+/** Perceived luminance (0..255) of a Clutter colour. */
+function luminance(c: {red: number; green: number; blue: number}): number {
+    return 0.2126 * c.red + 0.7152 * c.green + 0.0722 * c.blue;
+}
+
+/**
+ * Light shell themes have dark popup text: tag `actor` with "spawn-light" so stylesheet.css swaps its
+ * white-alpha tints for black ones. `probe` is the widget whose computed foreground decides
+ * (default `actor`). Dark themes (Orchis Dark, the default look) get no class.
+ */
+export function applyTone(actor: St.Widget, probe: St.Widget = actor): void {
+    let light = false;
+    try {
+        light = luminance(probe.get_theme_node().get_foreground_color()) < 128;
+    } catch {
+        light = false;
+    }
+    if (light)
+        actor.add_style_class_name('spawn-light');
+    else
+        actor.remove_style_class_name('spawn-light');
 }

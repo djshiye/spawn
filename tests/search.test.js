@@ -246,4 +246,82 @@ test('scope.dispose() cancels the pending query and in-flight results', () => {
     assert(s2.batches.length === 0);
 });
 
+test('batches carry the registration order, whatever the arrival order', () => {
+    const {scope, engine, batches, onBatch} = setup(5);
+    engine.addProvider(fake('slow', () => later(40, [result('slow', 's')])));
+    engine.addProvider(fake('fast', () => [result('fast', 'f')]));
+    engine.addProviderSource(() => [fake('s1', () => later(10, [result('s1', 'x')])), fake('s2', () => [result('s2', 'y')])]);
+    engine.search('q', onBatch);
+    sleep(120);
+    assertEquals(batches.map(b => b.providerId), ['fast', 's2', 's1', 'slow']);
+    const byOrder = [...batches].sort((a, b) => a.order - b.order).map(b => b.providerId);
+    assertEquals(byOrder, ['slow', 'fast', 's1', 's2']);
+    scope.dispose();
+});
+
+test('a source may return a promise: its providers run when it resolves, others are not blocked', () => {
+    const {scope, engine, batches, onBatch} = setup(5);
+    engine.addProvider(fake('a', () => [result('a', 'x')]));
+    const late = fake('late', () => [result('late', 'y')]);
+    engine.addProviderSource(() => later(40, [late]));
+    engine.search('q', onBatch);
+    sleep(20);
+    assertEquals(batches.map(b => b.providerId), ['a']);
+    sleep(60);
+    assertEquals(batches.map(b => b.providerId), ['a', 'late']);
+    assert(batches[1].order > batches[0].order);
+    // enabledProviders / clear ignore promise sources instead of throwing
+    assertEquals(engine.enabledProviders().map(p => p.id), ['a']);
+    engine.clear();
+
+    // superseded query: the late providers must not run for the old query
+    batches.length = 0;
+    late.calls.length = 0;
+    engine.search('one', onBatch);
+    sleep(20);
+    engine.search('two', onBatch);
+    sleep(120);
+    assertEquals(late.calls.map(c => c.query), ['two']);
+    // rejecting source is isolated
+    engine.addProviderSource(() => Promise.reject(new Error('source boom')));
+    batches.length = 0;
+    engine.search('three', onBatch);
+    sleep(120);
+    assertEquals(batches.map(b => b.providerId), ['a', 'late']);
+    scope.dispose();
+});
+
+test('handle.pending / flush() run a debounced query immediately, once', () => {
+    const {scope, engine, batches, onBatch} = setup(60);
+    const p = fake('a', q => [result('a', q)]);
+    engine.addProvider(p);
+    const h = engine.search('abc', onBatch);
+    assertEquals(h.pending, true);
+    assertEquals(p.calls.length, 0);
+    h.flush();
+    assertEquals(h.pending, false);
+    assertEquals(p.calls.length, 1);
+    assertEquals(batches.length, 1);
+    h.flush(); // no-op
+    sleep(120); // the debounce timer must not fire a second run
+    assertEquals(p.calls.length, 1);
+    assertEquals(batches.length, 1);
+
+    const h2 = engine.search('def', onBatch);
+    h2.cancel();
+    assertEquals(h2.pending, false);
+    h2.flush();
+    assertEquals(p.calls.length, 1);
+    scope.dispose();
+});
+
+test('immediate searches deliver synchronous providers before returning', () => {
+    const {scope, engine, batches, onBatch} = setup(60);
+    engine.addProvider(fake('a', q => [result('a', q)]));
+    const h = engine.search('abc', onBatch, {immediate: true});
+    assertEquals(batches.length, 1);
+    assertEquals(h.pending, false);
+    scope.dispose();
+});
+
 run();

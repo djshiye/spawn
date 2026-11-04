@@ -113,7 +113,10 @@ function rule(selectors: string | string[], decls: Decl[]): string {
     return `${sel} {\n${body.join('\n')}\n}\n`;
 }
 
-const ITEM = ['.spawn-tile', '.spawn-row', '.spawn-shortcut-row', '.spawn-folder-tile'];
+const ITEM = [
+    '.spawn-tile', '.spawn-row', '.spawn-shortcut-row', '.spawn-folder-tile',
+    '.spawn-user-card', '.spawn-nav-button', '.spawn-power-button',
+];
 const each = (suffix: string, scope = ''): string[] => ITEM.map(s => `${scope}${s}${suffix}`);
 
 // The shell theme nests panel-button rules under `#panel` (specificity 1,1,0 and up), and both
@@ -154,10 +157,18 @@ function buttonRules(b: ButtonColors): string[] {
 function accentRules(accent: string): string[] {
     const a = sanitizeColor(accent) ?? ACCENT_COLORS['blue'] as string;
     return [
+        // Focus: the 25 % tint alone is 1.4:1 against the popup, so every focusable item also gets
+        // a 2 px accent ring (4.3:1, WCAG 1.4.11).
         rule(each(':focus'), [
             ['background-color', withAlpha(a, 0.25)],
+            ['box-shadow', `inset 0 0 0 2px ${a}`],
         ]),
-        rule([...each(':active'), ...each(':selected'), ...each(':checked')], [
+        // Pressed is momentary: a 55 % accent keeps white text above 4.5:1 (solid accent is 3.8:1).
+        rule(each(':active'), [
+            ['background-color', withAlpha(a, 0.55)],
+            ['color', ACCENT_FG],
+        ]),
+        rule([...each(':selected'), ...each(':checked')], [
             ['background-color', a],
             ['color', ACCENT_FG],
         ]),

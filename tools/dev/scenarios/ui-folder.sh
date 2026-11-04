@@ -8,7 +8,7 @@ n="$(state_get layout.folderTiles)"
 check "folder view lists the installed Internet apps ($n of 4 resolve)" "$([ "$n" -ge 1 ] && [ "$n" -le 4 ] && echo 0 || echo 1)"
 screenshot ui-folder-open
 echo "-- rename: click the folder title, type, Return"
-click 100 66
+click_class spawn-folder-name 0
 screenshot ui-folder-rename
 key Ctrl+a 0.2
 for c in G a m e s 2; do key "$c" 0.1; done

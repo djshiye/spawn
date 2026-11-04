@@ -10,12 +10,14 @@
 // Public API:
 //   enableDrag(scope, tile: St.Widget, payload: DragPayload): void
 //   acceptDrops(scope, target: St.Widget, store: PinnedStore, drop: DropTarget): void
-//   DragPayload: {id, folderUuid?, isFolder?, onDragBegin?(), onDragEnd?()}
-//        id = desktop id (or folder uuid when isFolder); folderUuid = folder the app is dragged from
+//   DragPayload: {id, folderUuid?, isFolder?, isCustom?, onDragBegin?(), onDragEnd?()}
+//        id = desktop id (or folder uuid when isFolder); folderUuid = folder the app is dragged from;
+//        isCustom = a pinned command (it can be reordered but never goes into a folder)
 //   DropTarget:
 //     {kind: 'grid'; index: () => number; folderUuid?}   background of a grid (append; index ignored
 //                                                         when below 0)
-//     {kind: 'app'; id; folderUuid?}                      an app tile (folderUuid: tile is inside that folder)
+//     {kind: 'app'; id; folderUuid?; isCustom?}           an app tile (folderUuid: tile is inside that folder;
+//                                                         isCustom: a command tile, edges only)
 //     {kind: 'folder'; uuid}                              a folder tile
 //     {kind: 'unfolder'; folderUuid}                      "take the app out of its folder" zone
 //                                                         (folderUuid '' = whichever folder the app came from)
@@ -24,6 +26,7 @@
 import Clutter from 'gi://Clutter';
 import type St from 'gi://St';
 
+import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 
 import {error} from '../core/log.js';
@@ -34,13 +37,14 @@ export interface DragPayload {
     id: string;
     folderUuid?: string;
     isFolder?: boolean;
+    isCustom?: boolean;
     onDragBegin?(): void;
     onDragEnd?(): void;
 }
 
 export type DropTarget =
     | {kind: 'grid'; index: () => number; folderUuid?: string}
-    | {kind: 'app'; id: string; folderUuid?: string}
+    | {kind: 'app'; id: string; folderUuid?: string; isCustom?: boolean}
     | {kind: 'folder'; uuid: string}
     | {kind: 'unfolder'; folderUuid: string};
 
@@ -75,7 +79,7 @@ function clearDropClasses(widget: St.Widget | null): void {
 
 export function uniqueFolderName(store: PinnedStore): string {
     const taken = new Set(store.items().filter(i => i.kind === 'folder').map(i => (i as {name: string}).name));
-    const base = 'New Folder';
+    const base = _('New Folder');
     if (!taken.has(base))
         return base;
     for (let n = 2; ; n++) {
@@ -91,8 +95,9 @@ function topIndexOf(store: PinnedStore, id: string): number {
         (i.kind === 'custom' && i.entry.id === id));
 }
 
+/** Index in the folder's FULL list (missing apps included: the folder view shows them as ghosts). */
 function folderIndexOf(store: PinnedStore, uuid: string, id: string): number {
-    return store.folderApps(uuid).findIndex(e => e.id === id);
+    return store.folderApps(uuid, true).findIndex(e => e.id === id);
 }
 
 export function enableDrag(scope: Scope, tile: St.Widget, payload: DragPayload): void {
@@ -179,17 +184,23 @@ export function acceptDrops(scope: Scope, target: St.Widget, store: PinnedStore,
             return false;
         switch (drop.kind) {
         case 'grid':
-            return true;
+            // a pinned command cannot live inside a folder (the folder view only shows apps)
+            return !(drop.folderUuid && p.isCustom);
         case 'unfolder':
             return Boolean(p.folderUuid) && !p.isFolder && (!drop.folderUuid || p.folderUuid === drop.folderUuid);
         case 'app':
             if (p.id === drop.id)
+                return false;
+            // commands are reordered, never merged into a folder (onto) or dropped into one
+            if ((drop.isCustom || p.isCustom) && (zone === 'onto' || drop.folderUuid))
                 return false;
             if (drop.folderUuid)
                 return !p.isFolder;
             return zone !== 'onto' || !p.isFolder;
         case 'folder':
             if (p.isFolder && p.id === drop.uuid)
+                return false;
+            if (p.isCustom && zone === 'onto')
                 return false;
             if (!p.isFolder && p.folderUuid === drop.uuid && zone === 'onto')
                 return false;

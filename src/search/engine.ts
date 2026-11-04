@@ -6,9 +6,13 @@
 // Public API:
 //   new SearchEngine(scope, {debounceMs?: 80})     does no work at construction
 //   engine.addProvider(p: SearchProvider): () => void   returns remove()
-//   engine.addProviderSource(fn: () => SearchProvider[]): () => void
-//        (addition) a dynamic list re-read on every query, e.g. `() => shellProviders.list()`.
-//   engine.search(query: string, onBatch: (b: SearchBatch) => void): SearchHandle
+//   engine.addProviderSource(fn: () => SearchProvider[] | PromiseLike<SearchProvider[]>): () => void
+//        (addition) a dynamic list re-read on every query, e.g. `() => shellProviders.ready()`.
+//        A source may return a promise (providers still loading): the query then waits for
+//        it WITHOUT blocking the other providers and runs those providers when it resolves
+//        (a rejection is logged and skipped). enabledProviders()/clear() only see the
+//        synchronous results of sources.
+//   engine.search(query: string, onBatch: (b: SearchBatch) => void, options?): SearchHandle
 //        Debounced (trailing, restarted by every call). Every call cancels the previous
 //        handle. onBatch is called at most once per provider, as soon as that provider
 //        finishes (synchronous providers deliver in registration order, async ones whenever
@@ -17,7 +21,12 @@
 //        own empty state) and returns a no-op handle. Provider exceptions / rejections are
 //        logged and skipped; they never affect other providers or the caller.
 //        (addition) `{immediate: true}` skips the debounce and runs the providers synchronously
-//        (benchmarks / dev hooks only).
+//        (benchmarks / dev hooks).
+//        (addition) SearchBatch.order is the provider's position in registration order
+//        (providers, then sources, as registered); sort sections by it, not by arrival.
+//        (addition) SearchHandle.pending is true while the debounce timer has not fired yet;
+//        handle.flush() runs a still-debounced query NOW (synchronous providers deliver
+//        before flush() returns). Used by Return pressed within the debounce window.
 //   engine.enabledProviders(): SearchProvider[]          (addition) providers a query would run now
 //   engine.cancel(): void
 //   engine.clear(): void                                 drop caches in providers (menu closed)
@@ -31,6 +40,7 @@
 //        cancelled at the same moment, to pass to D-Bus / async Gio calls.
 //   clear?(): void
 
+import type Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 
 import {error} from '../core/log.js';
@@ -49,8 +59,10 @@ export interface SearchResult {
     title: string;
     description?: string;
     icon?: Gio.Icon | null;
-    /** Optional richer icon factory (GNOME remote providers); the UI may prefer `icon`. */
-    createIcon?: (size: number) => unknown;
+    /** Optional richer icon factory (GNOME remote providers); returns an actor (St.Icon) or null. */
+    createIcon?: (size: number) => Clutter.Actor | null | undefined;
+    /** Show `description` even when show-search-result-details is off (e.g. the folder of a file). */
+    alwaysShowDescription?: boolean;
     /** Higher is better; comparable across providers only after rank.ts normalisation. */
     score: number;
     /** Perform the default action (launch app, focus window, open file). */
@@ -70,11 +82,19 @@ export interface SearchBatch {
     providerTitle: string;
     query: string;
     results: SearchResult[];
+    /** Sort key: provider registration order (lower first). Stable across queries. */
+    order: number;
 }
 
 export interface SearchHandle {
     cancel(): void;
+    /** True until the debounce timer has fired (or the query was cancelled / flushed). */
+    readonly pending: boolean;
+    /** Run the query now if it is still waiting for the debounce; otherwise a no-op. */
+    flush(): void;
 }
+
+export type ProviderSource = () => SearchProvider[] | PromiseLike<SearchProvider[]>;
 
 export interface SearchEngineOptions {
     debounceMs?: number;
@@ -103,11 +123,16 @@ class QueryToken implements CancelToken {
 interface ActiveQuery {
     token: QueryToken;
     cancelTimer: (() => void) | null;
+    /** Runs the query; set only while the debounce is pending. */
+    start: (() => void) | null;
 }
 
-const NOOP_HANDLE: SearchHandle = {cancel: () => {}};
+const NOOP_HANDLE: SearchHandle = {cancel: () => {}, pending: false, flush: () => {}};
 
-function isThenable(v: unknown): v is PromiseLike<SearchResult[]> {
+/** Providers of different slots never collide: slot * ORDER_SLOT + index inside a source. */
+const ORDER_SLOT = 1000;
+
+function isThenable<T>(v: unknown): v is PromiseLike<T> {
     return typeof (v as PromiseLike<unknown> | null)?.then === 'function';
 }
 
@@ -115,7 +140,7 @@ export class SearchEngine {
     private readonly _scope: Scope;
     private readonly _debounceMs: number;
     private readonly _providers: SearchProvider[] = [];
-    private readonly _sources: Array<() => SearchProvider[]> = [];
+    private readonly _sources: ProviderSource[] = [];
     private _active: ActiveQuery | null = null;
 
     constructor(scope: Scope, options: SearchEngineOptions = {}) {
@@ -135,7 +160,7 @@ export class SearchEngine {
         return remove;
     }
 
-    addProviderSource(source: () => SearchProvider[]): () => void {
+    addProviderSource(source: ProviderSource): () => void {
         this._sources.push(source);
         const remove = () => {
             const i = this._sources.indexOf(source);
@@ -152,18 +177,38 @@ export class SearchEngine {
             return NOOP_HANDLE;
 
         const token = new QueryToken();
-        const active: ActiveQuery = {token, cancelTimer: null};
+        const active: ActiveQuery = {token, cancelTimer: null, start: null};
         this._active = active;
-        if (options.immediate) {
-            this._run(query, token, onBatch);
-            return {cancel: () => this._cancelQuery(active)};
-        }
-        active.cancelTimer = this._scope.timeout(this._debounceMs, () => {
-            active.cancelTimer = null;
+        const handle: SearchHandle = {
+            cancel: () => this._cancelQuery(active),
+            get pending() {
+                return active.start !== null;
+            },
+            flush: () => {
+                const start = active.start;
+                if (!start)
+                    return;
+                const cancelTimer = active.cancelTimer;
+                active.cancelTimer = null;
+                cancelTimer?.();
+                start();
+            },
+        };
+        const start = () => {
+            active.start = null;
             if (!token.cancelled)
                 this._run(query, token, onBatch);
+        };
+        if (options.immediate) {
+            start();
+            return handle;
+        }
+        active.start = start;
+        active.cancelTimer = this._scope.timeout(this._debounceMs, () => {
+            active.cancelTimer = null;
+            start();
         });
-        return {cancel: () => this._cancelQuery(active)};
+        return handle;
     }
 
     cancel(): void {
@@ -197,6 +242,7 @@ export class SearchEngine {
             this._active = null;
         const cancelTimer = active.cancelTimer;
         active.cancelTimer = null;
+        active.start = null;
         cancelTimer?.();
         active.token.cancel();
     }
@@ -205,7 +251,9 @@ export class SearchEngine {
         const all = [...this._providers];
         for (const source of this._sources) {
             try {
-                all.push(...source());
+                const list = source();
+                if (Array.isArray(list))
+                    all.push(...list);
             } catch (e) {
                 error('provider source failed', e);
             }
@@ -214,33 +262,65 @@ export class SearchEngine {
     }
 
     private _run(query: string, token: QueryToken, onBatch: (batch: SearchBatch) => void): void {
-        const deliver = (provider: SearchProvider, results: unknown) => {
-            if (token.cancelled || !Array.isArray(results))
-                return;
-            try {
-                onBatch({providerId: provider.id, providerTitle: provider.title, query, results: results as SearchResult[]});
-            } catch (e) {
-                error(`search batch handler failed for ${provider.id}`, e);
-            }
-        };
-
-        for (const provider of this._allProviders()) {
-            if (token.cancelled)
-                return;
+        const runOne = (provider: SearchProvider, order: number) => {
+            const deliver = (results: unknown) => {
+                if (token.cancelled || !Array.isArray(results))
+                    return;
+                try {
+                    onBatch({providerId: provider.id, providerTitle: provider.title, query, results: results as SearchResult[], order});
+                } catch (e) {
+                    error(`search batch handler failed for ${provider.id}`, e);
+                }
+            };
             try {
                 if (!provider.isEnabled())
-                    continue;
+                    return;
                 const out = provider.search(query, token);
-                if (isThenable(out)) {
-                    out.then(results => deliver(provider, results), e => {
+                if (isThenable<SearchResult[]>(out)) {
+                    out.then(deliver, e => {
                         if (!token.cancelled)
                             error(`search provider ${provider.id} failed`, e);
                     });
                 } else {
-                    deliver(provider, out);
+                    deliver(out);
                 }
             } catch (e) {
                 error(`search provider ${provider.id} failed`, e);
+            }
+        };
+
+        let slot = 0;
+        for (const provider of [...this._providers]) {
+            if (token.cancelled)
+                return;
+            runOne(provider, slot++ * ORDER_SLOT);
+        }
+        for (const source of [...this._sources]) {
+            if (token.cancelled)
+                return;
+            const base = slot++ * ORDER_SLOT;
+            let list: SearchProvider[] | PromiseLike<SearchProvider[]>;
+            try {
+                list = source();
+            } catch (e) {
+                error('provider source failed', e);
+                continue;
+            }
+            if (isThenable<SearchProvider[]>(list)) {
+                list.then(providers => {
+                    if (token.cancelled || !Array.isArray(providers))
+                        return;
+                    providers.forEach((p, i) => runOne(p, base + i));
+                }, e => {
+                    if (!token.cancelled)
+                        error('provider source failed', e);
+                });
+            } else if (Array.isArray(list)) {
+                for (let i = 0; i < list.length; i++) {
+                    if (token.cancelled)
+                        return;
+                    runOne(list[i], base + i);
+                }
             }
         }
     }

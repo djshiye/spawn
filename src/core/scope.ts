@@ -9,7 +9,9 @@
 //   scope.timeout(ms, cb)            one-shot GLib timeout, owned; returns cancel()
 //   scope.interval(ms, cb)           repeating GLib timeout (cb returns false to stop)
 //   scope.idle(cb)                   one-shot idle; returns cancel()
-//   scope.child(label?)              nested Scope disposed with its parent
+//   scope.child(label?)              nested Scope disposed with its parent; disposing the child
+//                                    releases its entry in the parent (no dead entries pile up),
+//                                    and a child that is reused after dispose re-registers itself
 //   scope.dispose()                  runs teardowns newest-first, each in try/catch;
 //                                    never throws; the scope is re-usable afterwards
 //   scope.size                       number of live teardowns (for tests)
@@ -36,6 +38,10 @@ interface Entry {
 export class Scope {
     private _entries: Entry[] = [];
     private readonly _label: string;
+    /** For a child scope: the parent and the parent's entry that disposes this scope. */
+    private _parent: Scope | null = null;
+    private _parentEntry: Entry | null = null;
+    private _disposing = false;
 
     constructor(label = 'scope') {
         this._label = label;
@@ -97,17 +103,40 @@ export class Scope {
 
     child(label = 'child'): Scope {
         const c = new Scope(`${this._label}/${label}`);
-        this._register(() => c.dispose(), `child ${label}`);
+        c._parent = this;
+        c._attach(`child ${label}`);
         return c;
     }
 
     dispose(): void {
-        // Teardowns may register new teardowns while running; loop until empty.
-        for (let entry = this._entries.pop(); entry; entry = this._entries.pop())
-            this._run(entry);
+        this._disposing = true;
+        try {
+            // Drop our entry from the parent so disposed children do not pile up there. When the
+            // parent is the one disposing us, it already popped the entry and this is a no-op.
+            this._detach();
+            // Teardowns may register new teardowns while running; loop until empty.
+            for (let entry = this._entries.pop(); entry; entry = this._entries.pop())
+                this._run(entry);
+        } finally {
+            this._disposing = false;
+        }
+    }
+
+    private _attach(label = 'child'): void {
+        this._parentEntry = this._parent?._register(() => this.dispose(), label) ?? null;
+    }
+
+    private _detach(): void {
+        const entry = this._parentEntry;
+        this._parentEntry = null;
+        if (entry)
+            this._parent?._forget(entry);
     }
 
     private _register(fn: Teardown, label: string): Entry {
+        // A disposed child that is used again must be disposed with its parent again.
+        if (this._parent && !this._parentEntry && !this._disposing)
+            this._attach();
         const entry: Entry = {fn, label};
         this._entries.push(entry);
         return entry;

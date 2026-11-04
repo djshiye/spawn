@@ -75,10 +75,10 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
 
     const sizeKeys: SettingKey[] = ['menu-height', 'left-panel-width', 'right-panel-width', 'menu-width-adjustment'];
     page.add(group(ctx, 'Size', [
-        spinRow(ctx, 'menu-height', 'Menu height', 300, 4320, {step: 10}),
-        spinRow(ctx, 'left-panel-width', 'Left pane width', 175, 2500, {step: 5}),
-        spinRow(ctx, 'right-panel-width', 'Right pane width', 150, 2500, {step: 5}),
-        spinRow(ctx, 'menu-width-adjustment', 'Extra width', -350, 5000, {
+        spinRow(ctx, 'menu-height', 'Menu height', 360, 1600, {step: 10}),
+        spinRow(ctx, 'left-panel-width', 'Left pane width', 420, 1200, {step: 5}),
+        spinRow(ctx, 'right-panel-width', 'Right pane width', 180, 600, {step: 5}),
+        spinRow(ctx, 'menu-width-adjustment', 'Extra width', -350, 800, {
             step: 5,
             subtitle: 'Added on top of the pane widths',
         }),
@@ -90,7 +90,11 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
     ];
     page.add(group(ctx, 'Search', [
         switchRow(ctx, 'search-hidden', 'Hide the search bar', 'It appears as soon as you start typing'),
-        enumRow(ctx, 'search-entry-location', 'Search bar position', [['Bottom', 'Bottom'], ['Top', 'Top']]),
+        enumRow(ctx, 'search-entry-location', 'Search bar position', [
+            ['Bottom', 'Bottom'],
+            ['Top', 'Top'],
+            ['Auto', 'Automatic'],
+        ], 'Automatic puts it nearest the panel the menu opens from'),
         spinRow(ctx, 'max-search-results', 'Results per source', 1, 20),
         switchRow(ctx, 'highlight-search-result-terms', 'Highlight matching text'),
         switchRow(ctx, 'show-search-result-details', 'Show result descriptions'),
@@ -126,7 +130,7 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
 
     const iconKeys: SettingKey[] = [
         'icon-size-apps', 'icon-size-shortcuts', 'icon-size-categories', 'icon-size-buttons', 'icon-size-misc',
-        'icon-size-grid', 'icon-style-categories', 'icon-style-shortcuts', 'icon-style-buttons',
+        'icon-size-grid',
     ];
     const hint = '-1 uses the default, 0 hides the icons';
     page.add(group(ctx, 'Icon sizes', [
@@ -138,10 +142,11 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
         ...gridRows(ctx),
     ], {reset: iconKeys, description: 'Pinned app tiles use the last three values.'}));
 
+    const styleKeys: SettingKey[] = ['icon-style-categories', 'icon-style-shortcuts', 'icon-style-buttons'];
     page.add(group(ctx, 'Icon style', [
         enumRow(ctx, 'icon-style-categories', 'Category icons', ICON_STYLE),
         enumRow(ctx, 'icon-style-shortcuts', 'Shortcut icons', ICON_STYLE),
         enumRow(ctx, 'icon-style-buttons', 'Power button icons', ICON_STYLE),
-    ]));
+    ], {reset: styleKeys}));
     return page;
 }

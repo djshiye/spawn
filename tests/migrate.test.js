@@ -6,12 +6,23 @@ import GLib from 'gi://GLib';
 
 import {assert, assertEquals, run, test} from './harness.js';
 
+function assertThrows(fn) {
+    let threw = false;
+    try {
+        fn();
+    } catch {
+        threw = true;
+    }
+    assert(threw, 'expected an exception');
+}
+
 GLib.setenv('GSETTINGS_BACKEND', 'memory', true);
 
 const root = GLib.path_get_dirname(GLib.path_get_dirname(import.meta.url.replace('file://', '')));
 const {planMigration, describePlan, convertEntries, convertButtonIcon} = await import('../build/migrate/mapping.js');
-const {applyMigration, readArcMenuSnapshot, disableArcMenu} = await import('../build/migrate/arcmenu.js');
-const {SpawnSettings} = await import('../build/core/settings.js');
+const {applyMigration, readArcMenuSnapshot, disableArcMenu, spawnDefaults, iconInstalled} = await import('../build/migrate/arcmenu.js');
+const {SpawnSettings, FolderSettings, FOLDER_SCHEMA_ID, isValidFolderId} = await import('../build/core/settings.js');
+const {planMigration: planFromMapping, INT_RANGES} = await import('../build/migrate/mapping.js');
 
 function loadFixture() {
     const [, bytes] = Gio.File.new_for_path(`${root}/tests/fixtures/arcmenu-user.json`).load_contents(null);
@@ -54,7 +65,7 @@ test('every user-set key is mapped or skipped with a reason', () => {
 
 test('skipped keys of the fixture', () => {
     assertEquals(plan.skipped.map(s => s.key).sort(), [
-        'context-menu-items', 'menu-layout', 'recently-installed-apps', 'update-notifier-project-version',
+        'context-menu-items', 'menu-layout', 'prefs-visible-page', 'recently-installed-apps', 'update-notifier-project-version',
     ]);
 });
 
@@ -130,10 +141,14 @@ test('other layouts fall back to spawn with a warning', () => {
     assert(p.warnings.some(w => w.includes('gnome-menu') && w.includes('spawn')));
 });
 
-test('hotkeys: Super_L + overlay enabled -> super-key-toggle; others -> menu-hotkey', () => {
+test('hotkeys: Super_L + overlay enabled -> super-key-toggle; others -> spawn-hotkey', () => {
     let p = planMigration(snap({'arcmenu-hotkey': ['Super_L', '<Alt>F1']}));
     assertEquals(p.items.find(i => i.key === 'super-key-toggle').value, true);
-    assertEquals(p.items.find(i => i.key === 'menu-hotkey').value, ['<Alt>F1']);
+    assertEquals(p.items.find(i => i.key === 'spawn-hotkey').value, ['<Alt>F1']);
+    assert(!p.items.some(i => i.key === 'menu-hotkey'), 'old key name still produced');
+    p = planMigration(snap({'arcmenu-hotkey': ['<Alt>F1', '<Ctrl>F2', 'Super_R', '<Alt>F1']}));
+    assertEquals(p.items.find(i => i.key === 'spawn-hotkey').value, ['<Alt>F1', '<Ctrl>F2']);
+    assert(p.warnings.some(w => w.includes('Super_R')), 'bare modifier not reported');
     p = planMigration(snap({'arcmenu-hotkey-overlay-key-enabled': false}));
     assertEquals(p.items.find(i => i.key === 'super-key-toggle').value, false);
     p = planMigration(snap({'arcmenu-hotkey': []}));
@@ -232,6 +247,190 @@ test('round trip: write fixture to ArcMenu schema, read snapshot, plan, apply', 
         assertSame(folder.pinnedApps, f.pinnedApps);
     }
     assertEquals(settings.folder('3c2219f1-a114-4e2e-a06c-51fdefa91991').pinnedApps.length, 5);
+});
+
+
+// ---------------------------------------------------------------- mapping edge cases
+
+test('prefs-visible-page is not migrated', () => {
+    const p = planMigration(snap({'prefs-visible-page': 5}));
+    assert(!p.items.some(i => i.key === 'prefs-visible-page'));
+    assert(p.skipped.some(s => s.key === 'prefs-visible-page'));
+});
+
+test('sizes outside the schema range are clamped with a warning', () => {
+    const p = planMigration(snap({'left-panel-width': 290, 'right-panel-width': 9000, 'menu-height': 500, 'menu-width-adjustment': 5000}));
+    const v = k => p.items.find(i => i.key === k).value;
+    assertEquals([v('left-panel-width'), v('right-panel-width'), v('menu-height'), v('menu-width-adjustment')], [420, 600, 500, 800]);
+    assertEquals(p.warnings.length, 3);
+});
+
+test('INT_RANGES matches the <range> of the compiled schema', () => {
+    const dir = compileSpawnSchemas();
+    const source = Gio.SettingsSchemaSource.new_from_directory(dir, Gio.SettingsSchemaSource.get_default(), false);
+    const schema = source.lookup('org.gnome.shell.extensions.spawn', true);
+    for (const [key, [min, max]] of Object.entries(INT_RANGES)) {
+        const [type, range] = schema.get_key(key).get_range().deepUnpack();
+        assertEquals(type, 'range', key);
+        assertEquals(range.deepUnpack(), [min, max], key);
+    }
+});
+
+test('invalid folder ids are dropped with a warning, duplicate folders kept once', () => {
+    const uuid = '3c2219f1-a114-4e2e-a06c-51fdefa91991';
+    const p = planMigration(snap({'pinned-apps': [
+        {id: '', name: 'Empty', isFolder: 'true'},
+        {id: 'a/b', name: 'Nested', isFolder: 'true'},
+        {id: uuid, name: 'Games', isFolder: 'true'},
+        {id: uuid, name: 'Games again', isFolder: 'true'},
+        {id: 'firefox.desktop'},
+    ]}, {folders: {[uuid]: [{id: 'eden.desktop'}]}}));
+    assertEquals(p.items.find(i => i.key === 'pinned-apps').value.map(e => e.id), [uuid, 'firefox.desktop']);
+    assertEquals(p.folders.map(f => f.uuid), [uuid]);
+    assertEquals(p.warnings.filter(w => w.includes('invalid folder id')).length, 2);
+    assertEquals(isValidFolderId(''), false);
+    assertEquals(isValidFolderId('a/b'), false);
+    assertEquals(isValidFolderId(uuid), true);
+});
+
+test('an app is kept once: top level first, then folders in order', () => {
+    const f1 = 'f1111111-1111-1111-1111-111111111111';
+    const f2 = 'f2222222-2222-2222-2222-222222222222';
+    const p = planMigration(snap({'pinned-apps': [
+        {id: f1, name: 'One', isFolder: 'true'},
+        {id: 'a.desktop'},
+        {id: 'a.desktop'},
+        {id: f2, name: 'Two', isFolder: 'true'},
+    ]}, {folders: {
+        [f1]: [{id: 'a.desktop'}, {id: 'b.desktop'}, {id: 'b.desktop'}],
+        [f2]: [{id: 'b.desktop'}, {id: 'c.desktop'}],
+    }}));
+    assertEquals(p.items.find(i => i.key === 'pinned-apps').value.map(e => e.id), [f1, 'a.desktop', f2]);
+    const byUuid = Object.fromEntries(p.folders.map(f => [f.uuid, f.pinnedApps.map(e => e.id)]));
+    assertEquals(byUuid[f1], ['b.desktop']);
+    assertEquals(byUuid[f2], ['c.desktop']);
+    assertEquals(p.warnings.filter(w => w.includes('more than once')).length, 4);
+});
+
+test('separators may repeat in shortcut lists, other ids may not', () => {
+    const p = planMigration(snap({'application-shortcuts': [
+        {id: 'ArcMenu_Separator'}, {id: 'x.desktop'}, {id: 'ArcMenu_Separator'}, {id: 'x.desktop'},
+    ]}));
+    assertEquals(p.items.find(i => i.key === 'application-shortcuts').value.map(e => e.id), ['Spawn_Separator', 'x.desktop', 'Spawn_Separator']);
+});
+
+test('a button icon that is not bundled is skipped with a warning', () => {
+    const icon = 'resource:///org/gnome/shell/extensions/arcmenu/icons/scalable/actions/icon-future-symbolic.svg';
+    let p = planMigration(snap({'menu-button-icon': icon}));
+    assertEquals(p.items.find(i => i.key === 'menu-button-icon').value, 'icon-future-symbolic.svg');
+    p = planFromMapping(snap({'menu-button-icon': icon}), undefined, {iconExists: () => false});
+    assert(!p.items.some(i => i.key === 'menu-button-icon'));
+    assert(p.skipped.some(s => s.key === 'menu-button-icon') && p.warnings.some(w => w.includes('icon-future')));
+    p = planFromMapping(snap({'menu-button-icon': 'start-here-symbolic'}), undefined, {iconExists: () => false});
+    assertEquals(p.items.find(i => i.key === 'menu-button-icon').value, 'start-here-symbolic');
+});
+
+// ---------------------------------------------------------------- applyMigration (memory backend)
+
+const spawnDir = compileSpawnSchemas();
+const spawnSource = Gio.SettingsSchemaSource.new_from_directory(spawnDir, Gio.SettingsSchemaSource.get_default(), false);
+const spawnSchema = spawnSource.lookup('org.gnome.shell.extensions.spawn', true);
+
+/** A SpawnSettings over its own fresh in-memory backend (folder() validates ids like production). */
+function freshSettings() {
+    const backend = Gio.memory_settings_backend_new();
+    class Mem extends SpawnSettings {
+        folder(uuid) {
+            if (!isValidFolderId(uuid))
+                throw new Error(`invalid folder id '${uuid}'`);
+            return new FolderSettings(uuid, Gio.Settings.new_full(spawnSource.lookup(FOLDER_SCHEMA_ID, true), backend, `/org/gnome/shell/extensions/spawn/folders/${uuid}/`));
+        }
+    }
+    return new Mem(Gio.Settings.new_full(spawnSchema, backend, '/org/gnome/shell/extensions/spawn/'), spawnSource);
+}
+const planOf = (items, folders = []) => ({items: items.map(([key, value, differs = true]) => ({key, from: key, value, differsFromDefault: differs})), folders, skipped: [], warnings: []});
+
+test('applyMigration: a throwing item reverts the whole batch', () => {
+    const settings = freshSettings();
+    settings.set('menu-button-icon-size', 33);
+    assertEquals(settings.get('migration-done'), false);
+    assertThrows(() => applyMigration(planOf([['menu-button-icon-size', 40], ['no-such-key', 1]]), settings));
+    assertEquals(settings.get('menu-button-icon-size'), 33);
+    assertEquals(settings.get('migration-done'), false);
+});
+
+test('applyMigration: an invalid folder id reverts keys and folders written before it', () => {
+    const settings = freshSettings();
+    const good = '3c2219f1-a114-4e2e-a06c-51fdefa91991';
+    const before = settings.get('pinned-apps');
+    const plan = planOf([['menu-button-icon-size', 40], ['pinned-apps', [{id: good, name: 'G', isFolder: 'true'}]]], [
+        {uuid: good, name: 'G', pinnedApps: [{id: 'a.desktop'}]},
+        {uuid: 'a/b', name: 'Bad', pinnedApps: []},
+    ]);
+    assertThrows(() => applyMigration(plan, settings));
+    assertEquals(settings.get('menu-button-icon-size'), 20);
+    assertSame(settings.get('pinned-apps'), before);
+    assertEquals(settings.folder(good).pinnedApps, []);
+    assertEquals(settings.get('migration-done'), false);
+});
+
+test('applyMigration: values GSettings rejects are reported, the rest is applied', () => {
+    const settings = freshSettings();
+    const result = applyMigration(planOf([['left-panel-width', 50], ['menu-button-icon-size', 40]]), settings);
+    assertEquals(result.failed, ['left-panel-width']);
+    assertEquals(result.written, 1);
+    assertEquals(settings.get('left-panel-width'), 420);
+    assertEquals(settings.get('menu-button-icon-size'), 40);
+    assertEquals(settings.get('migration-done'), true);
+});
+
+test('applyMigration: items equal to the defaults reset the key; undo restores everything', () => {
+    const settings = freshSettings();
+    settings.set('menu-button-icon-size', 33);
+    settings.set('menu-height', 700);
+    const uuid = '3c2219f1-a114-4e2e-a06c-51fdefa91991';
+    settings.set('pinned-apps', [{id: 'old-folder', name: 'Old', isFolder: 'true'}]);
+    settings.folder('old-folder').pinnedApps = [{id: 'old.desktop'}];
+    const result = applyMigration(planOf([
+        ['menu-button-icon-size', 20, false], ['menu-height', 800],
+        ['pinned-apps', [{id: uuid, name: 'G', isFolder: 'true'}]],
+    ], [{uuid, name: 'G', pinnedApps: [{id: 'a.desktop'}]}]), settings);
+    assertEquals([result.written, result.reset, result.failed], [2, 1, []]);
+    assert(settings.raw.get_user_value('menu-button-icon-size') === null, 'default-equal value was written');
+    assertEquals(settings.get('menu-height'), 800);
+    assertEquals(settings.folder(uuid).pinnedApps, [{id: 'a.desktop'}]);
+    assertEquals(settings.folder('old-folder').pinnedApps, []);
+
+    settings.restore(result.undo);
+    assertEquals(settings.get('menu-button-icon-size'), 33);
+    assertEquals(settings.get('menu-height'), 700);
+    assertEquals(settings.get('migration-done'), false);
+    assertEquals(settings.get('pinned-apps')[0].id, 'old-folder');
+    assertEquals(settings.folder('old-folder').pinnedApps, [{id: 'old.desktop'}]);
+    assertEquals(settings.folder(uuid).pinnedApps, []);
+});
+
+test('the user fixture applies cleanly against the real defaults: nothing rejected, equal-to-default keys left unset', () => {
+    const settings = freshSettings();
+    const p = planMigration(fixture, spawnDefaults(settings), {iconExists: v => iconInstalled(root, v)});
+    const result = applyMigration(p, settings);
+    assertEquals(result.failed, []);
+    assertEquals(result.written + result.reset, p.items.length);
+    assert(result.reset > 0, 'expected some keys equal to the defaults');
+    for (const i of p.items.filter(i => !i.differsFromDefault))
+        assert(settings.raw.get_user_value(i.key) === null, `${i.key} was written although equal to the default`);
+    for (const i of p.items.filter(i => i.differsFromDefault))
+        assertSame(settings.get(i.key), i.value, i.key);
+    assertEquals(p.warnings, []);
+});
+
+test('SpawnSettings.folder rejects invalid ids; set() reports rejected values', () => {
+    const settings = new SpawnSettings(Gio.Settings.new_full(spawnSchema, Gio.memory_settings_backend_new(), '/org/gnome/shell/extensions/spawn/'), spawnSource);
+    assertThrows(() => settings.folder(''));
+    assertThrows(() => settings.folder('a/b'));
+    assertEquals(settings.set('left-panel-width', 10), false);
+    assertEquals(settings.set('search-entry-location', 'Auto'), true);
+    assertEquals(settings.set('spawn-hotkey', ['<Super>space']), true);
 });
 
 test('disableArcMenu is exported (not invoked: would talk to a real shell)', () => {

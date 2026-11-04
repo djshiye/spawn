@@ -7,15 +7,22 @@
 // so it is imported dynamically and everything touching it is guarded: any failure leaves
 // the list empty and is logged once, never thrown. Nothing is patched or monkey-patched.
 //
-// Loading is lazy and asynchronous: the first list() call while search-provider-shell is on
-// starts it and returns []; later calls return the bridged providers. The list is dropped
-// (and reloaded on the next list()) when installed apps or the GNOME search settings change.
+// Loading is lazy and asynchronous. warmUp() (menu open) starts it in an idle callback; a
+// query that arrives before it finished AWAITS it (ready() returns a promise, capped at 5 s
+// by the loader) instead of silently skipping the shell providers. When installed apps or the
+// GNOME search settings change, the previous provider list is KEPT and used until the reload
+// (started by the next ready() / warmUp()) has replaced it.
 //
 // Public API:
 //   new ShellProviders(scope: Scope, settings: SpawnSettings)   does no work at construction
-//   provider.list(): SearchProvider[]     current bridged providers (re-read per query);
-//                                         wire with engine.addProviderSource(() => p.list())
-//   provider.warmUp(): void               (addition) start loading early, e.g. on menu open
+//   provider.ready(): SearchProvider[] | Promise<SearchProvider[]>
+//        the bridged providers now when known (also a stale list during a reload), else a
+//        promise that resolves (never rejects) once the first load finished; [] while
+//        search-provider-shell is off. Wire with engine.addProviderSource(() => p.ready())
+//   provider.list(): SearchProvider[]     synchronous variant: the current list ([] before the
+//                                         first load finished); starts loading when idle
+//   provider.warmUp(): void               start loading early (idle callback), e.g. on menu
+//                                         open; no-op when search-provider-shell is off
 
 import Gio from 'gi://Gio';
 import Shell from 'gi://Shell';
@@ -109,7 +116,7 @@ class ShellProviderBridge implements SearchProvider {
                     title: meta.name ?? id,
                     description: meta.description || undefined,
                     icon,
-                    createIcon: typeof meta.createIcon === 'function' ? meta.createIcon.bind(meta) : undefined,
+                    createIcon: typeof meta.createIcon === 'function' ? meta.createIcon.bind(meta) as SearchResult['createIcon'] : undefined,
                     score: Math.max(1, BASE_SCORE - i),
                     activate: () => {
                         try {
@@ -136,6 +143,9 @@ export class ShellProviders {
     private readonly _settings: SpawnSettings;
     private _state: LoadState = 'idle';
     private _providers: SearchProvider[] = [];
+    private _loading: Promise<SearchProvider[]> | null = null;
+    private _invalidatedWhileLoading = false;
+    private _warmQueued = false;
     private _generation = 0;
     private _watching = false;
 
@@ -145,49 +155,86 @@ export class ShellProviders {
         scope.add(() => {
             this._generation++;
             this._providers = [];
+            this._loading = null;
+            this._invalidatedWhileLoading = false;
+            this._warmQueued = false;
             this._state = 'idle';
             this._watching = false;
         }, 'shell providers');
     }
 
-    list(): SearchProvider[] {
-        let enabled = false;
+    private _isEnabled(): boolean {
         try {
-            enabled = this._settings.get('search-provider-shell');
+            return this._settings.get('search-provider-shell');
         } catch (e) {
             error('reading search-provider-shell failed', e);
+            return false;
         }
-        if (!enabled)
+    }
+
+    list(): SearchProvider[] {
+        if (!this._isEnabled())
             return [];
-        this.warmUp();
-        return this._state === 'ready' ? this._providers : [];
+        this._ensureLoading();
+        return this._providers;
+    }
+
+    ready(): SearchProvider[] | Promise<SearchProvider[]> {
+        if (!this._isEnabled())
+            return [];
+        const loading = this._ensureLoading();
+        // A known list (fresh, or stale while reloading) is used at once.
+        if (this._state === 'ready' || this._providers.length > 0 || !loading)
+            return this._providers;
+        return loading;
     }
 
     warmUp(): void {
-        if (this._state !== 'idle')
+        if (this._state !== 'idle' || this._warmQueued || !this._isEnabled())
             return;
-        this._state = 'loading';
-        const generation = this._generation;
-        this._watch();
-        this._load().then(providers => {
-            if (generation !== this._generation)
-                return;
-            this._providers = providers;
-            this._state = 'ready';
-        }, e => {
-            if (generation !== this._generation)
-                return;
-            error('loading shell search providers failed', e);
-            this._providers = [];
-            this._state = 'ready'; // do not retry until something relevant changes
+        this._warmQueued = true;
+        this._scope.idle(() => {
+            this._warmQueued = false;
+            if (this._isEnabled())
+                this._ensureLoading();
         });
     }
 
-    /** Drop the list so the next list() reloads it. */
+    /** Start a load when idle; returns the load in flight (or null when ready). */
+    private _ensureLoading(): Promise<SearchProvider[]> | null {
+        if (this._state === 'idle')
+            this._startLoad();
+        return this._state === 'loading' ? this._loading : null;
+    }
+
+    private _startLoad(): void {
+        this._state = 'loading';
+        this._invalidatedWhileLoading = false;
+        const generation = this._generation;
+        this._watch();
+        this._loading = this._load().then(
+            providers => providers,
+            e => {
+                error('loading shell search providers failed', e);
+                return [] as SearchProvider[]; // do not retry until something relevant changes
+            },
+        ).then(providers => {
+            if (generation !== this._generation)
+                return [];
+            this._providers = providers;
+            this._loading = null;
+            this._state = this._invalidatedWhileLoading ? 'idle' : 'ready';
+            this._invalidatedWhileLoading = false;
+            return providers;
+        });
+    }
+
+    /** The list is out of date: reload on the next ready() / warmUp(), keep using the old one. */
     private _invalidate(): void {
-        this._generation++;
-        this._providers = [];
-        this._state = 'idle';
+        if (this._state === 'loading')
+            this._invalidatedWhileLoading = true;
+        else
+            this._state = 'idle';
     }
 
     private _watch(): void {

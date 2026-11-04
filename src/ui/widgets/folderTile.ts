@@ -10,14 +10,13 @@
 //   tile.setWidth(px)
 //   tile.destroy()
 //   FolderHost: {open(uuid), openContext(tile, uuid), tooltips?}
-//   opts: {iconSize?}
+//   opts: {iconSize?, multiLine?}
 
 import Clutter from 'gi://Clutter';
 import type Gio from 'gi://Gio';
-import Pango from 'gi://Pango';
 import St from 'gi://St';
 
-import {DEFAULT_TILE_ICON_SIZE} from './appTile.js';
+import {DEFAULT_TILE_ICON_SIZE, styleTileLabel} from './appTile.js';
 import {makeItemButton, wireItem} from './interact.js';
 import type {TooltipManager} from './tooltip.js';
 
@@ -27,8 +26,10 @@ export interface FolderHost {
     tooltips?: TooltipManager;
 }
 
-const PLATE_PADDING = 5;
-const PLATE_SPACING = 3;
+// 4 + 16 + 8 + 16 + 4 = 48: the plate (and its 2x2 mini grid) is exactly an app icon tall.
+// Keep in step with .spawn-folder-plate / .spawn-folder-plate-row in stylesheet.css.
+const PLATE_PADDING = 4;
+const PLATE_SPACING = 8;
 
 export class FolderTile {
     readonly actor: St.Button;
@@ -38,7 +39,7 @@ export class FolderTile {
     private readonly _fallback: St.Icon;
     private readonly _mini: number;
 
-    constructor(uuid: string, name: string, icons: Gio.Icon[], host: FolderHost, opts: {iconSize?: number} = {}) {
+    constructor(uuid: string, name: string, icons: Gio.Icon[], host: FolderHost, opts: {iconSize?: number; multiLine?: boolean} = {}) {
         this._uuid = uuid;
         const size = opts.iconSize ?? DEFAULT_TILE_ICON_SIZE;
         this._mini = Math.floor((size - 2 * PLATE_PADDING - PLATE_SPACING) / 2);
@@ -46,11 +47,13 @@ export class FolderTile {
         const button = makeItemButton('spawn-tile spawn-folder-tile');
         this.actor = button;
         button.x_expand = false;
+        if (opts.multiLine)
+            button.y_expand = true;
 
         const box = new St.BoxLayout({
             orientation: Clutter.Orientation.VERTICAL,
             x_align: Clutter.ActorAlign.CENTER,
-            y_align: Clutter.ActorAlign.CENTER,
+            y_align: opts.multiLine ? Clutter.ActorAlign.START : Clutter.ActorAlign.CENTER,
             style_class: 'spawn-tile-box',
         });
         const plate = new St.BoxLayout({
@@ -83,7 +86,7 @@ export class FolderTile {
             x_align: Clutter.ActorAlign.CENTER,
             x_expand: true,
         });
-        this._label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        styleTileLabel(this._label, Boolean(opts.multiLine));
         box.add_child(plate);
         box.add_child(this._label);
         button.set_child(box);
@@ -108,7 +111,13 @@ export class FolderTile {
         }
         const shown = icons.slice(0, 4);
         shown.forEach((gicon, i) => {
-            const icon = new St.Icon({gicon, icon_size: this._mini, style_class: 'spawn-folder-mini'});
+            const icon = new St.Icon({
+                gicon,
+                icon_size: this._mini,
+                style_class: 'spawn-folder-mini',
+                x_align: Clutter.ActorAlign.CENTER,
+                y_align: Clutter.ActorAlign.CENTER,
+            });
             this._rows[i < 2 ? 0 : 1].add_child(icon);
         });
         const empty = shown.length === 0;

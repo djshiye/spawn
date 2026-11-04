@@ -7,6 +7,11 @@
 // the layout first (clear search / leave a sub-view); only an unconsumed Escape closes the menu.
 // Re-anchoring recreates the PopupMenu shell for the new anchor and re-parents the (already
 // built, expensive) layout actor into it; the layout itself is built once.
+// A popup that opens upward (bottom panel, arrow side BOTTOM) gets the class `spawn-popup-above`
+// (stylesheet.css moves Orchis' 14 px shadow margin from below the content to above it, so the gap
+// to the panel matches the one under a top panel). On every open the popup tells the layout which
+// anchor / side it opens from (work-area clamping, search position "Auto") and tags itself
+// `spawn-light` when the shell theme's popup text is dark (light shell theme).
 //
 // Public API:
 //   new SpawnPopup(scope, services)
@@ -17,6 +22,8 @@
 //   popup.toggle(anchor): void         close if open on this anchor, otherwise open there
 //   popup.onOpenStateChanged(scope, cb(open: boolean, anchor: St.Widget | null))
 //   popup.prebuild(): void             optional: build the layout on idle (no UI shown)
+//   popup.side: St.Side                the arrow side of the current attachment
+//   popup.menuActor / popup.layoutActor   dev hooks: the PopupMenu actor / the layout root (or null)
 //   popup.resetLayout() / popup.layoutBuilt   dev / benchmark: drop the built layout; is it built
 //   popup.search(q) / popup.showView(id) / popup.openFolderByIndex(i) / popup.debugState()
 //                                      thin forwards to the layout (dev hooks, MenuController.search)
@@ -34,7 +41,7 @@ import type {Scope} from '../core/scope.js';
 import {isActorAlive} from '../panel/validate.js';
 import {installUiDevHooks} from './devHooks.js';
 import {SpawnLayout} from './layout.js';
-import {ownedScope} from './util.js';
+import {applyTone, ownedScope} from './util.js';
 
 type OpenListener = (open: boolean, anchor: St.Widget | null) => void;
 
@@ -97,6 +104,18 @@ export class SpawnPopup {
 
     get isOpen(): boolean {
         return this._open;
+    }
+
+    get side(): St.Side {
+        return this._side;
+    }
+
+    get menuActor(): St.Widget | null {
+        return this._menu?.actor ?? null;
+    }
+
+    get layoutActor(): St.Widget | null {
+        return this._layout?.actor ?? null;
     }
 
     get anchor(): St.Widget | null {
@@ -169,6 +188,8 @@ export class SpawnPopup {
         Main.uiGroup.add_child(menu.actor);
         menu.actor.hide();
         menu.actor.add_style_class_name('spawn-popup');
+        if (side === St.Side.BOTTOM)
+            menu.actor.add_style_class_name('spawn-popup-above');
 
         // Offer Escape to the layout before the manager's own (capture-phase) handler closes the
         // menu. Added before the manager adds its controller, so it runs first.
@@ -224,10 +245,13 @@ export class SpawnPopup {
                 else
                     anchor.remove_style_pseudo_class('active');
             }
-            if (open)
-                this._layout?.onOpen();
-            else
+            if (open) {
+                if (this._menu)
+                    applyTone(this._menu.actor, this._menu.box);
+                this._layout?.onOpen(anchor, this._side);
+            } else {
                 this._layout?.onClosed();
+            }
         } catch (e) {
             error('popup open-state handler failed', e);
         }

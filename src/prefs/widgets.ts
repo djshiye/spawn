@@ -1,12 +1,16 @@
 // Small builders for settings-bound Adwaita rows, shared by every prefs page.
 //
 // Public API:
-//   watch(ctx, widget, keys, cb)       call cb when any of `keys` changes; auto-disconnects
+//   watch(ctx, widget, keys, cb)       call cb when any of `keys` changes; disconnected when the prefs
+//                                      window closes (or the widget is destroyed)
+//   onWindowClose(ctx, fn)             run fn once when the prefs window closes
+//   label(widget, text)                sets the accessible label of a widget
 //   switchRow / spinRow / enumRow / entryRow / colorRow
 //   optionalColorRow / optionalSpinRow  rows for the (bs) / (bi) override keys
 //   group(title, rows, {description?, reset?})   PreferencesGroup with an optional Reset button
 //   resetKeys(ctx, keys)               resets keys in a single delay()/apply() batch
-//   toast(ctx, message)
+//   resetWithUndo(ctx, keys, message)  resetKeys + a toast whose Undo button restores the old values
+//   toast(ctx, message, undo?)         plain-text toast; with `undo` it shows an Undo button (8 s)
 
 import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk?version=4.0';
@@ -18,14 +22,59 @@ import type {PrefsContext} from './context.js';
 
 export type Option = readonly [nick: string, label: string];
 
-export function watch(ctx: PrefsContext, widget: Gtk.Widget, keys: readonly SettingKey[], cb: () => void): void {
-    const raw = ctx.settings.raw;
-    const ids = keys.map(key => raw.connect(`changed::${key}`, cb));
-    widget.connect('destroy', () => ids.forEach(id => raw.disconnect(id)));
+// A settings handler's closure references its widget, so the widget is never finalized while the
+// Settings object lives and its `destroy` handler would never run. Handlers are therefore
+// disposed with the window (close-request), which is also where stale callbacks would hurt.
+const closers = new WeakMap<Gtk.Window, Array<() => void>>();
+
+/** Runs `fn` once when the prefs window closes. */
+export function onWindowClose(ctx: PrefsContext, fn: () => void): void {
+    let list = closers.get(ctx.window);
+    if (!list) {
+        const fresh: Array<() => void> = [];
+        list = fresh;
+        closers.set(ctx.window, fresh);
+        ctx.window.connect('close-request', () => {
+            for (const close of fresh.splice(0))
+                close();
+            return false;
+        });
+    }
+    list.push(fn);
 }
 
-export function toast(ctx: PrefsContext, message: string): void {
-    ctx.window.add_toast(new Adw.Toast({title: message, timeout: 3}));
+/** Connects `raw` signals and disconnects them when `dispose` runs; safe to call dispose twice. */
+export function connectDisposable(raw: Gio.Settings, signals: ReadonlyArray<readonly [string, () => void]>): () => void {
+    const connect = (name: string, cb: () => void): number => (raw as unknown as {connect(n: string, f: () => void): number}).connect(name, cb);
+    const ids = signals.map(([name, cb]) => connect(name, cb));
+    let done = false;
+    return () => {
+        if (done)
+            return;
+        done = true;
+        ids.forEach(id => raw.disconnect(id));
+    };
+}
+
+export function watch(ctx: PrefsContext, widget: Gtk.Widget, keys: readonly SettingKey[], cb: () => void): void {
+    const dispose = connectDisposable(ctx.settings.raw, keys.map(key => [`changed::${key}`, cb] as const));
+    onWindowClose(ctx, dispose);
+    widget.connect('destroy', dispose);
+}
+
+/** Sets the accessible name of a widget (icon-only buttons, spin buttons, colour buttons). */
+export function label(widget: Gtk.Widget, text: string): void {
+    widget.update_property([Gtk.AccessibleProperty.LABEL], [text]);
+}
+
+/** Plain-text toast (no Pango markup, so `&` and `<` in names are safe). `undo` adds an Undo button. */
+export function toast(ctx: PrefsContext, message: string, undo?: () => void): void {
+    const t = new Adw.Toast({title: message, use_markup: false, timeout: undo ? 8 : 3});
+    if (undo) {
+        t.set_button_label('Undo');
+        t.connect('button-clicked', undo);
+    }
+    ctx.window.add_toast(t);
 }
 
 export function resetKeys(ctx: PrefsContext, keys: readonly SettingKey[]): void {
@@ -34,6 +83,15 @@ export function resetKeys(ctx: PrefsContext, keys: readonly SettingKey[]): void 
     for (const key of keys)
         raw.reset(key);
     raw.apply();
+}
+
+/** Resets `keys` (and the listed folders) and offers to bring the previous values back. */
+export function resetWithUndo(ctx: PrefsContext, keys: readonly SettingKey[], message: string, folderIds: readonly string[] = []): void {
+    const before = ctx.settings.snapshot(keys, folderIds);
+    for (const id of folderIds)
+        ctx.settings.deleteFolder(id);
+    resetKeys(ctx, keys);
+    toast(ctx, message, () => ctx.settings.restore(before));
 }
 
 export function group(
@@ -57,10 +115,8 @@ export function group(
             tooltip_text: 'Restore the defaults of this section',
             css_classes: ['flat'],
         });
-        button.connect('clicked', () => {
-            resetKeys(ctx, keys);
-            toast(ctx, `${title} reset to defaults`);
-        });
+        label(button, `Reset ${title}`);
+        button.connect('clicked', () => resetWithUndo(ctx, keys, `${title} reset to defaults`));
         g.set_header_suffix(button);
     }
     return g;
@@ -162,6 +218,7 @@ export function colorRow(ctx: PrefsContext, key: SettingKey, title: string, subt
         if (ctx.settings.get(key) !== css)
             ctx.settings.set(key, css as never);
     });
+    label(c.button, title);
     row.add_suffix(c.button);
     row.set_activatable_widget(c.button);
     watch(ctx, row, [key], () => c.set(ctx.settings.get(key) as string));
@@ -179,6 +236,8 @@ export function optionalColorRow(ctx: PrefsContext, key: SettingKey, title: stri
             ctx.settings.set(key, [on, css] as never);
     });
     c.button.set_sensitive(toggle.active);
+    label(c.button, title);
+    label(toggle, `Use custom ${title.toLowerCase()}`);
     toggle.connect('notify::active', () => {
         const [on, css] = read();
         if (on !== toggle.active)
@@ -203,6 +262,8 @@ export function optionalSpinRow(ctx: PrefsContext, key: SettingKey, title: strin
     const toggle = new Gtk.Switch({valign: Gtk.Align.CENTER, active: read()[0]});
     const spin = new Gtk.SpinButton({valign: Gtk.Align.CENTER, adjustment: spinAdjustment(read()[1], min, max)});
     spin.set_sensitive(toggle.active);
+    label(spin, title);
+    label(toggle, `Use custom ${title.toLowerCase()}`);
     toggle.connect('notify::active', () => {
         const [on, value] = read();
         if (on !== toggle.active)

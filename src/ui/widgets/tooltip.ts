@@ -7,9 +7,11 @@
 //
 // Public API:
 //   new TooltipManager(scope, settings)
-//   tooltips.attach(widget, label, extra?)   `label` is the St.Label whose truncation is
+//   tooltips.attach(widget, label, extra?, opts?)   `label` is the St.Label whose truncation is
 //                                            checked (or null: always show `extra`);
-//                                            `extra()` may return text to show instead/also
+//                                            `extra()` may return text to show instead/also;
+//                                            opts.delay: hover delay in ms (default 450; the
+//                                            icon-only power buttons use 200)
 //   tooltips.hide()
 
 import Clutter from 'gi://Clutter';
@@ -22,6 +24,11 @@ import type {SpawnSettings} from '../../core/settings.js';
 import {isTruncated} from '../util.js';
 
 const SHOW_DELAY_MS = 450;
+
+export interface TooltipOptions {
+    /** Hover delay in ms before the tooltip shows. */
+    delay?: number;
+}
 
 export class TooltipManager {
     private readonly _scope: Scope;
@@ -36,10 +43,10 @@ export class TooltipManager {
         scope.add(() => this._destroy(), 'TooltipManager');
     }
 
-    attach(widget: St.Widget, label: St.Label | null, extra?: () => string | null): void {
+    attach(widget: St.Widget, label: St.Label | null, extra?: () => string | null, opts: TooltipOptions = {}): void {
         widget.connect('notify::hover', () => {
             if (widget.hover)
-                this._schedule(widget, label, extra);
+                this._schedule(widget, label, extra, opts.delay ?? SHOW_DELAY_MS);
             else if (this._owner === widget || !this._owner)
                 this.hide();
         });
@@ -64,12 +71,12 @@ export class TooltipManager {
         }
     }
 
-    private _schedule(widget: St.Widget, label: St.Label | null, extra?: () => string | null): void {
+    private _schedule(widget: St.Widget, label: St.Label | null, extra: (() => string | null) | undefined, delay: number): void {
         this._cancel?.();
         this._cancel = null;
         if (!this._settings.get('show-tooltips'))
             return;
-        this._cancel = this._scope.timeout(SHOW_DELAY_MS, () => {
+        this._cancel = this._scope.timeout(delay, () => {
             this._cancel = null;
             if (!widget.get_stage() || !widget.hover)
                 return;

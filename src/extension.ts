@@ -9,6 +9,7 @@
 // Lifetime of shared objects: see core/services.ts (lazy AppIndex/PinnedStore/SearchEngine) and
 // ui/menu.ts (lazy popup + layout). Nothing here keeps module-level mutable state.
 
+import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
@@ -24,6 +25,7 @@ import {runBenchmark} from './dev/benchmark.js';
 import {DBusService, type MenuController} from './input/dbus.js';
 import {Hotkeys} from './input/hotkeys.js';
 import {ButtonAttacher} from './panel/attacher.js';
+import {pickAnchor} from './panel/anchor.js';
 import {PanelTargets} from './panel/targets.js';
 import {Theme} from './theme/theme.js';
 import {MenuButton} from './ui/button.js';
@@ -121,14 +123,38 @@ export default class SpawnExtension extends Extension {
             return attacher;
         });
 
+        // The button a toggle should open on: the one on the monitor under the pointer, else the first.
+        const anchorButton = (): MenuButton | null => {
+            const buttons = attacher?.buttons() ?? [];
+            let pointer = -1;
+            try {
+                pointer = global.display.get_current_monitor();
+            } catch {
+                pointer = -1;
+            }
+            return pickAnchor(buttons, b => Main.layoutManager.findIndexForActor(b), pointer);
+        };
+
         const controller: MenuController = {
-            toggle: () => {
-                const anchor = attacher?.buttons()[0];
-                if (anchor && popup)
-                    popup.toggle(anchor);
+            // Close if the menu is open anywhere; otherwise open it on the pointer's monitor. When
+            // Spawn cannot do that, Super hands back to GNOME's own behaviour (the Overview).
+            toggle: (source = 'dbus') => {
+                if (popup?.isOpen) {
+                    popup.close();
+                    return;
+                }
+                if (source === 'super' && Main.overview.visible) {
+                    Main.overview.hide();
+                    return;
+                }
+                const anchor = popup ? anchorButton() : null;
+                if (popup && anchor)
+                    popup.open(anchor);
+                else if (source === 'super')
+                    Main.overview.toggle();
             },
             open: () => {
-                const anchor = attacher?.buttons()[0];
+                const anchor = anchorButton();
                 if (anchor && popup)
                     popup.open(anchor);
             },
@@ -155,13 +181,38 @@ export default class SpawnExtension extends Extension {
         });
 
         this._start(root, 'hotkeys', scope => {
-            const hotkeys = new Hotkeys(scope, settings, () => controller.toggle());
+            const hotkeys = new Hotkeys(scope, settings, source => controller.toggle(source));
             hotkeys.start();
-            controller.hotkeyStatus = () => JSON.stringify(hotkeys.status());
+            controller.hotkeyStatus = () => JSON.stringify({
+                ...hotkeys.status(),
+                popupOpen: popup?.isOpen ?? false,
+                overviewVisible: Main.overview.visible,
+            });
             controller.emitOverlayKey = () => global.display.emit('overlay-key');
+            controller.focusButton = () => {
+                const button = anchorButton();
+                if (!button)
+                    throw new Error('no attached button');
+                button.grab_key_focus();
+            };
+            let keyboard: Clutter.VirtualInputDevice | null = null;
+            controller.sendKeys = spec => {
+                keyboard ??= global.stage.get_context().get_backend().get_default_seat()
+                    .create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+                let t = GLib.get_monotonic_time();
+                for (const step of spec.split(/\s+/).filter(x => x !== '')) {
+                    const keyval = (Clutter as unknown as Record<string, unknown>)[`KEY_${step.slice(1)}`];
+                    if ((step[0] !== '+' && step[0] !== '-') || typeof keyval !== 'number')
+                        throw new Error(`bad key step '${step}'`);
+                    keyboard.notify_keyval(t++, keyval, step[0] === '+' ? Clutter.KeyState.PRESSED : Clutter.KeyState.RELEASED);
+                }
+            };
             scope.add(() => {
+                keyboard = null;
+                delete controller.sendKeys;
                 delete controller.hotkeyStatus;
                 delete controller.emitOverlayKey;
+                delete controller.focusButton;
             }, 'hotkey dev hooks');
         });
 

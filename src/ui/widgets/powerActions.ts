@@ -5,7 +5,9 @@
 // to logind since SystemActions has no entry for them.
 //
 // Public API:
-//   POWER_INFO: Record<PowerType, {id, name, icon, shortcut}>
+//   POWER_INFO: Record<PowerType, {name, icon}>      (name is translated lazily, on access)
+//   POWER_RANK: number[]                      power types in SEVERITY order (the order the bar shows them)
+//   isDestructive(type): boolean              Restart / Power Off
 //   POWER_SHORTCUTS: Record<ShortcutId, {type, name, icon}>
 //   systemActions(): SystemActions | null
 //   isPowerAvailable(type, logind): boolean  current availability (hibernate/sleep from the probe)
@@ -15,6 +17,8 @@
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+
+import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import * as SystemActions from 'resource:///org/gnome/shell/misc/systemActions.js';
 
@@ -29,26 +33,45 @@ export interface PowerInfo {
     icon: string;
 }
 
+// Names are getters so they are translated when shown, not when the module loads. Restart uses
+// the circular arrow (view-refresh): system-reboot-symbolic is a power ring plus a 3 px arrowhead
+// and cannot be told apart from system-shutdown-symbolic at 16 px.
 export const POWER_INFO: Record<number, PowerInfo> = {
-    [PowerType.LOGOUT]: {name: 'Log Out', icon: 'system-log-out-symbolic'},
-    [PowerType.LOCK]: {name: 'Lock', icon: 'system-lock-screen-symbolic'},
-    [PowerType.RESTART]: {name: 'Restart', icon: 'system-reboot-symbolic'},
-    [PowerType.POWER_OFF]: {name: 'Power Off', icon: 'system-shutdown-symbolic'},
-    [PowerType.SUSPEND]: {name: 'Suspend', icon: 'media-playback-pause-symbolic'},
-    [PowerType.HYBRID_SLEEP]: {name: 'Hybrid Sleep', icon: 'weather-clear-night-symbolic'},
-    [PowerType.HIBERNATE]: {name: 'Hibernate', icon: 'document-save-symbolic'},
-    [PowerType.SWITCH_USER]: {name: 'Switch User', icon: 'system-switch-user-symbolic'},
+    [PowerType.LOGOUT]: {get name() { return _('Log Out'); }, icon: 'system-log-out-symbolic'},
+    [PowerType.LOCK]: {get name() { return _('Lock'); }, icon: 'system-lock-screen-symbolic'},
+    [PowerType.RESTART]: {get name() { return _('Restart'); }, icon: 'view-refresh-symbolic'},
+    [PowerType.POWER_OFF]: {get name() { return _('Power Off'); }, icon: 'system-shutdown-symbolic'},
+    [PowerType.SUSPEND]: {get name() { return _('Suspend'); }, icon: 'media-playback-pause-symbolic'},
+    [PowerType.HYBRID_SLEEP]: {get name() { return _('Hybrid Sleep'); }, icon: 'weather-clear-night-symbolic'},
+    [PowerType.HIBERNATE]: {get name() { return _('Hibernate'); }, icon: 'document-save-symbolic'},
+    [PowerType.SWITCH_USER]: {get name() { return _('Switch User'); }, icon: 'system-switch-user-symbolic'},
 };
 
+/** Least to most severe; the power bar sorts by this, not by the stored `power-options` order. */
+export const POWER_RANK: readonly number[] = [
+    PowerType.SWITCH_USER, PowerType.LOCK, PowerType.LOGOUT, PowerType.SUSPEND,
+    PowerType.HYBRID_SLEEP, PowerType.HIBERNATE, PowerType.RESTART, PowerType.POWER_OFF,
+];
+
+export function isDestructive(type: number): boolean {
+    return type === PowerType.RESTART || type === PowerType.POWER_OFF;
+}
+
+const powerShortcut = (type: number) => ({
+    type,
+    get name() { return POWER_INFO[type].name; },
+    get icon() { return POWER_INFO[type].icon; },
+});
+
 export const POWER_SHORTCUTS: Record<string, {type: number; name: string; icon: string}> = {
-    [ShortcutId.LOG_OUT]: {type: PowerType.LOGOUT, ...POWER_INFO[PowerType.LOGOUT]},
-    [ShortcutId.LOCK]: {type: PowerType.LOCK, ...POWER_INFO[PowerType.LOCK]},
-    [ShortcutId.RESTART]: {type: PowerType.RESTART, ...POWER_INFO[PowerType.RESTART]},
-    [ShortcutId.POWER_OFF]: {type: PowerType.POWER_OFF, ...POWER_INFO[PowerType.POWER_OFF]},
-    [ShortcutId.SUSPEND]: {type: PowerType.SUSPEND, ...POWER_INFO[PowerType.SUSPEND]},
-    [ShortcutId.HYBRID_SLEEP]: {type: PowerType.HYBRID_SLEEP, ...POWER_INFO[PowerType.HYBRID_SLEEP]},
-    [ShortcutId.HIBERNATE]: {type: PowerType.HIBERNATE, ...POWER_INFO[PowerType.HIBERNATE]},
-    [ShortcutId.SWITCH_USER]: {type: PowerType.SWITCH_USER, ...POWER_INFO[PowerType.SWITCH_USER]},
+    [ShortcutId.LOG_OUT]: powerShortcut(PowerType.LOGOUT),
+    [ShortcutId.LOCK]: powerShortcut(PowerType.LOCK),
+    [ShortcutId.RESTART]: powerShortcut(PowerType.RESTART),
+    [ShortcutId.POWER_OFF]: powerShortcut(PowerType.POWER_OFF),
+    [ShortcutId.SUSPEND]: powerShortcut(PowerType.SUSPEND),
+    [ShortcutId.HYBRID_SLEEP]: powerShortcut(PowerType.HYBRID_SLEEP),
+    [ShortcutId.HIBERNATE]: powerShortcut(PowerType.HIBERNATE),
+    [ShortcutId.SWITCH_USER]: powerShortcut(PowerType.SWITCH_USER),
 };
 
 export const powerSignalNames = [

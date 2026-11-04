@@ -22,6 +22,8 @@
 import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 
+import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
+
 import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
 
@@ -36,7 +38,7 @@ export class SearchBox {
         const clearIcon = new St.Icon({icon_name: 'edit-clear-symbolic', style_class: 'spawn-search-icon'});
         this.actor = new St.Entry({
             style_class: 'spawn-search-box',
-            hint_text: 'Search apps, windows and files…',
+            hint_text: _('Search apps, windows and files…'),
             can_focus: true,
             track_hover: true,
             primary_icon: new St.Icon({icon_name: 'edit-find-symbolic', style_class: 'spawn-search-icon'}),

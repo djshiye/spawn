@@ -28,6 +28,15 @@
 //                                          computes the score from the normalised query `q`
 //                                          (use scoreNormalized for weighted keys)
 //   scoreNormalized(q, candidate): number q must already be normalize()d
+//   scoreKeys(q, name, keys, keyWeight): number  best of `name` (raw, full weight) and `keys`
+//                                          (already normalised, scaled by keyWeight)
+//   scoreDescription(q, text): number     word-level match of a (normalised) description:
+//                                          every term of q (>= 3 chars) must be a whole word,
+//                                          word prefix or substring of a word; never acronym /
+//                                          fuzzy. Result is already scaled by DESCRIPTION_WEIGHT
+//   scoreApp(q, name, keys, description): number  scoreKeys (0.7) combined with the description
+//   hasAlnum(query): boolean              false for punctuation-only queries ("." "-"), which
+//                                          providers should not rank at all
 
 export interface Ranked<T> {
     item: T;
@@ -46,16 +55,30 @@ function fold(s: string): string {
     return t.replace(/\s+/g, ' ').trim();
 }
 
+const LETTER = /^\p{L}$/u;
+const NUMBER = /^\p{N}$/u;
+const ALNUM_ANYWHERE = /[\p{L}\p{N}]/u;
+
+/** Any letter, including uncased scripts (CJK, Thai, Arabic, Hebrew). */
 function isLetter(c: string): boolean {
-    return c.toLowerCase() !== c.toUpperCase();
+    if (c < '\x80')
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+    return LETTER.test(c);
 }
 
 function isDigit(c: string): boolean {
-    return c >= '0' && c <= '9';
+    if (c < '\x80')
+        return c >= '0' && c <= '9';
+    return NUMBER.test(c);
 }
 
 function isAlnum(c: string): boolean {
     return isLetter(c) || isDigit(c);
+}
+
+/** Does the query contain a letter or digit? Punctuation-only queries rank nothing. */
+export function hasAlnum(query: string): boolean {
+    return ALNUM_ANYWHERE.test(query);
 }
 
 /** boundary[i] is true when a word starts at index i of `folded` (case preserved). */
@@ -222,6 +245,59 @@ export function scoreNormalized(q: string, candidate: string): number {
         terms = Math.min(terms, s);
     }
     return Math.max(phrase, Math.round(terms * 0.9));
+}
+
+export const DESCRIPTION_WEIGHT = 0.4;
+const MIN_DESCRIPTION_TERM = 3;
+
+/** Word-level score of one term against the words of a description (raw 0..1000). */
+function scoreTermInWords(term: string, words: readonly string[]): number {
+    let best = 0;
+    for (const w of words) {
+        let s = 0;
+        if (w === term)
+            s = 1000;
+        else if (w.startsWith(term))
+            s = 850;
+        else if (w.includes(term))
+            s = 600;
+        if (s > best)
+            best = s;
+    }
+    return best;
+}
+
+export function scoreDescription(q: string, description: string): number {
+    if (!description)
+        return 0;
+    const terms = q.split(' ').filter(t => t.length > 0);
+    if (terms.length === 0 || terms.some(t => t.length < MIN_DESCRIPTION_TERM))
+        return 0;
+    const words = description.split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 0);
+    let worst = 1000;
+    for (const t of terms) {
+        const s = scoreTermInWords(t, words);
+        if (s === 0)
+            return 0;
+        worst = Math.min(worst, s);
+    }
+    return Math.round(worst * DESCRIPTION_WEIGHT * (terms.length > 1 ? 0.9 : 1));
+}
+
+/** Name (raw) at full weight, other keys at `keyWeight`, description word by word at 0.4. */
+export function scoreApp(q: string, name: string, keys: readonly string[], keyWeight: number, description: string): number {
+    return Math.max(scoreKeys(q, name, keys, keyWeight), scoreDescription(q, description));
+}
+
+/** Best score of the display name (full weight) and secondary keys (scaled by `keyWeight`). */
+export function scoreKeys(q: string, name: string, keys: readonly string[], keyWeight: number): number {
+    let best = scoreNormalized(q, name);
+    for (const key of keys) {
+        const s = Math.round(scoreNormalized(q, key) * keyWeight);
+        if (s > best)
+            best = s;
+    }
+    return best;
 }
 
 export function scoreMatch(query: string, candidate: string): number {

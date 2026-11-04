@@ -1,7 +1,7 @@
 // WindowsProvider: searches open windows (global.display tab list, most recently used
 // first); id 'windows'; enabled by search-provider-open-windows; max from max-search-results.
 // Matches the window title (and the owning app's name at 80 %). activate() raises and
-// focuses the window via Main.activateWindow.
+// focuses the window via Main.activateWindow (skipped when the window has since closed).
 //
 // Public API:
 //   new WindowsProvider(settings: SpawnSettings)  implements SearchProvider  (see search/engine.ts)
@@ -14,7 +14,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {error} from '../../core/log.js';
 import type {SpawnSettings} from '../../core/settings.js';
 import type {CancelToken, SearchProvider, SearchResult} from '../engine.js';
-import {rankItemsBy, scoreNormalized} from '../rank.js';
+import {hasAlnum, rankItemsBy, scoreNormalized} from '../rank.js';
 
 const APP_NAME_WEIGHT = 0.8;
 
@@ -40,7 +40,7 @@ export class WindowsProvider implements SearchProvider {
     }
 
     search(query: string, token: CancelToken): SearchResult[] {
-        if (!query.trim())
+        if (!query.trim() || !hasAlnum(query))
             return [];
         const windows = this._windows();
         if (token.cancelled)
@@ -61,6 +61,10 @@ export class WindowsProvider implements SearchProvider {
             score,
             activate: () => {
                 try {
+                    // The window may have closed while the menu was open; a disposed
+                    // Meta.Window must not reach Main.activateWindow.
+                    if (!global.display.get_tab_list(Meta.TabList.NORMAL_ALL, null).includes(item.window))
+                        return;
                     Main.activateWindow(item.window);
                 } catch (e) {
                     error('activating window failed', e);

@@ -33,7 +33,7 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 import {debounce} from '../core/debounce.js';
 import {warn} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
-import {appKeys} from './appKeys.js';
+import {appKeys, descriptionKey} from './appKeys.js';
 
 export interface AppCategory {
     /** GMenu directory id, e.g. "Utilities"; special ids: "all", "frequent". */
@@ -49,6 +49,8 @@ export interface AppSearchEntry {
     name: string;
     /** Lower-cased, diacritics-folded, deduplicated strings to match against. */
     keys: string[];
+    /** Normalised Comment= text; scored word by word at low weight (rank.ts scoreDescription). */
+    description: string;
 }
 
 const REBUILD_DELAY_MS = 500;
@@ -315,12 +317,20 @@ export class AppIndex {
         } catch {
             keywords = [];
         }
+        let fullName: string | null = null;
+        try {
+            fullName = info?.has_key('X-GNOME-FullName') ? info.get_string('X-GNOME-FullName') : null;
+        } catch {
+            fullName = null;
+        }
         return {
             app,
             id,
             name,
+            description: descriptionKey(info?.get_description()),
             keys: appKeys({
                 name,
+                fullName,
                 genericName: info?.get_generic_name(),
                 keywords,
                 executable: info?.get_executable(),

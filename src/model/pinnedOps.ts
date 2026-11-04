@@ -212,6 +212,22 @@ export function deleteFolder(s: PinnedSnapshot, uuid: string): PinnedSnapshot {
     return m;
 }
 
+/**
+ * Dissolve the folder: its entries move to the top level, in folder order, into the slot the
+ * folder occupied (the "Delete Folder" menu item: nothing gets unpinned). Entries that are
+ * already pinned at the top level are not duplicated.
+ */
+export function dissolveFolder(s: PinnedSnapshot, uuid: string): PinnedSnapshot {
+    if (topIndexOfFolder(s.top, uuid) < 0 && !(uuid in s.folders))
+        return s;
+    const m = mutable(s);
+    const contents = m.folders[uuid] ?? [];
+    const at = dropFolder(m, uuid);
+    const fresh = contents.filter(e => !m.top.some(t => t.id === e.id));
+    m.top.splice(at >= 0 ? at : m.top.length, 0, ...fresh);
+    return m;
+}
+
 /** Move `id` (from the top level, another folder, or unpinned) into folder `uuid` at `index` (default end). */
 export function addToFolder(s: PinnedSnapshot, uuid: string, id: string, index?: number): PinnedSnapshot {
     if (!id || topIndexOfFolder(s.top, uuid) < 0 || !(uuid in s.folders) || topIndexOfFolder(s.top, id) >= 0)

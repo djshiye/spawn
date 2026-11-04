@@ -65,6 +65,8 @@ export interface AttachmentInfo {
     fallback: boolean;
     /** Screen edge the panel is on; the menu uses it to pick the BoxPointer arrow side. */
     side: PanelSide;
+    /** What the button's icon currently shows (dev status / tests); null if unreadable. */
+    icon: {iconName: string | null; file: string | null} | null;
 }
 
 export interface AttachmentStatus {
@@ -187,6 +189,7 @@ export class ButtonAttacher {
                 attached: this._isHealthy(a),
                 fallback: a.fallback,
                 side: this._sideOf(a),
+                icon: this._iconOf(a),
             })),
             pending: this._pendingSince !== null,
             pendingForMs: this._pendingSince === null ? 0 : this._now() - this._pendingSince,
@@ -210,6 +213,9 @@ export class ButtonAttacher {
         } catch (e) {
             error('reconcile failed', e);
             this._markProblem();
+            // _reconcileOnce threw before it could arm the retry; without this the button stays
+            // missing until some unrelated change arrives.
+            this._scheduleRetry();
         } finally {
             this._reconciling = false;
         }
@@ -357,6 +363,14 @@ export class ButtonAttacher {
         a.fallback = fallback;
         this._attachments.set(target.key, a);
         log(`re-keyed attachment ${old} -> ${target.key} (same panel, button kept)`);
+    }
+
+    private _iconOf(a: Attachment): AttachmentInfo['icon'] {
+        try {
+            return a.button.iconDebug();
+        } catch {
+            return null;
+        }
     }
 
     private _sideOf(a: Attachment): PanelSide {

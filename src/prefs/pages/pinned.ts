@@ -6,13 +6,14 @@
 //   PrefsContext (prefs/context.ts): {settings, extensionDir, window, metadata}
 
 import Adw from 'gi://Adw';
+import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk?version=4.0';
 
 import {PowerType} from '../../core/constants.js';
 import type {SettingKey} from '../../core/settings.js';
 import type {PrefsContext} from '../context.js';
 import {createEntryList} from '../lists.js';
-import {enumRow, group, resetKeys, toast, watch} from '../widgets.js';
+import {enumRow, group, label, resetWithUndo, watch} from '../widgets.js';
 
 const POWER: ReadonlyArray<readonly [number, string, string]> = [
     [PowerType.LOGOUT, 'Log Out', 'system-log-out-symbolic'],
@@ -33,17 +34,22 @@ function powerGroup(ctx: PrefsContext): Adw.PreferencesGroup {
         description: 'Choose which buttons appear and in which order.',
     });
     let rows: Adw.ActionRow[] = [];
+    // Rows are rebuilt on every change; remember which button to focus again afterwards.
+    const buttons = new Map<string, Gtk.Button>();
+    let pendingFocus: string[] | null = null;
 
     const build = (): void => {
         for (const row of rows)
             g.remove(row);
         rows = [];
+        buttons.clear();
         const list = ctx.settings.get('power-options');
         list.forEach(([id, enabled], index) => {
             const info = POWER.find(p => p[0] === id);
             const row = new Adw.ActionRow({title: info?.[1] ?? `Option ${id}`});
             row.add_prefix(new Gtk.Image({icon_name: info?.[2] ?? 'system-shutdown-symbolic'}));
             const toggle = new Gtk.Switch({valign: Gtk.Align.CENTER, active: enabled});
+            label(toggle, `Show ${row.title}`);
             toggle.connect('notify::active', () => {
                 const next = ctx.settings.get('power-options').map(([i, e]): [number, boolean] => (i === id ? [i, toggle.active] : [i, e]));
                 if (JSON.stringify(next) !== JSON.stringify(ctx.settings.get('power-options')))
@@ -53,12 +59,17 @@ function powerGroup(ctx: PrefsContext): Adw.PreferencesGroup {
                 const next = ctx.settings.get('power-options');
                 const [item] = next.splice(index, 1);
                 next.splice(index + delta, 0, item as [number, boolean]);
+                pendingFocus = delta < 0 ? [`up:${index + delta}`, `down:${index + delta}`] : [`down:${index + delta}`, `up:${index + delta}`];
                 ctx.settings.set('power-options', next);
             };
             const up = new Gtk.Button({icon_name: 'go-up-symbolic', valign: Gtk.Align.CENTER, css_classes: ['flat'], tooltip_text: 'Move up', sensitive: index > 0});
+            label(up, `Move ${row.title} up`);
             up.connect('clicked', () => move(-1));
             const down = new Gtk.Button({icon_name: 'go-down-symbolic', valign: Gtk.Align.CENTER, css_classes: ['flat'], tooltip_text: 'Move down', sensitive: index < list.length - 1});
+            label(down, `Move ${row.title} down`);
             down.connect('clicked', () => move(1));
+            buttons.set(`up:${index}`, up);
+            buttons.set(`down:${index}`, down);
             row.add_suffix(up);
             row.add_suffix(down);
             row.add_suffix(toggle);
@@ -66,15 +77,20 @@ function powerGroup(ctx: PrefsContext): Adw.PreferencesGroup {
             g.add(row);
             rows.push(row);
         });
+        const wanted = pendingFocus;
+        pendingFocus = null;
+        const target = wanted?.map(k => buttons.get(k)).find(b => b?.get_sensitive());
+        if (target)
+            GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                target.grab_focus();
+                return GLib.SOURCE_REMOVE;
+            });
     };
     build();
     watch(ctx, g, [key], build);
 
     const reset = new Gtk.Button({label: 'Reset', valign: Gtk.Align.CENTER, css_classes: ['flat'], tooltip_text: 'Restore the defaults of this section'});
-    reset.connect('clicked', () => {
-        resetKeys(ctx, ['power-options', 'power-display-style']);
-        toast(ctx, 'Power buttons reset to defaults');
-    });
+    reset.connect('clicked', () => resetWithUndo(ctx, ['power-options', 'power-display-style'], 'Power buttons reset to defaults'));
     g.set_header_suffix(reset);
     return g;
 }

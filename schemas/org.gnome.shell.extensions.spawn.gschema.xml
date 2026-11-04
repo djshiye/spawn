@@ -36,6 +36,7 @@
   <enum id="org.gnome.shell.extensions.spawn.searchbar-location">
     <value value="0" nick="Bottom"/>
     <value value="1" nick="Top"/>
+    <value value="2" nick="Auto"/>
   </enum>
   <enum id="org.gnome.shell.extensions.spawn.power-display-style">
     <value value="0" nick="Default"/>
@@ -60,7 +61,6 @@
   </schema>
 
   <schema id="org.gnome.shell.extensions.spawn" path="/org/gnome/shell/extensions/spawn/">
-    <child name="folders" schema="org.gnome.shell.extensions.spawn.folder"/>
     <key name="dev-mode" type="b">
       <default>false</default>
       <summary>Enable the in-process D-Bus Dev interface (headless testing only)</summary>
@@ -94,7 +94,7 @@
       <summary>Super key opens the menu</summary>
       <description>Super key toggles the menu (intercepted in memory only; mutter overlay-key is never written)</description>
     </key>
-    <key name="menu-hotkey" type="as">
+    <key name="spawn-hotkey" type="as">
       <default>[]</default>
       <summary>Menu keyboard shortcut</summary>
       <description>Custom accelerator(s) that toggle the menu, e.g. ["&lt;Super>space"]; empty = off</description>
@@ -155,18 +155,22 @@
       <summary>Max apps in the Frequent view / Pinned_And_Frequent_Apps</summary>
     </key>
     <key name="menu-height" type="i">
+      <range min="360" max="1600"/>
       <default>600</default>
       <summary>Menu height in px</summary>
     </key>
     <key name="menu-width-adjustment" type="i">
+      <range min="-350" max="800"/>
       <default>0</default>
       <summary>Extra width added to the menu in px</summary>
     </key>
     <key name="left-panel-width" type="i">
-      <default>290</default>
+      <range min="420" max="1200"/>
+      <default>420</default>
       <summary>Left pane width in px</summary>
     </key>
     <key name="right-panel-width" type="i">
+      <range min="180" max="600"/>
       <default>205</default>
       <summary>Right pane width in px</summary>
     </key>
@@ -239,6 +243,8 @@
       <default>[
           {'id': 'firefox.desktop'},
           {'id': 'org.gnome.Nautilus.desktop'},
+          {'id': 'org.gnome.Software.desktop'},
+          {'id': 'org.gnome.Settings.desktop'},
           {'id': 'org.gnome.Ptyxis.desktop'}
         ]</default>
       <summary>Pinned apps and folders</summary>
@@ -260,7 +266,6 @@
       <default>[
           {'id': 'Spawn_Software', 'name': 'Software'},
           {'id': 'org.gnome.Settings.desktop'},
-          {'id': 'org.gnome.tweaks.desktop'},
           {'id': 'org.gnome.Ptyxis.desktop'},
           {'id': 'Spawn_ActivitiesOverview', 'name': 'Activities Overview', 'icon': 'view-fullscreen-symbolic'}
         ]</default>
@@ -283,6 +288,7 @@
     <key name="search-entry-location" enum="org.gnome.shell.extensions.spawn.searchbar-location">
       <default>'Bottom'</default>
       <summary>Search entry position (top or bottom of the left pane)</summary>
+      <description>Auto puts the search entry nearest the panel the menu opens from</description>
     </key>
     <key name="max-search-results" type="i">
       <default>5</default>

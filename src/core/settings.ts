@@ -5,12 +5,16 @@
 //   Entry                              one aa{ss} item ({id, name?, icon?, isFolder?})
 //   new SpawnSettings(gsettings, schemaSource)
 //   s.get(key) / s.set(key, value)     typed read / write (any GVariant type is handled by
-//                                      reflecting the key's type from the schema)
+//                                      reflecting the key's type from the schema); set() returns
+//                                      false when GSettings rejects the value (range / enum)
 //   s.reset(key)
 //   s.onChanged(scope, keys, cb)       cb(key) after any of `keys` changes; owned by scope.
 //                                      Pass [] for "any key".
-//   s.folder(uuid)                     FolderSettings for folders/<uuid>/
+//   isValidFolderId(id)                true for ids usable as a dconf path element (no '/', not empty)
+//   s.folder(uuid)                     FolderSettings for folders/<uuid>/ (throws on an invalid id)
 //   s.deleteFolder(uuid)               resets the folder's keys (removes dconf entries)
+//   s.snapshot(keys, folderIds?)       remembers the user values of keys / folders (for Undo)
+//   s.restore(snapshot)                writes a snapshot back in one batch (unset values are reset)
 //   s.raw                              the underlying Gio.Settings (prefs bindings only)
 //
 // FolderSettings: { uuid, name (get/set), pinnedApps (get/set), onChanged(scope, cb), raw }
@@ -20,6 +24,7 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
+import {isValidFolderId} from './folderId.js';
 import type {Scope} from './scope.js';
 
 export const SCHEMA_ID = 'org.gnome.shell.extensions.spawn';
@@ -39,7 +44,7 @@ export type MenuButtonAppearance = 'Icon' | 'Text' | 'Icon_Text' | 'Text_Icon' |
 export type AvatarStyle = 'Round' | 'Square';
 export type DefaultMenuView = 'Pinned_Apps' | 'Categories_List' | 'Frequent_Apps' | 'All_Programs' | 'Pinned_And_Frequent_Apps';
 export type AllAppsButtonAction = 'Categories_List' | 'All_Programs';
-export type SearchbarLocation = 'Bottom' | 'Top';
+export type SearchbarLocation = 'Bottom' | 'Top' | 'Auto';
 export type PowerDisplayStyle = 'Default' | 'In_Line' | 'Menu';
 export type MenuItemIconStyle = 'Full_Color' | 'Symbolic';
 
@@ -51,7 +56,7 @@ export interface SettingsMap {
     'keep-open-on-ctrl-click': boolean;
     'show-tooltips': boolean;
     'super-key-toggle': boolean;
-    'menu-hotkey': string[];
+    'spawn-hotkey': string[];
     'position-in-panel': MenuPosition;
     'menu-button-position-offset': number;
     'menu-button-appearance': MenuButtonAppearance;
@@ -129,6 +134,14 @@ export interface SettingsMap {
 
 export type SettingKey = keyof SettingsMap;
 
+/** User values (null = never set, i.e. the default applies) of keys and folders, see snapshot(). */
+export interface SettingsSnapshot {
+    keys: Map<SettingKey, GLib.Variant | null>;
+    folders: Map<string, {name: GLib.Variant | null; pinnedApps: GLib.Variant | null}>;
+}
+
+export {isValidFolderId};
+
 function unpack<T>(variant: GLib.Variant): T {
     return variant.recursiveUnpack() as T;
 }
@@ -190,8 +203,9 @@ export class SpawnSettings {
         return unpack<SettingsMap[K]>(this.raw.get_value(key));
     }
 
-    set<K extends SettingKey>(key: K, value: SettingsMap[K]): void {
-        this.raw.set_value(key, pack(typeOf(this.raw, key), value));
+    /** Returns false when GSettings rejects the value (out of range / not an enum nick). */
+    set<K extends SettingKey>(key: K, value: SettingsMap[K]): boolean {
+        return this.raw.set_value(key, pack(typeOf(this.raw, key), value));
     }
 
     reset(key: SettingKey): void {
@@ -203,6 +217,8 @@ export class SpawnSettings {
     }
 
     folder(uuid: string): FolderSettings {
+        if (!isValidFolderId(uuid))
+            throw new Error(`invalid folder id '${uuid}'`);
         const schema = this._schemaSource.lookup(FOLDER_SCHEMA_ID, true);
         if (!schema)
             throw new Error(`schema ${FOLDER_SCHEMA_ID} not found`);
@@ -214,5 +230,38 @@ export class SpawnSettings {
         const f = this.folder(uuid);
         f.raw.reset('name');
         f.raw.reset('pinned-apps');
+    }
+
+    snapshot(keys: readonly SettingKey[], folderIds: readonly string[] = []): SettingsSnapshot {
+        const snap: SettingsSnapshot = {keys: new Map(), folders: new Map()};
+        for (const key of keys)
+            snap.keys.set(key, this.raw.get_user_value(key));
+        for (const id of folderIds) {
+            if (!isValidFolderId(id) || snap.folders.has(id))
+                continue;
+            const raw = this.folder(id).raw;
+            snap.folders.set(id, {name: raw.get_user_value('name'), pinnedApps: raw.get_user_value('pinned-apps')});
+        }
+        return snap;
+    }
+
+    restore(snap: SettingsSnapshot): void {
+        const write = (raw: Gio.Settings, key: string, value: GLib.Variant | null): void => {
+            if (value === null)
+                raw.reset(key);
+            else
+                raw.set_value(key, value);
+        };
+        for (const [id, saved] of snap.folders) {
+            const raw = this.folder(id).raw;
+            raw.delay();
+            write(raw, 'name', saved.name);
+            write(raw, 'pinned-apps', saved.pinnedApps);
+            raw.apply();
+        }
+        this.raw.delay();
+        for (const [key, value] of snap.keys)
+            write(this.raw, key, value);
+        this.raw.apply();
     }
 }

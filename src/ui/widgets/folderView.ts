@@ -6,7 +6,7 @@
 // Public API:
 //   new FolderView(scope: Scope, services: Services, host: FolderViewHost)
 //   view.actor: St.Widget
-//   view.show(uuid: string): void
+//   view.show(uuid: string): boolean  false when the folder is gone (nothing is shown, the host went back)
 //   view.refresh(): void              re-sync with the store (also called on store changes)
 //   view.uuid: string | null
 //   view.tiles(): St.Widget[]         app tiles in order (keyboard nav)
@@ -14,24 +14,35 @@
 //   view.startRename(): void
 //   view.scroll: St.ScrollView
 //   view.destroy()
-//   FolderViewHost: TileHost & {back(), metrics?(): {columns, tileWidth, iconSize}}
+//   FolderViewHost: TileHost & {back(), metrics?(): {columns, tileWidth, iconSize, multiLine?},
+//                               openMissingContext?(tile, id)}
+//
+// Apps of the folder whose .desktop file is gone are shown as dimmed tiles (context menu: Unpin)
+// instead of silently disappearing; they are not draggable.
 
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
+import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
+
 import type {Scope} from '../../core/scope.js';
 import type {Services} from '../../core/services.js';
 import {acceptDrops, enableDrag} from '../dnd.js';
-import {lookupApp} from '../util.js';
-import {AppTile, type TileHost} from './appTile.js';
+import {applyScrollSettings, displayName, lookupApp} from '../util.js';
+import {ActionTile, AppTile, type TileHost} from './appTile.js';
 import {makeItemButton, wireItem} from './interact.js';
 import {TileGrid} from './tileGrid.js';
 
 export type FolderViewHost = TileHost & {
     back(): void;
-    metrics?(): {columns: number; tileWidth: number; iconSize: number};
+    metrics?(): {columns: number; tileWidth: number; iconSize: number; multiLine?: boolean};
+    /** Context menu (Unpin) of a ghost tile: a pinned app that is no longer installed. */
+    openMissingContext?(tile: St.Widget, id: string): void;
 };
+
+/** Longest folder name the rename entry accepts (the name shows up in tiles and menus). */
+const MAX_NAME_LENGTH = 40;
 
 export class FolderView {
     readonly actor: St.BoxLayout;
@@ -68,7 +79,7 @@ export class FolderView {
         this._backButton.x_expand = false;
         this._backButton.set_child(new St.Icon({icon_name: 'go-previous-symbolic', icon_size: 16}));
         wireItem(this._backButton, {activate: () => host.back()});
-        host.tooltips?.attach(this._backButton, null, () => 'Back');
+        host.tooltips?.attach(this._backButton, null, () => _('Back'));
 
         this._nameButton = makeItemButton('spawn-row spawn-folder-name');
         this._nameButton.x_expand = false;
@@ -79,22 +90,19 @@ export class FolderView {
         nameBox.add_child(new St.Icon({icon_name: 'document-edit-symbolic', icon_size: 14, style_class: 'spawn-folder-edit-icon', y_align: Clutter.ActorAlign.CENTER}));
         this._nameButton.set_child(nameBox);
         wireItem(this._nameButton, {activate: () => this.startRename()});
-        host.tooltips?.attach(this._nameButton, null, () => 'Rename folder');
+        host.tooltips?.attach(this._nameButton, null, () => _('Rename folder'));
 
-        this._hint = new St.Label({text: 'Drop here to take out of folder', style_class: 'spawn-folder-hint', y_align: Clutter.ActorAlign.CENTER, visible: false});
+        this._hint = new St.Label({text: _('Drop here to take out of folder'), style_class: 'spawn-folder-hint', y_align: Clutter.ActorAlign.CENTER, visible: false});
         this._header.add_child(this._backButton);
         this._header.add_child(this._nameButton);
         this._header.add_child(this._hint);
         this.actor.add_child(this._header);
 
-        const settings = services.settings;
         this.scroll = new St.ScrollView({
-            style_class: settings.get('scrollview-fade-effect') ? 'vfade' : '',
             hscrollbar_policy: St.PolicyType.NEVER,
-            vscrollbar_policy: settings.get('scrollbars-visible') ? St.PolicyType.AUTOMATIC : St.PolicyType.EXTERNAL,
-            overlay_scrollbars: settings.get('scrollbars-overlay'),
             y_expand: true,
         });
+        applyScrollSettings(this.scroll, services.settings);
         this.scroll.add_child(this._grid.actor);
         this.actor.add_child(this.scroll);
 
@@ -117,11 +125,12 @@ export class FolderView {
         return [this._backButton, this._nameButton];
     }
 
-    show(uuid: string): void {
+    show(uuid: string): boolean {
         this._uuid = uuid;
         this._cancelRename();
         this.refresh();
         this.scroll.vadjustment.value = 0;
+        return this._uuid === uuid;
     }
 
     refresh(): void {
@@ -148,11 +157,19 @@ export class FolderView {
             t.destroy();
         const metrics = this._host.metrics?.() ?? {columns: 4, tileWidth: 96, iconSize: 48};
         const tiles: St.Widget[] = [];
-        for (const entry of store.folderApps(uuid)) {
+        const settings = this._services.settings;
+        for (const entry of store.folderApps(uuid, true)) {
             const app = lookupApp(this._services, entry.id);
-            if (!app)
+            if (!app) {
+                tiles.push(this._ghostTile(entry.id));
                 continue;
-            const tile = new AppTile(app, this._host, {folderUuid: uuid, iconSize: metrics.iconSize});
+            }
+            const tile = new AppTile(app, this._host, {
+                folderUuid: uuid,
+                iconSize: metrics.iconSize,
+                multiLine: metrics.multiLine,
+                name: displayName(app, settings),
+            });
             enableDrag(this._tileScope, tile.actor, {
                 id: entry.id,
                 folderUuid: uuid,
@@ -165,6 +182,21 @@ export class FolderView {
         this._tiles = tiles;
         this._grid.setTiles(tiles, metrics.columns, metrics.tileWidth);
         acceptDrops(this._tileScope, this._grid.actor, store, {kind: 'grid', index: () => -1, folderUuid: uuid});
+    }
+
+    private _ghostTile(id: string): St.Widget {
+        const name = id.replace(/\.desktop$/, '');
+        const metrics = this._host.metrics?.();
+        const open = () => this._host.openMissingContext?.(tile.actor, id);
+        const tile = new ActionTile(name, 'application-x-executable', open, undefined, {
+            iconSize: metrics?.iconSize,
+            multiLine: metrics?.multiLine,
+            context: open,
+        });
+        tile.actor.add_style_class_name('spawn-tile-missing');
+        tile.actor.opacity = 130;
+        this._host.tooltips?.attach(tile.actor, null, () => _('%s (not installed)').format(name));
+        return tile.actor;
     }
 
     startRename(): void {
@@ -181,6 +213,7 @@ export class FolderView {
         this._nameButton.hide();
         this._header.insert_child_above(entry, this._nameButton);
         const ct = entry.clutter_text;
+        ct.max_length = MAX_NAME_LENGTH;
         let finished = false;
         const finish = (commit: boolean) => {
             if (finished)

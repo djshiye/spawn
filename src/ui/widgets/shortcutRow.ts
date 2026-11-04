@@ -21,6 +21,7 @@ import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
+import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {ShortcutId} from '../../core/constants.js';
@@ -52,19 +53,22 @@ export interface ResolvedShortcut {
     run(host: ShortcutHost, scope: Scope): void;
 }
 
+/** Marks a string for translation without translating it at module load (`_()` runs where it is shown). */
+const N_ = (s: string): string => s;
+
 const DIRS: Record<string, {dir: GLib.UserDirectory | null; icon: string; name: string}> = {
-    [ShortcutId.HOME]: {dir: null, icon: 'user-home-symbolic', name: 'Home'},
-    [ShortcutId.DOCUMENTS]: {dir: GLib.UserDirectory.DIRECTORY_DOCUMENTS, icon: 'folder-documents-symbolic', name: 'Documents'},
-    [ShortcutId.DOWNLOADS]: {dir: GLib.UserDirectory.DIRECTORY_DOWNLOAD, icon: 'folder-download-symbolic', name: 'Downloads'},
-    [ShortcutId.MUSIC]: {dir: GLib.UserDirectory.DIRECTORY_MUSIC, icon: 'folder-music-symbolic', name: 'Music'},
-    [ShortcutId.PICTURES]: {dir: GLib.UserDirectory.DIRECTORY_PICTURES, icon: 'folder-pictures-symbolic', name: 'Pictures'},
-    [ShortcutId.VIDEOS]: {dir: GLib.UserDirectory.DIRECTORY_VIDEOS, icon: 'folder-videos-symbolic', name: 'Videos'},
+    [ShortcutId.HOME]: {dir: null, icon: 'user-home-symbolic', name: N_('Home')},
+    [ShortcutId.DOCUMENTS]: {dir: GLib.UserDirectory.DIRECTORY_DOCUMENTS, icon: 'folder-documents-symbolic', name: N_('Documents')},
+    [ShortcutId.DOWNLOADS]: {dir: GLib.UserDirectory.DIRECTORY_DOWNLOAD, icon: 'folder-download-symbolic', name: N_('Downloads')},
+    [ShortcutId.MUSIC]: {dir: GLib.UserDirectory.DIRECTORY_MUSIC, icon: 'folder-music-symbolic', name: N_('Music')},
+    [ShortcutId.PICTURES]: {dir: GLib.UserDirectory.DIRECTORY_PICTURES, icon: 'folder-pictures-symbolic', name: N_('Pictures')},
+    [ShortcutId.VIDEOS]: {dir: GLib.UserDirectory.DIRECTORY_VIDEOS, icon: 'folder-videos-symbolic', name: N_('Videos')},
 };
 
 const URIS: Record<string, {uri: string; icon: string; name: string}> = {
-    [ShortcutId.COMPUTER]: {uri: 'computer:///', icon: 'computer-symbolic', name: 'Computer'},
-    [ShortcutId.NETWORK]: {uri: 'network:///', icon: 'network-workgroup-symbolic', name: 'Network'},
-    [ShortcutId.RECENT]: {uri: 'recent:///', icon: 'document-open-recent-symbolic', name: 'Recent'},
+    [ShortcutId.COMPUTER]: {uri: 'computer:///', icon: 'computer-symbolic', name: N_('Computer')},
+    [ShortcutId.NETWORK]: {uri: 'network:///', icon: 'network-workgroup-symbolic', name: N_('Network')},
+    [ShortcutId.RECENT]: {uri: 'recent:///', icon: 'document-open-recent-symbolic', name: N_('Recent')},
 };
 
 function openUri(uri: string): void {
@@ -104,12 +108,12 @@ export function resolveShortcut(entry: Entry): ResolvedShortcut | null {
     const dir = DIRS[id];
     if (dir) {
         const path = dir.dir === null ? GLib.get_home_dir() : GLib.get_user_special_dir(dir.dir) ?? GLib.get_home_dir();
-        const label = name || dir.name;
+        const label = name || _(dir.name);
         return {name: label, icon: icon ?? dir.icon, run: host => { host.close(); openUri(GLib.filename_to_uri(path, null)); }};
     }
     const uri = URIS[id];
     if (uri)
-        return {name: name || uri.name, icon: icon ?? uri.icon, run: host => { host.close(); openUri(uri.uri); }};
+        return {name: name || _(uri.name), icon: icon ?? uri.icon, run: host => { host.close(); openUri(uri.uri); }};
 
     const power = POWER_SHORTCUTS[id];
     if (power) {
@@ -128,14 +132,14 @@ export function resolveShortcut(entry: Entry): ResolvedShortcut | null {
         return {name: name || sw.get_name(), icon: icon ?? sw.get_icon(), run: host => { host.close(); sw.activate(); }};
     }
     case ShortcutId.ACTIVITIES_OVERVIEW:
-        return {name: name || 'Activities Overview', icon: icon ?? 'view-fullscreen-symbolic', run: host => { host.close(); Main.overview.show(); }};
+        return {name: name || _('Activities Overview'), icon: icon ?? 'view-fullscreen-symbolic', run: host => { host.close(); Main.overview.show(); }};
     case ShortcutId.SHOW_ALL_APPS:
-        return {name: name || 'All Apps', icon: icon ?? 'view-app-grid-symbolic', run: host => host.showAllApps?.()};
+        return {name: name || _('All Apps'), icon: icon ?? 'view-app-grid-symbolic', run: host => host.showAllApps?.()};
     case ShortcutId.RUN_COMMAND:
-        return {name: name || 'Run Command', icon: icon ?? 'system-run-symbolic', run: host => { host.close(); Main.openRunDialog(); }};
+        return {name: name || _('Run Command'), icon: icon ?? 'system-run-symbolic', run: host => { host.close(); Main.openRunDialog(); }};
     case ShortcutId.SHOW_DESKTOP:
         return {
-            name: name || 'Show Desktop',
+            name: name || _('Show Desktop'),
             icon: icon ?? 'computer-symbolic',
             run: host => {
                 host.close();

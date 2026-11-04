@@ -5,7 +5,8 @@
 //   targets.start()                      connect to the shell; idempotent
 //   targets.resolve(): Resolution        builds a fresh snapshot (re-reads global.dashToPanel
 //                                        and global.azTaskbar) and validates every panel;
-//                                        NEVER returns cached panel references
+//                                        NEVER returns cached panel references; also re-binds
+//                                        to the current emitters (see panel/emitterBinding.ts)
 //   targets.onChanged(scope, cb)         cb() after the target set may have changed
 //                                        (debounced 150 ms, owned by `scope`)
 //   targets.notifyChanged()              request a (debounced) 'changed' manually
@@ -20,8 +21,9 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {AZ_TASKBAR_UUID, DTP_UUID} from '../core/constants.js';
 import {debounce, type Debounced} from '../core/debounce.js';
-import {error, warn} from '../core/log.js';
+import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
+import {type ConnectableEmitter, EmitterBindings} from './emitterBinding.js';
 import {
     type ExtensionSnapshot,
     type PanelEmitterLike,
@@ -32,25 +34,17 @@ import {
 
 export const CHANGED_DEBOUNCE_MS = 150;
 
-interface ConnectableEmitter extends PanelEmitterLike {
-    connect?: (signal: string, cb: (...args: any[]) => void) => number;
-    disconnect?: (id: number) => void;
-}
+type ProviderEmitter = ConnectableEmitter & PanelEmitterLike;
 
 export interface PanelGlobals {
-    dashToPanel?: ConnectableEmitter | null;
-    azTaskbar?: ConnectableEmitter | null;
+    dashToPanel?: ProviderEmitter | null;
+    azTaskbar?: ProviderEmitter | null;
 }
 
 /** Re-reads the globals on every call: they are replaced whenever the extension restarts. */
 export function readPanelGlobals(): PanelGlobals {
     const g = global as unknown as PanelGlobals;
     return {dashToPanel: g.dashToPanel, azTaskbar: g.azTaskbar};
-}
-
-interface Binding {
-    emitter: ConnectableEmitter;
-    id: number;
 }
 
 const PROVIDERS = [
@@ -66,7 +60,7 @@ export class PanelTargets {
     private readonly _scope: Scope;
     private readonly _options: PanelTargetsOptions;
     private readonly _listeners = new Set<() => void>();
-    private readonly _bindings = new Map<string, Binding>();
+    private readonly _bindings: EmitterBindings;
     private readonly _changed: Debounced;
     private _started = false;
 
@@ -74,8 +68,12 @@ export class PanelTargets {
         this._scope = scope;
         this._options = options;
         this._changed = debounce(scope, CHANGED_DEBOUNCE_MS, () => this._emit());
+        this._bindings = new EmitterBindings(() => {
+            const globals = readPanelGlobals();
+            return Object.fromEntries(PROVIDERS.map(p => [p.kind, globals[p.global]]));
+        }, () => this._changed.call());
         scope.add(() => {
-            this._unbindAll();
+            this._bindings.clear();
             this._listeners.clear();
             this._started = false;
         }, 'PanelTargets');
@@ -90,7 +88,7 @@ export class PanelTargets {
             this._scope.connect(Main.extensionManager, 'extension-state-changed', (_m: unknown, extension: {uuid?: string}) => {
                 if (!PROVIDERS.some(p => p.uuid === extension?.uuid))
                     return;
-                this._rebind();
+                this._bindings.sync();
                 this._changed.call();
             });
         } catch (e) {
@@ -103,7 +101,7 @@ export class PanelTargets {
             error('cannot watch monitors-changed', e);
         }
 
-        this._rebind();
+        this._bindings.sync();
     }
 
     onChanged(scope: Scope, cb: () => void): void {
@@ -116,6 +114,10 @@ export class PanelTargets {
     }
 
     resolve(): Resolution {
+        // Every reconcile/retry re-binds to the CURRENT emitter: the shell's extension rebase
+        // swaps emitters without any extension-state-changed.
+        if (this._started)
+            this._bindings.sync();
         const globals = readPanelGlobals();
         const extensions: ExtensionSnapshot[] = PROVIDERS.map(p => ({
             kind: p.kind,
@@ -155,43 +157,5 @@ export class PanelTargets {
                 error('PanelTargets listener threw', e);
             }
         }
-    }
-
-    /** Make sure we listen to the CURRENT emitter of each provider, not an old one. */
-    private _rebind(): void {
-        const globals = readPanelGlobals();
-        for (const p of PROVIDERS) {
-            const current = globals[p.global] ?? null;
-            const bound = this._bindings.get(p.kind);
-            if (bound && bound.emitter === current)
-                continue;
-            if (bound)
-                this._unbind(p.kind);
-            if (!current || typeof current.connect !== 'function')
-                continue;
-            try {
-                const id = current.connect('panels-created', () => this._changed.call());
-                this._bindings.set(p.kind, {emitter: current, id});
-            } catch (e) {
-                warn(`cannot connect to ${p.global}`, e);
-            }
-        }
-    }
-
-    private _unbind(kind: string): void {
-        const bound = this._bindings.get(kind);
-        this._bindings.delete(kind);
-        if (!bound)
-            return;
-        try {
-            bound.emitter.disconnect?.(bound.id);
-        } catch (e) {
-            warn(`stale emitter disconnect failed for ${kind}`, e);
-        }
-    }
-
-    private _unbindAll(): void {
-        for (const kind of [...this._bindings.keys()])
-            this._unbind(kind);
     }
 }

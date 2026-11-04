@@ -8,7 +8,7 @@ A fast, resilient application menu for GNOME Shell 51. It replaces
 - nothing heavy happens at enable time (menu, app index and search are built lazily),
 - every resource is owned by a `Scope`, so `disable()` always cleans up completely,
 - native look: shell theme classes plus the GNOME accent colour, optional custom colours,
-- one-click import of ArcMenu settings, pinned apps and pinned folders.
+- one-click import of ArcMenu settings, pinned apps and pinned folders (with an Undo button, and an "Import and Disable ArcMenu" shortcut); every Reset in the preferences can be undone too.
 
 Status: feature complete for the v1 scope in `docs/SPEC.md` (panel button, two-pane menu, pinned
 apps and folders with drag and drop, search, hotkeys, theming, preferences, ArcMenu import).

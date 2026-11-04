@@ -1,43 +1,28 @@
 // AppsProvider: searches AppIndex.searchEntries() with rank.ts; id 'apps'.
 //
 // The display name is scored on its raw form (camelCase word boundaries, e.g. "LibreOffice
-// Writer"); the other keys (generic name, keywords, executable, ...) count at 70 % so an
-// app whose NAME matches always beats one that only matches a keyword.
+// Writer"); the other keys (generic name, full name, keywords, executable, id) count at 70 % and the
+// description (Comment=) only as whole words / word prefixes / substrings of a word at 40 %, so an
+// app whose NAME matches always beats one that only matches a keyword. Punctuation-only
+// queries match nothing.
 //
 // Public API:
-//   new AppsProvider(index: AppIndex, options?: {max?: number})  implements SearchProvider
-//        max defaults to 12 (there is no settings key for the apps cap)
-//   Always enabled. Activation: running app that can open a window -> new window, else
-//   Shell.App.activate() (launches it / raises it).
-
-import Shell from 'gi://Shell';
+//   new AppsProvider(index: AppIndex, settings: SpawnSettings, options?: {max?: number})
+//        implements SearchProvider; the result cap is max-search-results unless `max` is given
+//   Always enabled. Activation: ui/util.ts launchApp(app, settings, false), i.e. the same
+//   rule as the grid (activate-on-launch: switch to a running app, else open a new window).
 
 import {error} from '../../core/log.js';
+import type {SpawnSettings} from '../../core/settings.js';
 import type {AppIndex, AppSearchEntry} from '../../model/appIndex.js';
+import {launchApp} from '../../ui/util.js';
 import type {CancelToken, SearchProvider, SearchResult} from '../engine.js';
-import {rankItemsBy, scoreNormalized} from '../rank.js';
+import {hasAlnum, rankItemsBy, scoreApp} from '../rank.js';
 
-const DEFAULT_MAX = 12;
 const KEY_WEIGHT = 0.7;
 
 export interface AppsProviderOptions {
     max?: number;
-}
-
-function activateApp(app: Shell.App): void {
-    try {
-        if (app.state === Shell.AppState.RUNNING && app.can_open_new_window())
-            app.open_new_window(-1);
-        else
-            app.activate();
-    } catch (e) {
-        error(`launching ${app.get_id()} failed`, e);
-        try {
-            app.activate();
-        } catch (e2) {
-            error(`activating ${app.get_id()} failed`, e2);
-        }
-    }
 }
 
 export class AppsProvider implements SearchProvider {
@@ -45,11 +30,13 @@ export class AppsProvider implements SearchProvider {
     readonly title = 'Applications';
 
     private readonly _index: AppIndex;
-    private readonly _max: number;
+    private readonly _settings: SpawnSettings;
+    private readonly _max: number | undefined;
 
-    constructor(index: AppIndex, options: AppsProviderOptions = {}) {
+    constructor(index: AppIndex, settings: SpawnSettings, options: AppsProviderOptions = {}) {
         this._index = index;
-        this._max = options.max ?? DEFAULT_MAX;
+        this._settings = settings;
+        this._max = options.max;
     }
 
     isEnabled(): boolean {
@@ -57,20 +44,14 @@ export class AppsProvider implements SearchProvider {
     }
 
     search(query: string, token: CancelToken): SearchResult[] {
-        if (!query.trim())
+        if (!query.trim() || !hasAlnum(query))
             return [];
         if (!this._index.built)
             this._index.build();
 
-        const ranked = rankItemsBy(query, this._index.searchEntries(), (entry: AppSearchEntry, q) => {
-            let best = scoreNormalized(q, entry.name);
-            for (const key of entry.keys) {
-                const s = Math.round(scoreNormalized(q, key) * KEY_WEIGHT);
-                if (s > best)
-                    best = s;
-            }
-            return best;
-        }, this._max);
+        const ranked = rankItemsBy(query, this._index.searchEntries(),
+            (entry: AppSearchEntry, q) => scoreApp(q, entry.name, entry.keys, KEY_WEIGHT, entry.description),
+            this._max ?? this._settings.get('max-search-results'));
         if (token.cancelled)
             return [];
 
@@ -83,7 +64,13 @@ export class AppsProvider implements SearchProvider {
                 description: app.get_description() ?? undefined,
                 icon: app.get_icon(),
                 score,
-                activate: () => activateApp(app),
+                activate: () => {
+                    try {
+                        launchApp(app, this._settings, false);
+                    } catch (e) {
+                        error(`launching ${app.get_id()} failed`, e);
+                    }
+                },
             };
         });
     }

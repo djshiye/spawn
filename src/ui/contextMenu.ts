@@ -2,7 +2,8 @@
 //
 // App menu = the shell's own AppMenu (open windows, New Window, desktop actions, discrete GPU,
 // App Details in Software, Quit) plus Spawn items: Pin to / Unpin from Menu, Add to Folder
-// (existing folders + New Folder), Remove from Folder. Folder menu: Open, Rename, Delete.
+// (existing folders + New Folder), Remove from Folder. Folder menu: Open, Rename, Delete Folder
+// (the folder is dissolved: its apps move to the top level at the folder's slot, none is unpinned).
 // It owns its PopupMenuManager so the grab stacks on top of the main popup's; a fresh menu is
 // built for every open and destroyed on close. Mutations go through Services.pinned.
 //
@@ -13,11 +14,14 @@
 //   menu.isOpen: boolean
 //   ContextTarget: {kind: 'app', app: Shell.App, folderUuid?: string}
 //                | {kind: 'folder', uuid: string}
-//                | {kind: 'custom', id: string}           (pinned command entry: unpin only)
+//                | {kind: 'custom', id: string}           (pinned command entry or a pinned app whose
+//                                                          .desktop file is gone: Unpin only)
 
+import Pango from 'gi://Pango';
 import St from 'gi://St';
 import type Shell from 'gi://Shell';
 
+import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 import {PopupAnimation} from 'resource:///org/gnome/shell/ui/boxpointer.js';
 import {AppMenu} from 'resource:///org/gnome/shell/ui/appMenu.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -28,7 +32,7 @@ import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
 import {uniqueFolderName} from './dnd.js';
 import type {LayoutHost} from './layout.js';
-import {ownedScope} from './util.js';
+import {applyTone, ownedScope} from './util.js';
 
 export type ContextTarget =
     | {kind: 'app'; app: Shell.App; folderUuid?: string}
@@ -71,6 +75,7 @@ export class AppContextMenu {
             Main.uiGroup.add_child(menu.actor);
             menu.actor.hide();
             menu.actor.add_style_class_name('spawn-context-menu');
+            applyTone(menu.actor, menu.box);
             manager.addMenu(menu);
             scope.add(() => {
                 manager.removeMenu(menu);
@@ -136,29 +141,32 @@ export class AppContextMenu {
         };
 
         if (store.isPinned(id))
-            action('Unpin from Menu', () => store.unpin(id));
+            action(_('Unpin from Menu'), () => store.unpin(id));
         else
-            action('Pin to Menu', () => store.pin(id));
+            action(_('Pin to Menu'), () => store.pin(id));
 
         if (target.folderUuid) {
             const folderUuid = target.folderUuid;
-            action('Remove from Folder', () => store.removeFromFolder(folderUuid, id));
+            action(_('Remove from Folder'), () => store.removeFromFolder(folderUuid, id));
         }
 
         const folders = store.items().filter(i => i.kind === 'folder' && i.uuid !== target.folderUuid);
-        const sub = own(new PopupMenu.PopupSubMenuMenuItem('Add to Folder'));
+        const sub = own(new PopupMenu.PopupSubMenuMenuItem(_('Add to Folder')));
         for (const f of folders) {
             if (f.kind !== 'folder')
                 continue;
             const uuid = f.uuid;
-            const item = new PopupMenu.PopupMenuItem(f.name || 'Folder');
+            const item = new PopupMenu.PopupMenuItem(f.name || _('Folder'));
+            // Folder names are user text: keep the submenu from growing with a very long one.
+            item.label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            item.label.set_style('max-width: 18em;');
             (item as unknown as {_spawnKeepOpen: boolean})._spawnKeepOpen = true;
             item.connect('activate', () => store.addToFolder(uuid, id));
             sub.menu.addMenuItem(item);
         }
         if (folders.length > 0)
             sub.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        const create = new PopupMenu.PopupMenuItem('New Folder');
+        const create = new PopupMenu.PopupMenuItem(_('New Folder'));
         (create as unknown as {_spawnKeepOpen: boolean})._spawnKeepOpen = true;
         create.connect('activate', () => {
             if (target.folderUuid)
@@ -188,12 +196,12 @@ export class AppContextMenu {
         };
         if (target.kind === 'folder') {
             const uuid = target.uuid;
-            add('Open', () => this._host.openFolder?.(uuid));
-            add('Rename', () => this._host.renameFolder?.(uuid));
-            add('Delete Folder', () => store.deleteFolder(uuid));
+            add(_('Open'), () => this._host.openFolder?.(uuid));
+            add(_('Rename'), () => this._host.renameFolder?.(uuid));
+            add(_('Delete Folder'), () => store.dissolveFolder(uuid));
         } else {
             const id = target.id;
-            add('Unpin from Menu', () => store.unpin(id));
+            add(_('Unpin from Menu'), () => store.unpin(id));
         }
         return menu;
     }

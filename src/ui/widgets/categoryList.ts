@@ -9,6 +9,7 @@
 //   list.showCategory(id: string): void   ('all' | 'frequent' | GMenu id)
 //   list.refresh(): void                  drop cached rows and rebuild what is visible
 //   list.setColumnVisible(visible)        false = flat "all apps" list without the category column
+//   list.columnScroll() / list.appScroll()   the two scroll views (scroll settings are re-applied live)
 //   list.categoryButtons(): St.Widget[]
 //   list.appRows(): St.Widget[]           rows of the selected category
 //   list.selectedId: string
@@ -19,10 +20,12 @@ import Gio from 'gi://Gio';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
+import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
+
 import {error} from '../../core/log.js';
 import type {Scope} from '../../core/scope.js';
 import type {Services} from '../../core/services.js';
-import {iconSizeFor} from '../util.js';
+import {applyScrollSettings, displayName, iconSizeFor} from '../util.js';
 import {AppRow} from './appRow.js';
 import type {TileHost} from './appTile.js';
 import {makeItemButton, wireItem} from './interact.js';
@@ -161,6 +164,11 @@ export class CategoryList {
         return this._appsScroll;
     }
 
+    /** The category column's scroll view (the layout re-applies scroll settings to both). */
+    columnScroll(): St.ScrollView {
+        return this._column;
+    }
+
     destroy(): void {
         if (this._destroyed)
             return;
@@ -171,20 +179,19 @@ export class CategoryList {
     private _makeScroll(child: St.BoxLayout, styleClass: string): St.ScrollView {
         const settings = this._services.settings;
         const scroll = new St.ScrollView({
-            style_class: `${styleClass} ${settings.get('scrollview-fade-effect') ? 'vfade' : ''}`,
+            style_class: styleClass,
             hscrollbar_policy: St.PolicyType.NEVER,
-            vscrollbar_policy: settings.get('scrollbars-visible') ? St.PolicyType.AUTOMATIC : St.PolicyType.EXTERNAL,
-            overlay_scrollbars: settings.get('scrollbars-overlay'),
             y_expand: true,
         });
+        applyScrollSettings(scroll, settings);
         scroll.add_child(child);
         return scroll;
     }
 
     private _categories(): CategoryEntry[] {
         const out: CategoryEntry[] = [
-            {id: 'all', name: 'All Apps', icon: 'view-app-grid-symbolic'},
-            {id: 'frequent', name: 'Frequent', icon: 'document-open-recent-symbolic'},
+            {id: 'all', name: _('All Apps'), icon: 'view-app-grid-symbolic'},
+            {id: 'frequent', name: _('Frequent'), icon: 'document-open-recent-symbolic'},
         ];
         const symbolic = this._services.settings.get('icon-style-categories') === 'Symbolic';
         for (const c of this._services.appIndex.categories())
@@ -249,12 +256,14 @@ export class CategoryList {
                 description: settings.get('apps-show-extra-details'),
             };
             for (const app of apps)
-                box.add_child(new AppRow(app, this._host, opts).actor);
+                box.add_child(new AppRow(app, this._host, {...opts, name: displayName(app, settings)}).actor);
             if (apps.length === 0) {
                 box.add_child(new St.Label({
-                    text: id === 'frequent' ? 'Nothing here yet' : 'No apps',
+                    text: id === 'frequent' ? _('Nothing here yet') : _('No apps'),
                     style_class: 'spawn-empty-label',
                     x_align: Clutter.ActorAlign.CENTER,
+                    y_align: Clutter.ActorAlign.CENTER,
+                    y_expand: true,
                 }));
             }
         } catch (e) {

@@ -120,6 +120,17 @@ test('deleteFolder resets folder keys and unpins its apps', () => {
     scope.dispose();
 });
 
+test('dissolveFolder keeps the apps pinned at the folder slot and resets the folder keys', () => {
+    const {store, settings, scope} = fixture([app('a'), app('b')]);
+    const uuid = store.createFolder('Fold', ['b.desktop']);
+    store.pin('c.desktop');
+    store.dissolveFolder(uuid);
+    assertEquals(settings.get('pinned-apps'), [app('a'), app('b'), app('c')]);
+    assertEquals(settings.folder(uuid).pinnedApps, []);
+    assert(store.isPinned('b.desktop'));
+    scope.dispose();
+});
+
 test('onChanged fires once per operation and stops after its scope is disposed', () => {
     const {store, scope} = fixture([app('a'), app('b')]);
     const listener = new Scope('l');

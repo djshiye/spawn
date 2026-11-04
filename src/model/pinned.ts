@@ -16,6 +16,10 @@
 //   store.createFolder(name, ids, index?): string   returns the new uuid; ids move into it
 //   store.renameFolder(uuid, name): void
 //   store.deleteFolder(uuid): void                  contained apps are unpinned
+//   store.dissolveFolder(uuid): void                folder removed, its apps move to the top level
+//                                                   at the folder's slot (menu "Delete Folder")
+//   store.invalidate(): void                        forget cached "desktop file exists" answers
+//                                                   (call on Shell.AppSystem 'installed-changed')
 //   store.addToFolder(uuid, id, index?): void       moves from top level / other folder
 //   store.removeFromFolder(uuid, id, toIndex?): void  moves the app back to the top level
 //   store.onChanged(scope, cb)                      cb() when pinned-apps or any folder changes
@@ -32,6 +36,7 @@ import GioUnix from 'gi://GioUnix';
 
 import {Scope} from '../core/scope.js';
 import {debounce} from '../core/debounce.js';
+import {isValidFolderId} from '../core/folderId.js';
 import type {Entry, FolderSettings, SpawnSettings} from '../core/settings.js';
 import * as ops from './pinnedOps.js';
 
@@ -41,7 +46,7 @@ export type PinnedItem =
     | {kind: 'custom'; entry: Entry};
 
 export interface PinnedStoreOptions {
-    /** Does the desktop file for this id exist? Default: GioUnix.DesktopAppInfo.new(id) !== null. */
+    /** Does the desktop file for this id exist? Default: GioUnix.DesktopAppInfo.new(id) !== null (cached until invalidate()). */
     exists?: (id: string) => boolean;
     /** Folder uuid generator. Default: GLib.uuid_string_random. */
     newUuid?: () => string;
@@ -66,6 +71,7 @@ export class PinnedStore {
     private readonly _scope: Scope;
     private readonly _settings: SpawnSettings;
     private readonly _exists: (id: string) => boolean;
+    private readonly _existsCache = new Map<string, boolean>();
     private readonly _newUuid: () => string;
     private readonly _folders = new Map<string, FolderWatch>();
     private readonly _listeners = new Set<() => void>();
@@ -75,7 +81,7 @@ export class PinnedStore {
     constructor(scope: Scope, settings: SpawnSettings, opts: PinnedStoreOptions = {}) {
         this._scope = scope;
         this._settings = settings;
-        this._exists = opts.exists ?? (id => GioUnix.DesktopAppInfo.new(id) !== null);
+        this._exists = opts.exists ?? (id => this._desktopFileExists(id));
         this._newUuid = opts.newUuid ?? (() => GLib.uuid_string_random());
 
         this._externalEmit = debounce(scope, EXTERNAL_COALESCE_MS, () => this._emit());
@@ -98,6 +104,9 @@ export class PinnedStore {
         const out: PinnedItem[] = [];
         for (const entry of this._settings.get('pinned-apps')) {
             if (ops.isFolderEntry(entry)) {
+                // A hand-edited / imported id that cannot be a dconf path element has no folder settings.
+                if (!isValidFolderId(entry.id))
+                    continue;
                 out.push({kind: 'folder', uuid: entry.id, name: entry.name || this._folderName(entry.id)});
             } else if (isAppEntry(entry)) {
                 const missing = !this._exists(entry.id);
@@ -113,7 +122,7 @@ export class PinnedStore {
 
     folderApps(uuid: string, includeMissing = false): Entry[] {
         const top = this._settings.get('pinned-apps');
-        if (!top.some(e => ops.isFolderEntry(e) && e.id === uuid))
+        if (!isValidFolderId(uuid) || !top.some(e => ops.isFolderEntry(e) && e.id === uuid))
             return [];
         const list = this._watch(uuid).folder.pinnedApps;
         return includeMissing ? list : list.filter(e => !isAppEntry(e) || this._exists(e.id));
@@ -155,6 +164,14 @@ export class PinnedStore {
         this._apply(s => ops.deleteFolder(s, uuid));
     }
 
+    dissolveFolder(uuid: string): void {
+        this._apply(s => ops.dissolveFolder(s, uuid));
+    }
+
+    invalidate(): void {
+        this._existsCache.clear();
+    }
+
     addToFolder(uuid: string, id: string, index?: number): void {
         this._apply(s => ops.addToFolder(s, uuid, id, index));
     }
@@ -169,6 +186,16 @@ export class PinnedStore {
     }
 
     // -- internals -----------------------------------------------------------------------
+
+    /** Parsing a .desktop file per entry on every sync / drop is wasteful: remember the answer. */
+    private _desktopFileExists(id: string): boolean {
+        let v = this._existsCache.get(id);
+        if (v === undefined) {
+            v = GioUnix.DesktopAppInfo.new(id) !== null;
+            this._existsCache.set(id, v);
+        }
+        return v;
+    }
 
     private _emit(): void {
         for (const cb of [...this._listeners])
@@ -207,7 +234,7 @@ export class PinnedStore {
 
     /** Keep exactly one watcher per folder entry in `top`. */
     private _watchFolders(top: readonly Entry[]): void {
-        const wanted = new Set(ops.folderUuids(top));
+        const wanted = new Set(ops.folderUuids(top).filter(isValidFolderId));
         for (const uuid of [...this._folders.keys()]) {
             if (!wanted.has(uuid))
                 this._unwatch(uuid);
@@ -220,7 +247,7 @@ export class PinnedStore {
         const top = this._settings.get('pinned-apps');
         this._watchFolders(top);
         const folders: Record<string, Entry[]> = {};
-        for (const uuid of ops.folderUuids(top))
+        for (const uuid of ops.folderUuids(top).filter(isValidFolderId))
             folders[uuid] = this._watch(uuid).folder.pinnedApps;
         return {top, folders};
     }

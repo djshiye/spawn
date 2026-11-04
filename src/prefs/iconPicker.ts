@@ -12,7 +12,7 @@ import Gtk from 'gi://Gtk?version=4.0';
 
 import {resolveButtonIcon} from '../core/icons.js';
 import type {PrefsContext} from './context.js';
-import {toast, watch} from './widgets.js';
+import {label, toast, watch} from './widgets.js';
 
 type Filter = 'all' | 'symbolic' | 'colour';
 
@@ -77,6 +77,7 @@ export function openIconPicker(ctx: PrefsContext): void {
             child: iconImage(ctx, file, 32),
         });
         button.set_size_request(52, 52);
+        label(button, file.replace(/\.svg$/, ''));
         button.connect('clicked', () => {
             ctx.settings.set('menu-button-icon', file);
             dialog.close();
@@ -142,7 +143,7 @@ export function createIconRow(ctx: PrefsContext): Adw.ActionRow {
             child = next;
         }
         preview.append(iconImage(ctx, value, 28));
-        row.set_subtitle(value.startsWith('/') ? value : value.replace(/\.svg$/, ''));
+        row.set_subtitle(GLib.markup_escape_text(value.startsWith('/') ? value : value.replace(/\.svg$/, ''), -1));
     };
     show();
     watch(ctx, row, ['menu-button-icon'], show);
@@ -155,6 +156,7 @@ export function createIconRow(ctx: PrefsContext): Adw.ActionRow {
         tooltip_text: 'Use your own image file',
         css_classes: ['flat'],
     });
+    label(custom, 'Use your own image file');
     custom.connect('clicked', () => chooseFile(ctx));
     row.add_prefix(preview);
     row.add_suffix(choose);

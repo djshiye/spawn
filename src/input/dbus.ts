@@ -7,20 +7,26 @@
 //   Open() / Close()
 //   Search(s query)               no-op until the search UI exists
 //   Screenshot(s path)            Shell.Screenshot of the whole stage, written in-process;
-//                                 the call returns after the file is complete
+//                                 the call returns after the file is complete. The path must be
+//                                 under $XDG_RUNTIME_DIR or contain a '/.dev/' directory
+//                                 (input/paths.ts); anything else is an AccessDenied D-Bus error.
 //   AttachmentStatus() -> s       JSON: {attachments: [{key, kind, monitorIndex, attached,
 //                                 fallback, side}], pending, pendingForMs}
 //   HotkeyStatus() -> s           JSON of Hotkeys.status() (overlay-key handler ids, toggles, ...)
 //   Benchmark(s sections) -> s    JSON timings measured inside the shell (src/dev/benchmark.ts);
 //                                 async, may take several seconds
 //   EmitOverlayKey()              emits 'overlay-key' on global.display, like pressing Super alone
+//                                 (bypasses mutter's keybinding filter: use Ui.Key Super_L for a real press)
+//   SendKeys(s spec)              virtual-keyboard events, e.g. "+Super_L +space -space -Super_L"
+//                                 ('+' press, '-' release, Clutter.KEY_* names); chords for accelerators
+//   FocusButton()                 give the panel button the key focus (keyboard activation tests)
 //
 // Every handler checks that the service is alive and never throws into GDBus.
 //
 // Public API:
 //   new DBusService(scope, settings, controller: MenuController)
 //   service.start(): void
-//   MenuController: {toggle(), open(), close(), search(query), attachmentStatus(): string,
+//   MenuController: {toggle(source?), open(), close(), search(query), attachmentStatus(): string,
 //                    hotkeyStatus?(): string, emitOverlayKey?(): void}
 
 import Gio from 'gi://Gio';
@@ -28,18 +34,24 @@ import GLib from 'gi://GLib';
 import Shell from 'gi://Shell';
 
 import {DBUS_NAME, DBUS_PATH} from '../core/constants.js';
-import {error, log} from '../core/log.js';
+import {error, log, warn} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {SpawnSettings} from '../core/settings.js';
+import {screenshotPath} from './paths.js';
+
+/** Who asked for the toggle: only a Super press hands back to the Overview when it cannot open. */
+export type ToggleSource = 'super' | 'accelerator' | 'dbus';
 
 export interface MenuController {
-    toggle(): void;
+    toggle(source?: ToggleSource): void;
     open(): void;
     close(): void;
     search(query: string): void;
     attachmentStatus(): string;
     hotkeyStatus?(): string;
     emitOverlayKey?(): void;
+    focusButton?(): void;
+    sendKeys?(spec: string): void;
     benchmark?(sections: string): Promise<string>;
 }
 
@@ -60,6 +72,8 @@ const DEV_IFACE = `
     <method name="AttachmentStatus"><arg type="s" direction="out" name="json"/></method>
     <method name="HotkeyStatus"><arg type="s" direction="out" name="json"/></method>
     <method name="EmitOverlayKey"/>
+    <method name="FocusButton"/>
+    <method name="SendKeys"><arg type="s" direction="in" name="spec"/></method>
     <method name="Benchmark"><arg type="s" direction="in" name="sections"/><arg type="s" direction="out" name="json"/></method>
   </interface>
 </node>`;
@@ -201,6 +215,12 @@ export class DBusService {
             EmitOverlayKeyAsync: (_params: unknown[], invocation: Invocation) => {
                 this._call(invocation, () => this._controller.emitOverlayKey?.());
             },
+            FocusButtonAsync: (_params: unknown[], invocation: Invocation) => {
+                this._call(invocation, () => this._controller.focusButton?.());
+            },
+            SendKeysAsync: ([spec]: [string], invocation: Invocation) => {
+                this._call(invocation, () => this._controller.sendKeys?.(spec));
+            },
             BenchmarkAsync: ([sections]: [string], invocation: Invocation) => {
                 const run = this._controller.benchmark;
                 if (!run) {
@@ -218,7 +238,15 @@ export class DBusService {
                 });
             },
             ScreenshotAsync: ([path]: [string], invocation: Invocation) => {
-                this._screenshot(path).then(() => {
+                const allowed = screenshotPath(path, GLib.get_user_runtime_dir());
+                if (allowed === null) {
+                    warn(`screenshot path rejected: ${path}`);
+                    invocation.return_dbus_error(
+                        'org.freedesktop.DBus.Error.AccessDenied',
+                        'path must be under $XDG_RUNTIME_DIR or a directory containing /.dev/');
+                    return;
+                }
+                this._screenshot(allowed).then(() => {
                     this._call(invocation, () => undefined);
                 }).catch(e => {
                     error('screenshot failed', e);

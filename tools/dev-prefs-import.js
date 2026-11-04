@@ -5,7 +5,7 @@ import System from 'system';
 import Gio from 'gi://Gio';
 
 const build = System.programArgs[0];
-const {readArcMenuSnapshot, planMigration, applyMigration} = await import(`file://${build}/migrate/arcmenu.js`);
+const {readArcMenuSnapshot, planMigration, applyMigration, spawnDefaults, iconInstalled} = await import(`file://${build}/migrate/arcmenu.js`);
 const {SpawnSettings} = await import(`file://${build}/core/settings.js`);
 
 const source = Gio.SettingsSchemaSource.new_from_directory(`${build}/schemas`, Gio.SettingsSchemaSource.get_default(), false);
@@ -15,7 +15,7 @@ const settings = new SpawnSettings(Gio.Settings.new_full(schema, null, '/org/gno
 const snapshot = readArcMenuSnapshot(build);
 if (!snapshot)
     throw new Error('snapshot is null');
-const plan = planMigration(snapshot);
-applyMigration(plan, settings);
+const plan = planMigration(snapshot, spawnDefaults(settings), {iconExists: v => iconInstalled(build, v)});
+const result = applyMigration(plan, settings);
 Gio.Settings.sync();
-globalThis.print(`applied ${plan.items.length} items, ${plan.folders.length} folders, ${plan.skipped.length} skipped`);
+globalThis.print(`applied ${plan.items.length} items (${result.written} written, ${result.reset} equal to the defaults and reset, ${result.failed.length} rejected), ${plan.folders.length} folders, ${plan.skipped.length} skipped`);

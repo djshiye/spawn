@@ -8,7 +8,7 @@
 //   row.actor: St.Widget
 //   row.app: Shell.App
 //   row.destroy()
-//   RowOptions: {iconSize?, description?: boolean, folderUuid?}
+//   RowOptions: {iconSize?, description?: boolean, folderUuid?, symbolic?, name?}
 
 import Clutter from 'gi://Clutter';
 import type Shell from 'gi://Shell';
@@ -25,6 +25,8 @@ export interface RowOptions {
     folderUuid?: string;
     /** Use the symbolic variant of the app icon. */
     symbolic?: boolean;
+    /** Label text instead of the app name (apps-show-generic-names). */
+    name?: string;
 }
 
 export const DEFAULT_ROW_ICON_SIZE = 28;
@@ -54,7 +56,7 @@ export class AppRow {
             y_align: Clutter.ActorAlign.CENTER,
             x_expand: true,
         });
-        const label = new St.Label({text: app.get_name(), style_class: 'spawn-row-label'});
+        const label = new St.Label({text: opts.name ?? app.get_name(), style_class: 'spawn-row-label'});
         label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         text.add_child(label);
         const desc = opts.description ? app.get_description() : null;

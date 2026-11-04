@@ -3,11 +3,19 @@
 Schema `org.gnome.shell.extensions.spawn` (path `/org/gnome/shell/extensions/spawn/`) plus the relocatable
 `org.gnome.shell.extensions.spawn.folder` schema, instantiated at `.../spawn/folders/<uuid>/` (keys `name` (s),
 `pinned-apps` (aa{ss})). A folder shows up in `pinned-apps` as
-`{'id': '<uuid>', 'name': '<name>', 'isFolder': 'true'}`.
+`{'id': '<uuid>', 'name': '<name>', 'isFolder': 'true'}`. The folder schema is deliberately not a `<child>` of the
+main schema: code opens it by path (`SpawnSettings.folder(id)`), and the id must match `[A-Za-z0-9_-]{1,64}`
+(`isValidFolderId`); entries with any other id are damaged and are never opened.
 
 Conventions: enum keys store the nick string; `(bs)`/`(bi)` are `(enabled, value)` overrides
 (value ignored when `enabled` is false); built-in shortcut ids use the prefix `Spawn_`
 (ArcMenu's `ArcMenu_` prefix is rewritten by the migration).
+Integer keys with a `<range>` in the schema: `menu-height` 360..1600, `left-panel-width` 420..1200,
+`right-panel-width` 180..600, `menu-width-adjustment` -350..800 (the UI floors are 360 / 420 / 180; the migration
+clamps ArcMenu values into these ranges and warns). GSettings rejects anything outside, so `SpawnSettings.set()`
+returns false for it.
+The ArcMenu import never writes a value equal to Spawn's default (it resets the key instead), so a later change of
+a default still reaches imported setups.
 `menu-button-icon` is a bundled file name from `data/icons/`, an absolute path, or a
 themed icon name.
 
@@ -31,7 +39,7 @@ Enum differences from ArcMenu: `menu-button-*-click-action` is `Menu|None` (ArcM
 | Key | Type | Default | Migrates from (ArcMenu) |
 |---|---|---|---|
 | `super-key-toggle` | b | `true` | `arcmenu-hotkey-overlay-key-enabled`  (and Super_L in arcmenu-hotkey) |
-| `menu-hotkey` | as | `[]` | `arcmenu-hotkey`  (non-Super entries) |
+| `spawn-hotkey` | as | `[]` | `arcmenu-hotkey`  (every entry except `Super_L`; bare modifier keys such as `Super_R` are dropped). All entries are editable on the General page; was `menu-hotkey` before v1 |
 
 ## Button
 
@@ -55,10 +63,10 @@ Enum differences from ArcMenu: `menu-button-*-click-action` is `Menu|None` (ArcM
 | `default-menu-view` | enum default-menu-view | `'Pinned_Apps'` | `default-menu-view` |
 | `all-apps-button-action` | enum all-apps-button-action | `'Categories_List'` | `all-apps-button-action` |
 | `max-frequent-apps` | i | `8` | `arcmenu-layout-max-frequent-apps` |
-| `menu-height` | i | `600` | `menu-height` |
-| `menu-width-adjustment` | i | `0` | `menu-width-adjustment` |
-| `left-panel-width` | i | `290` | `left-panel-width` |
-| `right-panel-width` | i | `205` | `right-panel-width` |
+| `menu-height` | i | `600` | `menu-height`  (clamped to 360..1600) |
+| `menu-width-adjustment` | i | `0` | `menu-width-adjustment`  (clamped to -350..800) |
+| `left-panel-width` | i | `420` | `left-panel-width`  (clamped to 420..1200; ArcMenu's default is 290) |
+| `right-panel-width` | i | `205` | `right-panel-width`  (clamped to 180..600) |
 | `vert-separator` | b | `false` | `vert-separator` |
 | `multi-lined-labels` | b | `true` | `multi-lined-labels` |
 | `scrollbars-visible` | b | `true` | `scrollbars-visible` |
@@ -80,9 +88,9 @@ Enum differences from ArcMenu: `menu-button-*-click-action` is `Menu|None` (ArcM
 
 | Key | Type | Default | Migrates from (ArcMenu) |
 |---|---|---|---|
-| `pinned-apps` | aa{ss} | `[ {'id': 'firefox.desktop'}, {'id': 'org.gnome.Nautilus.d...` | `pinned-apps` |
+| `pinned-apps` | aa{ss} | `[ firefox, org.gnome.Nautilus, org.gnome.Software, org.gnome.Settings, org.gnome.Ptyxis ]` (`.desktop` ids; not installed ones are hidden by the menu) | `pinned-apps`  (an app is kept once: top level first, then folders in order) |
 | `directory-shortcuts` | aa{ss} | `[ {'id': 'Spawn_Home', 'name': 'Home', 'icon': 'Spawn...` | `directory-shortcuts`  (ArcMenu_ ids -> Spawn_) |
-| `application-shortcuts` | aa{ss} | `[ {'id': 'Spawn_Software', 'name': 'Software'}, {'id'...` | `application-shortcuts`  (ArcMenu_ ids -> Spawn_) |
+| `application-shortcuts` | aa{ss} | `[ Spawn_Software, org.gnome.Settings.desktop, org.gnome.Ptyxis.desktop, Spawn_ActivitiesOverview ]` | `application-shortcuts`  (ArcMenu_ ids -> Spawn_) |
 | `power-options` | a(ib) | `[(0, true), (1, true), (2, true), (3, true), (4, false), ...` | `power-options` |
 | `power-display-style` | enum power-display-style | `'Default'` | `power-display-style` |
 
@@ -91,7 +99,7 @@ Enum differences from ArcMenu: `menu-button-*-click-action` is `Menu|None` (ArcM
 | Key | Type | Default | Migrates from (ArcMenu) |
 |---|---|---|---|
 | `search-hidden` | b | `false` | `search-hidden` |
-| `search-entry-location` | enum searchbar-location | `'Bottom'` | `searchbar-default-bottom-location` |
+| `search-entry-location` | enum searchbar-location (`Bottom`=0, `Top`=1, `Auto`=2) | `'Bottom'` | `searchbar-default-bottom-location`  (ArcMenu's Top/Bottom as-is; `Auto` is new: nearest the panel the menu opens from) |
 | `max-search-results` | i | `5` | `max-search-results` |
 | `highlight-search-result-terms` | b | `false` | `highlight-search-result-terms` |
 | `show-search-result-details` | b | `false` | `show-search-result-details` |
@@ -133,7 +141,7 @@ Enum differences from ArcMenu: `menu-button-*-click-action` is `Menu|None` (ArcM
 
 | Key | Type | Default | Migrates from (ArcMenu) |
 |---|---|---|---|
-| `prefs-visible-page` | i | `0` | `prefs-visible-page` |
+| `prefs-visible-page` | i | `0` | not migrated (ArcMenu's page order differs from Spawn's) |
 | `migration-done` | b | `false` | new |
 
 ## Folder schema `org.gnome.shell.extensions.spawn.folder`
@@ -145,10 +153,13 @@ Enum differences from ArcMenu: `menu-button-*-click-action` is `Menu|None` (ArcM
 
 ## ArcMenu keys deliberately not migrated
 
+The bundled ArcMenu schema is from ArcMenu release 74 (`BUNDLED_ARCMENU_VERSION`); the Import page warns when the
+installed ArcMenu is newer, because keys added since then are not read.
+
 Other layouts' keys (`*-layout-*`, `raven-*`, `runner-*`, `default-menu-view-<layout>`, ...), `menu-layout`,
 `force-menu-location`, `menu-position-alignment`, `menu-arrow-rise`, `context-menu-items`, `menu-themes`,
 `extra-categories*`, `recently-installed-apps`, `show-recently-installed-apps`, update-notifier keys,
-`settings-width/height`, `hide-overview-*`, `enable-horizontal-flip`, `dash-to-panel-standalone`, `pop-*`,
+`settings-width/height`, `prefs-visible-page`, `hide-overview-*`, `enable-horizontal-flip`, `dash-to-panel-standalone`, `pop-*`,
 `runner-hotkey*`, `hotkey-open-primary-monitor`, `activate-on-hover`, `show-category-sub-menus`,
 `group-apps-alphabetically-*`, `show-external-devices`, `show-bookmarks`, `enable-activities-shortcut`,
 `searchbar-default-top-location`, `icon-size` for removed layouts.

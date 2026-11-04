@@ -1,6 +1,11 @@
 // PowerBar: power buttons from `power-options` (a(ib): id, enabled) in `power-display-style`
 // (Default / In_Line: a row of icon buttons; Menu: one "Power Off" button opening a list).
 //
+// Buttons are ordered by severity (POWER_RANK: switch user, lock, log out, suspend, ..., restart,
+// power off), not by the stored order; a flexible spacer pushes the destructive pair (restart,
+// power off) to the far end so they are never next to the harmless ones. 40x32 targets, 8 px apart
+// (stylesheet.css). `icon-style-buttons` picks the symbolic or the full-colour icon.
+//
 // Availability follows GNOME's SystemActions (can-* properties, live) and a one-off logind probe
 // for hibernate / hybrid sleep, so buttons the system cannot perform are hidden.
 //
@@ -11,8 +16,10 @@
 //   bar.destroy()
 
 import Clutter from 'gi://Clutter';
+import Gio from 'gi://Gio';
 import St from 'gi://St';
 
+import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
@@ -22,8 +29,11 @@ import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
 import {iconSizeFor} from '../util.js';
 import {makeItemButton, wireItem} from './interact.js';
-import {isPowerAvailable, type LogindInfo, POWER_INFO, powerSignalNames, probeLogind, runPowerAction, systemActions} from './powerActions.js';
+import {isDestructive, isPowerAvailable, type LogindInfo, POWER_INFO, POWER_RANK, powerSignalNames, probeLogind, runPowerAction, systemActions} from './powerActions.js';
 import type {ShortcutHost} from './shortcutRow.js';
+
+/** Icon-only buttons need their name quickly (the default tooltip delay is 450 ms). */
+const TOOLTIP_DELAY_MS = 200;
 
 interface PowerButton {
     type: number;
@@ -54,7 +64,7 @@ export class PowerBar {
             for (const sig of powerSignalNames)
                 scope.connect(sa, sig, () => this._refresh());
         }
-        settings.onChanged(scope, ['power-options', 'power-display-style', 'icon-size-buttons'], () => this._build());
+        settings.onChanged(scope, ['power-options', 'power-display-style', 'icon-size-buttons', 'icon-style-buttons'], () => this._build());
         probeLogind().then(info => {
             if (this._destroyed)
                 return;
@@ -93,7 +103,12 @@ export class PowerBar {
     }
 
     private _enabledTypes(): number[] {
-        return this._settings.get('power-options').filter(([, on]) => on).map(([id]) => id);
+        const rank = (t: number) => {
+            const i = POWER_RANK.indexOf(t);
+            return i < 0 ? POWER_RANK.length : i;
+        };
+        return this._settings.get('power-options').filter(([, on]) => on).map(([id]) => id)
+            .sort((a, b) => rank(a) - rank(b));
     }
 
     private _build(): void {
@@ -109,15 +124,24 @@ export class PowerBar {
         if (style === 'Menu') {
             this._buildMenuButton(size);
         } else {
+            let spacer = false;
             for (const type of this._enabledTypes()) {
                 const info = POWER_INFO[type];
                 if (!info)
                     continue;
-                const button = makeItemButton('spawn-power-button');
+                const destructive = isDestructive(type);
+                if (destructive && !spacer && this._buttons.length > 0) {
+                    spacer = true;
+                    this.actor.add_child(new St.Widget({style_class: 'spawn-power-spacer', x_expand: true}));
+                }
+                const button = makeItemButton(destructive ? 'spawn-power-button spawn-power-destructive' : 'spawn-power-button');
                 button.x_expand = false;
-                button.set_child(new St.Icon({icon_name: info.icon, icon_size: size}));
+                button.y_align = Clutter.ActorAlign.CENTER;
+                const icon = new St.Icon({icon_size: size, x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+                this._setIcon(icon, info.icon);
+                button.set_child(icon);
                 button.accessible_name = info.name;
-                this._host.tooltips?.attach(button, null, () => info.name);
+                this._host.tooltips?.attach(button, null, () => info.name, {delay: TOOLTIP_DELAY_MS});
                 wireItem(button, {activate: () => runPowerAction(type, this._host, this._scope)});
                 this.actor.add_child(button);
                 this._buttons.push({type, actor: button});
@@ -126,11 +150,22 @@ export class PowerBar {
         this._refresh();
     }
 
+    /** `icon-style-buttons`: Symbolic uses the icon as is, Full_Color tries the colour variant first. */
+    private _setIcon(icon: St.Icon, name: string): void {
+        if (this._settings.get('icon-style-buttons') === 'Full_Color')
+            icon.gicon = Gio.ThemedIcon.new_from_names([name.replace(/-symbolic$/, ''), name]);
+        else
+            icon.icon_name = name;
+    }
+
     private _buildMenuButton(size: number): void {
         const button = makeItemButton('spawn-power-button spawn-power-menu-button');
+        button.y_align = Clutter.ActorAlign.CENTER;
         const box = new St.BoxLayout({style_class: 'spawn-row-box'});
-        box.add_child(new St.Icon({icon_name: POWER_INFO[PowerType.POWER_OFF].icon, icon_size: size, y_align: Clutter.ActorAlign.CENTER}));
-        box.add_child(new St.Label({text: POWER_INFO[PowerType.POWER_OFF].name, y_align: Clutter.ActorAlign.CENTER}));
+        const menuIcon = new St.Icon({icon_size: size, y_align: Clutter.ActorAlign.CENTER});
+        this._setIcon(menuIcon, POWER_INFO[PowerType.POWER_OFF].icon);
+        box.add_child(menuIcon);
+        box.add_child(new St.Label({text: _('Power Off'), y_align: Clutter.ActorAlign.CENTER}));
         button.set_child(box);
         this.actor.add_child(button);
         this._menuButton = button;

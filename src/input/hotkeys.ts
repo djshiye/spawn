@@ -1,7 +1,7 @@
 // Hotkeys: Super-key toggle and a custom accelerator.
 //
 // Responsibility: call `onToggle` when the user presses Super alone (setting
-// `super-key-toggle`) or the accelerator(s) in `menu-hotkey`.
+// `super-key-toggle`) or the accelerator(s) in `spawn-hotkey`.
 // HARD RULES: Super interception is IN MEMORY ONLY (block GNOME's overlay-key handler via
 // signal_handler_find/block on global.display, connect ours); NEVER write mutter's
 // `overlay-key` to dconf. Everything that was blocked/connected/registered is undone by the
@@ -17,21 +17,29 @@
 //   * On disable (setting off, stop(), scope disposal) we disconnect ours and unblock GNOME's,
 //     but only if that handler is still connected (the shell may have replaced it).
 //
-// Accelerator details: the `menu-hotkey` key (as) of our own schema is bound under the name
-// 'menu-hotkey' with modes NORMAL | OVERVIEW | POPUP, so it works in the Overview and can also
+// Accelerator details: the `spawn-hotkey` key (as) of our own schema is bound under the name
+// 'spawn-hotkey' with modes NORMAL | OVERVIEW | POPUP, so it works in the Overview and can also
 // close the open menu. Changes re-bind (debounced); an empty list means no binding.
 //
+//   * mutter drops the overlay-key binding while a modal grab with a mode outside the allowed
+//     mask is active (WindowManager._filterKeybinding), and the open menu's PopupMenuManager
+//     grab uses Shell.ActionMode.POPUP, which GNOME's mask (NORMAL | OVERVIEW) does not include:
+//     a second Super press would never arrive. So while intercepting we widen the mask with
+//     Main.wm.allowKeybinding('overlay-key', NORMAL | OVERVIEW | POPUP) and restore the saved mask
+//     on release (in memory only).
+//
 // Public API:
-//   new Hotkeys(scope, settings, onToggle: () => void)
-//   hotkeys.start(): void       idempotent; follows super-key-toggle / menu-hotkey live
+//   new Hotkeys(scope, settings, onToggle: (source: HotkeySource) => void)
+//   hotkeys.start(): void       idempotent; follows super-key-toggle / spawn-hotkey live
 //   hotkeys.stop(): void        undo everything now (also done by scope disposal)
 //   hotkeys.status(): HotkeyStatus   diagnostics for the Dev interface (see below)
 //
 // HotkeyStatus: {superActive, gnomeHandler, ourHandler, firstUnblocked, accelerators,
-//                accelBound, toggles}
+//                accelBound, toggles, overlayKeyModes}
 //   gnomeHandler/ourHandler: signal handler ids (0 = none); firstUnblocked: the id of the first
 //   unblocked 'overlay-key' handler on global.display (== ourHandler while we intercept,
-//   == gnomeHandler once released); toggles: how many times onToggle was fired from a hotkey.
+//   == gnomeHandler once released); toggles: how many times onToggle was fired from a hotkey;
+//   overlayKeyModes: the Shell.ActionMode mask currently allowed for 'overlay-key' (-1 unknown).
 
 import GObject from 'gi://GObject';
 import Meta from 'gi://Meta';
@@ -44,7 +52,18 @@ import {error, log, warn} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {SpawnSettings} from '../core/settings.js';
 
-export const ACCEL_KEY = 'menu-hotkey';
+export const ACCEL_KEY = 'spawn-hotkey';
+export type HotkeySource = 'super' | 'accelerator';
+const OVERLAY_KEY = 'overlay-key';
+/** What GNOME Shell itself allows for the overlay key (Main._sessionUpdated). */
+const GNOME_OVERLAY_MODES = Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW;
+const INTERCEPT_OVERLAY_MODES = GNOME_OVERLAY_MODES | Shell.ActionMode.POPUP;
+
+/** The mask the window manager currently holds for the overlay key (a private field; -1 if unreadable). */
+function overlayModes(): number {
+    const allowed = (Main.wm as unknown as {_allowedKeybindings?: Record<string, number>})._allowedKeybindings;
+    return allowed?.[OVERLAY_KEY] ?? -1;
+}
 const REBIND_DEBOUNCE_MS = 300;
 
 /**
@@ -68,12 +87,13 @@ export interface HotkeyStatus {
     accelerators: string[];
     accelBound: boolean;
     toggles: number;
+    overlayKeyModes: number;
 }
 
 export class Hotkeys {
     private readonly _scope: Scope;
     private readonly _settings: SpawnSettings;
-    private readonly _onToggle: () => void;
+    private readonly _onToggle: (source: HotkeySource) => void;
 
     private _run: Scope | null = null;
     private _rebind: Debounced | null = null;
@@ -81,8 +101,10 @@ export class Hotkeys {
     private _ourHandler = 0;
     private _accelBound = false;
     private _toggles = 0;
+    /** The overlay-key mask to put back on release; null while we have not widened it. */
+    private _savedModes: number | null = null;
 
-    constructor(scope: Scope, settings: SpawnSettings, onToggle: () => void) {
+    constructor(scope: Scope, settings: SpawnSettings, onToggle: (source: HotkeySource) => void) {
         this._scope = scope;
         this._settings = settings;
         this._onToggle = onToggle;
@@ -133,6 +155,7 @@ export class Hotkeys {
             accelerators,
             accelBound: this._accelBound,
             toggles: this._toggles,
+            overlayKeyModes: overlayModes(),
         };
     }
 
@@ -159,13 +182,18 @@ export class Hotkeys {
         }
         GObject.signal_handler_block(display, gnome);
         try {
-            this._ourHandler = display.connect('overlay-key', () => this._fire());
+            this._ourHandler = display.connect('overlay-key', () => this._fire('super'));
         } catch (e) {
             // Never leave GNOME's handler blocked without a replacement.
             GObject.signal_handler_unblock(display, gnome);
             throw e;
         }
         this._gnomeHandler = gnome;
+        this._guard('widen overlay-key modes', () => {
+            const saved = overlayModes();
+            this._savedModes = saved >= 0 ? saved : GNOME_OVERLAY_MODES;
+            Main.wm.allowKeybinding(OVERLAY_KEY, INTERCEPT_OVERLAY_MODES);
+        });
         log(`Super key intercepted (GNOME handler ${gnome} blocked, ours ${this._ourHandler})`);
     }
 
@@ -174,6 +202,10 @@ export class Hotkeys {
         const gnome = this._gnomeHandler;
         this._ourHandler = 0;
         this._gnomeHandler = 0;
+        const saved = this._savedModes;
+        this._savedModes = null;
+        if (saved !== null)
+            this._guard('restore overlay-key modes', () => Main.wm.allowKeybinding(OVERLAY_KEY, saved));
         if (!ours && !gnome)
             return;
         const display = global.display;
@@ -201,14 +233,17 @@ export class Hotkeys {
         const accels = this._settings.get(ACCEL_KEY).filter(a => typeof a === 'string' && a !== '');
         if (accels.length === 0)
             return;
-        Main.wm.addKeybinding(
+        const action = Main.wm.addKeybinding(
             ACCEL_KEY,
             this._settings.raw,
             Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
             Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW | Shell.ActionMode.POPUP,
-            () => this._fire(),
+            () => this._fire('accelerator'),
         );
-        this._accelBound = true;
+        // NONE: mutter refused the binding (invalid accelerator, or the name is taken).
+        this._accelBound = action !== Meta.KeyBindingAction.NONE;
+        if (!this._accelBound)
+            warn(`mutter refused the '${ACCEL_KEY}' keybinding (${accels.join(', ')})`);
     }
 
     private _unbindAccelerator(): void {
@@ -220,10 +255,10 @@ export class Hotkeys {
 
     // ---- helpers ----
 
-    private _fire(): void {
+    private _fire(source: HotkeySource): void {
         this._toggles++;
         try {
-            this._onToggle();
+            this._onToggle(source);
         } catch (e) {
             error('hotkey toggle failed', e);
         }

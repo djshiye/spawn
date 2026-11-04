@@ -32,6 +32,16 @@ test('default CSS: accent only, no override or button rules', () => {
     assert(!css.includes('.panel-button.spawn-button'), 'no disabled button rules');
 });
 
+test('every focusable item gets the accent ring; pressed is a 55% accent', () => {
+    const css = buildCss(input());
+    for (const sel of ['.spawn-user-card:focus', '.spawn-nav-button:focus', '.spawn-power-button:focus', '.spawn-tile:focus'])
+        assert(css.includes(sel), sel);
+    assert(css.includes('box-shadow: inset 0 0 0 2px #3584e4;'), 'focus ring');
+    const active = css.slice(css.indexOf('.spawn-tile:active'));
+    assert(active.includes('rgba(53, 132, 228, 0.55)'), 'pressed fill');
+    assert(!css.includes('.spawn-tile:active,\n.spawn-row:selected'), ':active is its own rule');
+});
+
 test('override adds popup colours, font size and item states', () => {
     const css = buildCss(input({override: true}));
     assert(css.includes('.spawn-popup .popup-menu-content'));

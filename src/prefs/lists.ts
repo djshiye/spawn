@@ -3,7 +3,10 @@
 // Public API:
 //   EntrySource                   {get(): Entry[], set(v: Entry[]): void, keys: SettingKey[] | null, folder?: FolderSettings}
 //   createEntryList(ctx, opts)    Adw.PreferencesGroup with one row per entry: reorder (up/down),
-//                                 delete, folder rename / contents; an "Add" menu depending on `kind`
+//                                 delete, folder rename / contents; an "Add" menu depending on `kind`.
+//                                 Rows are rebuilt on every change, keyboard focus is put back on the
+//                                 button that was used. An app can be pinned only once (top level or
+//                                 in exactly one folder); damaged folder ids show a removable row.
 //   describeEntry(entry)          {title, subtitle?, icon: Gio.Icon | string}
 //   kinds: 'pinned' | 'folder' | 'directory' | 'application'
 
@@ -14,9 +17,10 @@ import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk?version=4.0';
 
 import {ShortcutId} from '../core/constants.js';
+import {isValidFolderId} from '../core/folderId.js';
 import type {Entry, FolderSettings, SettingKey} from '../core/settings.js';
 import type {PrefsContext} from './context.js';
-import {toast} from './widgets.js';
+import {connectDisposable, label, onWindowClose, resetWithUndo, toast} from './widgets.js';
 
 export type ListKind = 'pinned' | 'folder' | 'directory' | 'application';
 
@@ -35,6 +39,8 @@ export interface EntryListOptions {
     source: EntrySource;
     /** Adds a Reset button that restores the schema default of the (single) watched key. */
     reset?: boolean;
+    /** Dialog hosting the list: its change handlers are dropped when it closes. */
+    lifetime?: Adw.Dialog;
 }
 
 interface Builtin {
@@ -95,8 +101,10 @@ function iconWidget(icon: Gio.Icon | string): Gtk.Image {
     return typeof icon === 'string' ? new Gtk.Image({icon_name: icon}) : new Gtk.Image({gicon: icon});
 }
 
-function flatButton(icon: string, tooltip: string): Gtk.Button {
-    return new Gtk.Button({icon_name: icon, tooltip_text: tooltip, valign: Gtk.Align.CENTER, css_classes: ['flat']});
+function flatButton(icon: string, tooltip: string, name = tooltip): Gtk.Button {
+    const button = new Gtk.Button({icon_name: icon, tooltip_text: tooltip, valign: Gtk.Align.CENTER, css_classes: ['flat']});
+    label(button, name);
+    return button;
 }
 
 /** Asks for one line of text. */
@@ -235,16 +243,26 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
     if (opts.description)
         group.set_description(opts.description);
     const rows: Gtk.Widget[] = [];
+    // Focus bookkeeping: rows are rebuilt on every change, so the button that was used is found again.
+    const buttons = new Map<string, Gtk.Widget>();
+    let pendingFocus: string[] | null = null;
+    let addRef: Gtk.Widget | null = null;
 
     const items = (): Entry[] => source.get();
     const put = (list: Entry[]): void => source.set(list);
-    const has = (id: string): boolean => {
-        if (items().some(e => e.id === id))
-            return true;
-        if (kind !== 'pinned')
-            return false;
-        return items().some(e => e.isFolder === 'true' && ctx.settings.folder(e.id).pinnedApps.some(a => a.id === id));
+    /** Ids pinned anywhere (top level and every folder) for the lists that must not repeat an app. */
+    const pinnedEverywhere = (): Set<string> => {
+        const ids = new Set<string>(items().map(e => e.id));
+        if (kind !== 'pinned' && kind !== 'folder')
+            return ids;
+        for (const e of ctx.settings.get('pinned-apps')) {
+            ids.add(e.id);
+            if (e.isFolder === 'true' && isValidFolderId(e.id))
+                ctx.settings.folder(e.id).pinnedApps.forEach(a => ids.add(a.id));
+        }
+        return ids;
     };
+    const has = (id: string): boolean => pinnedEverywhere().has(id);
     const add = (entry: Entry): void => {
         if (entry.id !== ShortcutId.SEPARATOR && has(entry.id)) {
             toast(ctx, 'Already in the list');
@@ -259,27 +277,46 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
             return;
         const [entry] = list.splice(index, 1);
         list.splice(target, 0, entry as Entry);
+        const same = delta < 0 ? 'up' : 'down';
+        pendingFocus = [`${same}:${target}`, `${delta < 0 ? 'down' : 'up'}:${target}`];
         put(list);
     };
     const remove = (index: number): void => {
         const list = items();
         const [entry] = list.splice(index, 1);
-        if (entry?.isFolder === 'true')
+        if (entry?.isFolder === 'true' && isValidFolderId(entry.id))
             ctx.settings.deleteFolder(entry.id);
+        pendingFocus = [`del:${Math.min(index, list.length - 1)}`, 'add'];
         put(list);
+    };
+
+    const restoreFocus = (): void => {
+        const wanted = pendingFocus;
+        pendingFocus = null;
+        const target = wanted?.map(k => (k === 'add' ? addRef : buttons.get(k))).find(b => b?.get_sensitive());
+        if (target)
+            GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                target.grab_focus();
+                return GLib.SOURCE_REMOVE;
+            });
     };
 
     const build = (): void => {
         clearGroup(group, rows);
+        buttons.clear();
         const list = items();
         if (list.length === 0) {
             const empty = new Adw.ActionRow({title: 'Nothing here yet', sensitive: false});
             group.add(empty);
             rows.push(empty);
+            restoreFocus();
             return;
         }
         list.forEach((entry, index) => {
-            const d = describeEntry(entry);
+            const damaged = entry.isFolder === 'true' && !isValidFolderId(entry.id);
+            const d = damaged ?
+                {title: entry.name || 'Folder', subtitle: 'Damaged folder entry, remove it', icon: 'dialog-warning-symbolic'} :
+                describeEntry(entry);
             const row = new Adw.ActionRow({title: GLib.markup_escape_text(d.title, -1)});
             if (d.subtitle)
                 row.set_subtitle(GLib.markup_escape_text(d.subtitle, -1));
@@ -287,10 +324,10 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
             icon.set_pixel_size(24);
             row.add_prefix(icon);
 
-            if (entry.isFolder === 'true') {
-                const contents = flatButton('view-list-symbolic', 'Edit apps in this folder');
+            if (entry.isFolder === 'true' && !damaged) {
+                const contents = flatButton('view-list-symbolic', 'Edit apps in this folder', `Edit apps in ${entry.name || 'this folder'}`);
                 contents.connect('clicked', () => openFolderEditor(ctx, entry.id, entry.name ?? ''));
-                const rename = flatButton('document-edit-symbolic', 'Rename folder');
+                const rename = flatButton('document-edit-symbolic', 'Rename folder', `Rename ${entry.name || 'folder'}`);
                 rename.connect('clicked', () => promptText(ctx, 'Rename Folder', entry.name ?? '', 'Rename', name => {
                     const next = items();
                     const target = next.find(e => e.id === entry.id);
@@ -306,15 +343,18 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
                 row.set_subtitle(`Folder, ${count} ${count === 1 ? 'app' : 'apps'}`);
             }
 
-            const up = flatButton('go-up-symbolic', 'Move up');
+            const up = flatButton('go-up-symbolic', 'Move up', `Move ${d.title} up`);
             up.set_sensitive(index > 0);
             up.connect('clicked', () => move(index, -1));
-            const down = flatButton('go-down-symbolic', 'Move down');
+            const down = flatButton('go-down-symbolic', 'Move down', `Move ${d.title} down`);
             down.set_sensitive(index < list.length - 1);
             down.connect('clicked', () => move(index, 1));
-            const del = flatButton('user-trash-symbolic', 'Remove');
+            const del = flatButton('user-trash-symbolic', 'Remove', `Remove ${d.title}`);
+            buttons.set(`up:${index}`, up);
+            buttons.set(`down:${index}`, down);
+            buttons.set(`del:${index}`, del);
             del.connect('clicked', () => {
-                if (entry.isFolder === 'true') {
+                if (entry.isFolder === 'true' && !damaged) {
                     confirm(ctx, `Delete folder "${entry.name ?? ''}"?`, 'The apps inside it are unpinned.', 'Delete', () => remove(index));
                 } else {
                     remove(index);
@@ -326,14 +366,17 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
             group.add(row);
             rows.push(row);
         });
+        restoreFocus();
     };
     build();
 
     // Observe the settings behind the list so edits made elsewhere show up.
     const raw = source.folder ? source.folder.raw : ctx.settings.raw;
     const watchKeys = source.keys ?? ['pinned-apps'];
-    const ids = source.folder ? [raw.connect('changed', build)] : watchKeys.map(k => raw.connect(`changed::${k}`, build));
-    group.connect('destroy', () => ids.forEach(id => raw.disconnect(id)));
+    const dispose = connectDisposable(raw, source.folder ? [['changed', build]] : watchKeys.map(k => [`changed::${k}`, build] as const));
+    onWindowClose(ctx, dispose);
+    group.connect('destroy', dispose);
+    opts.lifetime?.connect('closed', dispose);
 
     // "Add" menu.
     const actions = new Gio.SimpleActionGroup();
@@ -343,14 +386,7 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
         actions.add_action(a);
     };
     act('app', () => {
-        const exclude = new Set<string>(items().map(e => e.id));
-        if (kind === 'pinned') {
-            for (const e of items()) {
-                if (e.isFolder === 'true')
-                    ctx.settings.folder(e.id).pinnedApps.forEach(a => exclude.add(a.id));
-            }
-        }
-        chooseApplication(ctx, exclude, id => add({id}));
+        chooseApplication(ctx, pinnedEverywhere(), id => add({id}));
     });
     act('folder', () => promptText(ctx, 'New Folder', '', 'Create', name => {
         const uuid = GLib.uuid_string_random();
@@ -382,18 +418,14 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
         css_classes: ['flat'],
         menu_model: menuModel(kind),
     });
+    label(addButton, `Add to ${opts.title}`);
+    addRef = addButton;
     if (opts.reset && source.keys?.length === 1) {
         const key = source.keys[0] as SettingKey;
         const reset = new Gtk.Button({label: 'Reset', valign: Gtk.Align.CENTER, css_classes: ['flat'], tooltip_text: 'Restore the default list'});
         reset.connect('clicked', () => {
-            if (kind === 'pinned') {
-                for (const e of items()) {
-                    if (e.isFolder === 'true')
-                        ctx.settings.deleteFolder(e.id);
-                }
-            }
-            ctx.settings.reset(key);
-            toast(ctx, `${opts.title} reset to defaults`);
+            const folderIds = kind === 'pinned' ? items().filter(e => e.isFolder === 'true' && isValidFolderId(e.id)).map(e => e.id) : [];
+            resetWithUndo(ctx, [key], `${opts.title} reset to defaults`, folderIds);
         });
         const box = new Gtk.Box({orientation: Gtk.Orientation.HORIZONTAL, spacing: 6});
         box.append(reset);
@@ -406,6 +438,10 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
 }
 
 export function openFolderEditor(ctx: PrefsContext, uuid: string, name: string): void {
+    if (!isValidFolderId(uuid)) {
+        toast(ctx, 'This folder entry is damaged');
+        return;
+    }
     const folder = ctx.settings.folder(uuid);
     const dialog = new Adw.Dialog({title: name || 'Folder', content_width: 520, content_height: 520});
     const toolbar = new Adw.ToolbarView();
@@ -415,6 +451,7 @@ export function openFolderEditor(ctx: PrefsContext, uuid: string, name: string):
         title: 'Apps in this folder',
         kind: 'folder',
         source: {get: () => folder.pinnedApps, set: v => { folder.pinnedApps = v; }, keys: null, folder},
+        lifetime: dialog,
     }));
     toolbar.set_content(page);
     dialog.set_child(toolbar);

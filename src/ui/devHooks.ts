@@ -15,6 +15,14 @@
 //   Drag(i x1, i y1, i x2, i y2)  press at 1, hold 300 ms, move in steps, release at 2 (async; ~1 s)
 //   Pick(i x, i y) -> s      class + style class of the actor at those stage coordinates
 //   State() -> s             JSON: view, focus, counts, popup state
+//   Rect(s cls, i nth) -> s  JSON [x, y, w, h] (stage coordinates) of the nth VISIBLE actor whose
+//                            style class list contains `cls` (popup, context menu, tooltip), or ""
+//                            Scenarios use it to find targets instead of hard-coded pixels.
+//   Count(s cls) -> i        how many visible actors carry `cls`
+//   FocusActor(s cls, i nth) give the nth visible actor with `cls` the keyboard focus
+//   Dump() -> s              JSON: monitor, anchor, popup rect and every visible actor of the popup /
+//                            context menu / tooltip with allocation, padding, margin, colours, font
+//                            (the UX audit measurements; see tools/dev/scenarios/ui-ux-measure.sh)
 //
 // Public API:
 //   installUiDevHooks(scope, settings, popup): void
@@ -22,6 +30,9 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import St from 'gi://St';
+
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
@@ -41,6 +52,10 @@ const IFACE = `
     <method name="Drag"><arg type="i" direction="in" name="x1"/><arg type="i" direction="in" name="y1"/><arg type="i" direction="in" name="x2"/><arg type="i" direction="in" name="y2"/></method>
     <method name="Pick"><arg type="i" direction="in" name="x"/><arg type="i" direction="in" name="y"/><arg type="s" direction="out" name="actor"/></method>
     <method name="State"><arg type="s" direction="out" name="json"/></method>
+    <method name="Rect"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/><arg type="s" direction="out" name="rect"/></method>
+    <method name="Count"><arg type="s" direction="in" name="cls"/><arg type="i" direction="out" name="count"/></method>
+    <method name="FocusActor"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/></method>
+    <method name="Dump"><arg type="s" direction="out" name="json"/></method>
   </interface>
 </node>`;
 
@@ -97,7 +112,120 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
             keyboard.notify_keyval(t++, m, Clutter.KeyState.RELEASED);
     };
 
+    // ---- actor inspection (Rect / Count / FocusActor / Dump) ----
+
+    const roots = (): Clutter.Actor[] => {
+        const out: Clutter.Actor[] = [];
+        const menu = popup.menuActor;
+        if (menu)
+            out.push(menu);
+        for (const c of Main.uiGroup.get_children()) {
+            const cls = (c as St.Widget).style_class ?? '';
+            if (c !== menu && /spawn-(context-menu|tooltip|power-popup)/.test(cls))
+                out.push(c);
+        }
+        return out;
+    };
+
+    const hasClass = (a: Clutter.Actor, cls: string): boolean =>
+        ` ${(a as St.Widget).style_class ?? ''} `.includes(` ${cls} `);
+
+    const findAll = (cls: string): Clutter.Actor[] => {
+        const found: Clutter.Actor[] = [];
+        const walk = (a: Clutter.Actor) => {
+            if (!a.visible)
+                return;
+            if (hasClass(a, cls))
+                found.push(a);
+            for (const c of a.get_children())
+                walk(c);
+        };
+        for (const r of roots())
+            walk(r);
+        return found;
+    };
+
+    const rectOf = (a: Clutter.Actor): number[] => {
+        const [x, y] = a.get_transformed_position();
+        const [w, h] = a.get_transformed_size();
+        return [x, y, w, h].map(v => Math.round(v * 10) / 10);
+    };
+
+    const dump = (): string => {
+        const sides: St.Side[] = [St.Side.TOP, St.Side.RIGHT, St.Side.BOTTOM, St.Side.LEFT];
+        const col = (c: {red: number; green: number; blue: number; alpha: number}) => [c.red, c.green, c.blue, c.alpha];
+        const items: Record<string, unknown>[] = [];
+        const walk = (a: Clutter.Actor, depth: number) => {
+            if (!a.visible)
+                return;
+            const [x, y, w, h] = rectOf(a);
+            const e: Record<string, unknown> = {d: depth, type: a.constructor.name, x, y, w, h};
+            const w2 = a as St.Widget;
+            if (w2.style_class)
+                e['cls'] = w2.style_class;
+            if (a.reactive)
+                e['react'] = 1;
+            if ((a as St.Widget).can_focus)
+                e['focus'] = 1;
+            if (a instanceof St.Label)
+                e['text'] = a.text;
+            if (a instanceof St.Icon) {
+                e['icon'] = a.icon_name ?? a.gicon?.to_string() ?? 'gicon';
+                e['isize'] = a.icon_size;
+            }
+            if (a instanceof St.Widget) {
+                try {
+                    const n = a.get_theme_node();
+                    e['pad'] = sides.map(s => n.get_padding(s));
+                    e['mar'] = sides.map(s => n.get_margin(s));
+                    e['fg'] = col(n.get_foreground_color());
+                    e['bg'] = col(n.get_background_color());
+                    e['radius'] = n.get_border_radius(St.Corner.TOPLEFT);
+                    e['fs'] = n.get_font().get_size() / 1024;
+                    e['td'] = n.get_transition_duration();
+                } catch (err) {
+                    e['err'] = String(err);
+                }
+            }
+            items.push(e);
+            for (const c of a.get_children())
+                walk(c, depth + 1);
+        };
+        for (const r of roots())
+            walk(r, 0);
+        const mon = Main.layoutManager.primaryMonitor;
+        const res: Record<string, unknown> = {
+            monitor: mon ? [mon.x, mon.y, mon.width, mon.height] : null,
+            scale: St.ThemeContext.get_for_stage(global.stage).scale_factor,
+            side: popup.side,
+            pointer: global.get_pointer(),
+            items,
+        };
+        const anchor = popup.anchor;
+        if (anchor)
+            res['anchor'] = rectOf(anchor);
+        const menu = popup.menuActor;
+        if (menu)
+            res['menu'] = rectOf(menu);
+        const layout = popup.layoutActor;
+        if (layout)
+            res['layout'] = rectOf(layout);
+        return JSON.stringify(res);
+    };
+
     const impl = {
+        RectAsync: ([cls, nth]: [string, number], inv: Invocation) => reply(inv, () => {
+            const a = findAll(cls)[nth];
+            return new GLib.Variant('(s)', [a ? JSON.stringify(rectOf(a)) : '']);
+        }),
+        CountAsync: ([cls]: [string], inv: Invocation) => reply(inv, () => new GLib.Variant('(i)', [findAll(cls).length])),
+        FocusActorAsync: ([cls, nth]: [string, number], inv: Invocation) => reply(inv, () => {
+            const a = findAll(cls)[nth];
+            if (!a)
+                throw new Error(`no visible actor with class '${cls}' at ${nth}`);
+            a.grab_key_focus();
+        }),
+        DumpAsync: (_p: unknown[], inv: Invocation) => reply(inv, () => new GLib.Variant('(s)', [dump()])),
         SearchAsync: ([q]: [string], inv: Invocation) => reply(inv, () => popup.search(q)),
         ShowViewAsync: ([id]: [string], inv: Invocation) => reply(inv, () => popup.showView(id)),
         OpenFolderAsync: ([i]: [number], inv: Invocation) => reply(inv, () => popup.openFolderByIndex(i)),

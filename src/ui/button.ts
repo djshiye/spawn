@@ -15,6 +15,10 @@
 //                                      top -> St.Side.TOP, i.e. the popup opens below it)
 //   MenuButtonDeps: {settings, iconDir, popup: {toggle(anchor)}}
 //
+// Keyboard: Return / Enter / Space (press arms, release fires) activate the left-click action, so the button works after Ctrl+Alt+Tab to the top bar.
+// Icon: a configured icon that is missing, unreadable or not a decodable image, or a themed name the
+// icon theme does not have, falls back to 'start-here-symbolic' (never an empty / broken button).
+//
 // Click mapping uses menu-button-{left,middle,right}-click-action ('Menu' | 'None'); the mouse
 // button is read from the gesture so middle click works like any other. A hover tooltip (the
 // shell's `dash-label` look; button text or "Applications") follows `show-tooltips` and is
@@ -23,6 +27,7 @@
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
+import GdkPixbuf from 'gi://GdkPixbuf';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
@@ -51,6 +56,21 @@ const BUTTON_ACTION_KEY = {
     3: 'menu-button-right-click-action',
 } as const;
 
+/** True when `path` is a regular file whose header gdk-pixbuf recognises as an image (svg included). */
+function isLoadableImage(path: string): boolean {
+    try {
+        if (!GLib.file_test(path, GLib.FileTest.IS_REGULAR))
+            return false;
+        return GdkPixbuf.Pixbuf.get_file_info(path)[0] !== null;
+    } catch {
+        return false;
+    }
+}
+
+function isActivationKey(symbol: number): boolean {
+    return symbol === Clutter.KEY_Return || symbol === Clutter.KEY_KP_Enter || symbol === Clutter.KEY_space;
+}
+
 export class MenuButton extends PanelMenu.Button {
     static {
         GObject.registerClass(this);
@@ -63,6 +83,7 @@ export class MenuButton extends PanelMenu.Button {
     private _scope = new Scope('MenuButton');
     private _tooltip: St.Label | null = null;
     private _cancelTooltip: (() => void) | null = null;
+    private _activationArmed = false;
 
     constructor(deps: MenuButtonDeps) {
         super(0.5, 'Spawn', true);
@@ -71,7 +92,12 @@ export class MenuButton extends PanelMenu.Button {
         this.add_style_class_name('spawn-button');
 
         this._box = new St.BoxLayout({style_class: 'spawn-button-box'});
-        this._icon = new St.Icon({style_class: 'spawn-button-icon system-status-icon', y_align: Clutter.ActorAlign.CENTER});
+        this._icon = new St.Icon({
+            style_class: 'spawn-button-icon system-status-icon',
+            y_align: Clutter.ActorAlign.CENTER,
+            // Used by St when a themed icon_name does not exist in the icon theme.
+            fallback_icon_name: FALLBACK_ICON,
+        });
         this._label = new St.Label({style_class: 'spawn-button-label', y_align: Clutter.ActorAlign.CENTER});
         this.add_child(this._box);
 
@@ -80,6 +106,9 @@ export class MenuButton extends PanelMenu.Button {
         gesture.connect('recognize', () => this._onClick(gesture.get_button()));
         this.add_action(gesture);
 
+        this._scope.connect(this, 'key-focus-out', () => {
+            this._activationArmed = false;
+        });
         this._scope.connect(this, 'notify::hover', () => (this.hover ? this._scheduleTooltip() : this._hideTooltip()));
         this._scope.connect(this, 'destroy', () => {
             this._hideTooltip();
@@ -116,6 +145,38 @@ export class MenuButton extends PanelMenu.Button {
         }
     }
 
+    /** What the icon shows right now (dev status and tests). */
+    iconDebug(): {iconName: string | null; file: string | null} {
+        const gicon = this._icon.gicon;
+        return {
+            iconName: this._icon.icon_name ?? null,
+            file: gicon instanceof Gio.FileIcon ? gicon.get_file().get_path() : null,
+        };
+    }
+
+    // Activation is armed by a key PRESS on this button and fires on the matching release, so the
+    // release of a Return pressed elsewhere (inside the menu, whose close hands the key focus back
+    // here, or in the Ctrl+Alt+Tab switcher) never re-triggers the button.
+    override vfunc_key_press_event(event: Clutter.Event): boolean {
+        if (isActivationKey(event.get_key_symbol())) {
+            this._activationArmed = true;
+            return Clutter.EVENT_STOP;
+        }
+        this._activationArmed = false;
+        return super.vfunc_key_press_event(event);
+    }
+
+    override vfunc_key_release_event(event: Clutter.Event): boolean {
+        if (isActivationKey(event.get_key_symbol())) {
+            const armed = this._activationArmed;
+            this._activationArmed = false;
+            if (armed)
+                this._onClick(1);
+            return Clutter.EVENT_STOP;
+        }
+        return super.vfunc_key_release_event(event);
+    }
+
     /** The panel actor containing this button (falls back to the button itself). */
     private _panelActor(): St.Widget {
         let actor: Clutter.Actor | null = this.get_parent();
@@ -136,12 +197,12 @@ export class MenuButton extends PanelMenu.Button {
             const padding = s.get('menu-button-padding');
 
             const resolved = resolveButtonIcon(s.get('menu-button-icon'), this._deps.iconDir);
-            if (resolved.kind === 'file' && GLib.file_test(resolved.path, GLib.FileTest.IS_REGULAR)) {
+            if (resolved.kind === 'file' && isLoadableImage(resolved.path)) {
                 this._icon.icon_name = null;
                 this._icon.gicon = new Gio.FileIcon({file: Gio.File.new_for_path(resolved.path)});
             } else {
                 this._icon.gicon = null;
-                this._icon.icon_name = resolved.kind === 'name' ? resolved.name : FALLBACK_ICON;
+                this._icon.icon_name = resolved.kind === 'name' && resolved.name.trim() !== '' ? resolved.name : FALLBACK_ICON;
             }
             this._icon.icon_size = iconSize;
             this._label.text = s.get('menu-button-text');

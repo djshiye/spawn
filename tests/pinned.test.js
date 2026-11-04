@@ -140,6 +140,26 @@ test('deleteFolder removes the folder and unpins its apps', () => {
     assertEquals(Object.keys(r.folders), []);
 });
 
+test('dissolveFolder moves the contents to the folder slot, nothing is unpinned', () => {
+    const s = withFolder();
+    const before = JSON.stringify(s);
+    const r = ops.dissolveFolder(s, 'F');
+    assertEquals(ids(r), ['a.desktop', 'x.desktop', 'y.desktop', 'b.desktop']);
+    assertEquals(Object.keys(r.folders), []);
+    assert(ops.isPinnedIn(r, 'x.desktop') && ops.isPinnedIn(r, 'y.desktop'));
+    assertEquals(JSON.stringify(s), before, 'input not mutated');
+    assert(ops.dissolveFolder(s, 'nope') === s, 'unknown folder is a no-op');
+});
+
+test('dissolveFolder of an empty folder just removes it; a folder list without a top entry is dropped', () => {
+    const empty = snap([app('a'), folder('E', 'Empty')], {E: []});
+    assertEquals(ids(ops.dissolveFolder(empty, 'E')), ['a.desktop']);
+    const orphan = snap([app('a')], {O: [app('z')]});
+    const r = ops.dissolveFolder(orphan, 'O');
+    assertEquals(Object.keys(r.folders), []);
+    assertEquals(ids(r), ['a.desktop', 'z.desktop']);
+});
+
 test('addToFolder moves a top-level app into the folder', () => {
     const r = ops.addToFolder(withFolder(), 'F', 'a.desktop');
     assertEquals(ids(r), ['F', 'b.desktop']);

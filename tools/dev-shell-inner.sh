@@ -123,6 +123,50 @@ click() { # x y [button]
     ui_call Click "$1" "$2" "${3:-1}" >/dev/null
     sleep 0.9
 }
+# Target lookup by style class (Ui.Rect / Ui.Count / Ui.FocusActor): scenarios find tiles, buttons and
+# rows through the live actor tree instead of hard-coded pixels, so layout tweaks cannot break them.
+#   rect <class> [nth]         "x y w h" (stage coordinates) of the nth visible actor with that class
+#   center <class> [nth]       "cx cy" (rounded centre); prints nothing and returns 1 when absent
+#   count <class>              number of visible actors with that class
+#   move_class / click_class <class> [nth] [button]   pointer to the centre (click: button, default 1)
+#   focus_class <class> [nth]  give that actor the keyboard focus
+rect() { ui_call Rect "$1" "${2:-0}" | unwrap; }
+center() {
+    local r
+    r="$(rect "$1" "${2:-0}")"
+    [ -n "$r" ] || return 1
+    python3 -c 'import json,sys; x,y,w,h=json.loads(sys.argv[1]); print(round(x+w/2), round(y+h/2))' "$r"
+}
+count() { ui_call Count "$1" | tr -dc '0-9'; }
+move_class() {
+    local c
+    c="$(center "$1" "${2:-0}")" || { echo "FAIL no visible '$1' #${2:-0} to move to"; status=1; return 1; }
+    # the first virtual-pointer motion after a quiet period can land at x=0: move twice
+    ui_call Move $c >/dev/null; sleep 0.25
+    ui_call Move $c >/dev/null
+    sleep "${3:-0.4}"
+}
+click_class() {
+    local c
+    c="$(center "$1" "${2:-0}")" || { echo "FAIL no visible '$1' #${2:-0} to click"; status=1; return 1; }
+    click $c "${3:-1}"
+}
+focus_class() { ui_call FocusActor "$1" "${2:-0}" >/dev/null; sleep 0.3; }
+# dump_ui <file>: the whole popup actor tree with allocations and theme values (JSON)
+dump_ui() { ui_call Dump | unwrap >"$1"; }
+
+# wait_count <class> <expected> [timeout s]: poll until `count` equals expected (installed-changed reaches
+# the shell a few seconds after a .desktop file appears / vanishes); prints the final count
+wait_count() {
+    local i n=""
+    for ((i = 0; i < ${3:-20} * 2; i++)); do
+        n="$(count "$1")"
+        [ "$n" = "$2" ] && break
+        sleep 0.5
+    done
+    echo "$n"
+}
+
 # The headless shell starts in the Overview (no windows yet); Escape leaves it.
 leave_overview() { ui_call Key Escape >/dev/null; sleep 1; }
 open_menu() { dev_call Open >/dev/null; sleep "${1:-1.2}"; }
@@ -158,39 +202,6 @@ reset_seed() { # restore the seeded settings between scenarios of one session (d
     sleep 1.5
 }
 
-# Input helpers for the ui scenarios (virtual pointer / keyboard inside the shell).
-key() { ui_call Key "$1" >/dev/null; sleep "${2:-0.3}"; }
-click() { # x y [button]
-    ui_call Move "$1" "$2" >/dev/null
-    sleep 0.5
-    ui_call Click "$1" "$2" "${3:-1}" >/dev/null
-    sleep 0.9
-}
-# The headless shell starts in the Overview (no windows yet); Escape leaves it.
-leave_overview() { ui_call Key Escape >/dev/null; sleep 1; }
-open_menu() { dev_call Open >/dev/null; sleep "${1:-1.2}"; }
-close_menu() { dev_call Close >/dev/null; sleep 0.5; }
-
-pinned_ids() { # prints the top-level pinned-apps ids from the sandbox dconf, in order
-    dconf read /org/gnome/shell/extensions/spawn/pinned-apps | python3 -c '
-import ast, sys
-print(" ".join(e["id"] for e in ast.literal_eval(sys.stdin.read().strip())))'
-}
-
-folder_ids() { # <folder-uuid>
-    dconf read "/org/gnome/shell/extensions/spawn/folders/$1/pinned-apps" | python3 -c '
-import ast, sys
-print(" ".join(e["id"] for e in ast.literal_eval(sys.stdin.read().strip())))'
-}
-
-reset_seed() { # restore the seeded settings between scenarios of one session
-    dev_call Close >/dev/null
-    dconf reset -f /org/gnome/shell/extensions/spawn/
-    dconf load /org/gnome/shell/extensions/spawn/ <"$root/tools/dev/seed.ini"
-    dconf write /org/gnome/shell/extensions/spawn/dev-mode true
-    sleep 1.5
-}
-
 attachment_status() {
     dev_call AttachmentStatus | sed -E "s/^\('(.*)',\)$/\1/"
 }
@@ -216,6 +227,9 @@ fi
 # ---------------------------------------------------------------- install
 ext_dir="$XDG_DATA_HOME/gnome-shell/extensions"
 mkdir -p "$ext_dir"
+# the sandbox applications dir must exist BEFORE the shell starts so GAppInfoMonitor watches it
+# (scenarios create / remove test .desktop files there and expect installed-changed)
+mkdir -p "$XDG_DATA_HOME/applications"
 if [ ! -f "$root/build/metadata.json" ]; then
     echo "build/ missing; run tools/build.sh first" >&2
     exit 1
@@ -381,10 +395,10 @@ hotkeys)
     hk_check "Super intercepted again" superActive True
     hk_check "GNOME handler blocked again" firstUnblocked "$(hk_field ourHandler)"
     # custom accelerator
-    dconf write /org/gnome/shell/extensions/spawn/menu-hotkey "['<Super>space']"
+    dconf write /org/gnome/shell/extensions/spawn/spawn-hotkey "['<Super>space']"
     sleep 1.5
     hk_check "accelerator bound" accelBound True
-    dconf write /org/gnome/shell/extensions/spawn/menu-hotkey "@as []"
+    dconf write /org/gnome/shell/extensions/spawn/spawn-hotkey "@as []"
     sleep 1.5
     hk_check "accelerator unbound" accelBound False
     # disable + re-enable: the handler must be found again and be intercepted

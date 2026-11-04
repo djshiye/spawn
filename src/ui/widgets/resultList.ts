@@ -1,24 +1,40 @@
 // ResultList: streaming search results. One section per SearchBatch (provider title + rows),
-// ordered apps > windows > recent files > shell providers regardless of arrival order. The
+// ordered by SearchBatch.order (the engine's provider registration order: apps > windows >
+// recent files > GNOME shell providers in their sort-order) regardless of arrival order. The
 // first row carries the :selected pseudo class (Return in the search entry activates it) until
 // a row takes keyboard focus. Optional term highlighting (highlight-search-result-terms) and
-// descriptions (show-search-result-details).
+// descriptions (show-search-result-details; results with alwaysShowDescription, e.g. the
+// folder of a recent file, always show theirs). Row icons come from result.createIcon(size)
+// when present (GNOME remote providers: Characters glyphs, Files icons), else result.icon.
+//
+// Flicker-free queries: instead of reset() on every keystroke, call beginQuery(). The rows of
+// the previous query stay on screen, dimmed ("stale"), until the first batch of the new query
+// arrives (they are then replaced at once) or STALE_MS (150 ms) elapse (they are then dropped
+// and the pending / "No results" state follows). While stale, first() returns null and
+// activateFirst() does nothing, so Return can never activate a row of an OLD query: call
+// SearchHandle.flush() (engine) first, which delivers the synchronous batches before it
+// returns, then activateFirst().
 //
 // Public API:
 //   new ResultList(scope: Scope, settings: SpawnSettings, host: ResultHost)
 //   list.actor: St.Widget
-//   list.reset(): void
-//   list.addBatch(batch: SearchBatch): void
-//   list.rows(): St.Widget[]            visible rows in display order (keyboard nav)
-//   list.first(): St.Widget | null
+//   list.beginQuery(): void             a new query starts: keep old rows dimmed, see above
+//   list.reset(): void                  hard clear (menu closed / view left): rows gone now
+//   list.addBatch(batch: SearchBatch): void   empty batches are ignored
+//   list.rows(): St.Widget[]            visible rows in display order (keyboard nav; includes
+//                                       stale rows)
+//   list.first(): St.Widget | null      first row of the CURRENT query; null while stale
 //   list.activateFirst(): boolean       activate the selected (first) result
 //   list.setSelectionVisible(v)          show/hide the :selected marker on the first row
-//   list.hasResults: boolean
+//   list.hasResults: boolean            current (non-stale) rows exist
+//   list.hasPending: boolean            beginQuery() was called and no batch with rows has
+//                                       arrived yet (stays true for a query without matches;
+//                                       use SearchHandle.pending to know about the debounce)
 //   list.destroy()
+//   highlightMarkup(text, query)        re-export of search/highlight.ts
 //   ResultHost: ShortcutHost & {openResultContext?(row: St.Widget, result: SearchResult): void}
 
 import Clutter from 'gi://Clutter';
-import GLib from 'gi://GLib';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
@@ -26,6 +42,7 @@ import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
 import type {SearchBatch, SearchResult} from '../../search/engine.js';
 import {error} from '../../core/log.js';
+import {highlightMarkup} from '../../search/highlight.js';
 import {iconSizeFor} from '../util.js';
 import {makeItemButton, wireItem} from './interact.js';
 import type {ShortcutHost} from './shortcutRow.js';
@@ -41,46 +58,11 @@ interface Section {
     rows: St.Button[];
 }
 
-const PROVIDER_ORDER = ['apps', 'windows', 'recentFiles'];
 const EMPTY_DELAY_MS = 700;
+const STALE_MS = 150;
+const STALE_OPACITY = 110;
 
-function orderOf(providerId: string): number {
-    const i = PROVIDER_ORDER.indexOf(providerId);
-    return i >= 0 ? i : PROVIDER_ORDER.length;
-}
-
-export function highlightMarkup(text: string, query: string): string {
-    const terms = query.trim().split(/\s+/).filter(t => t.length > 0).sort((a, b) => b.length - a.length);
-    if (terms.length === 0)
-        return GLib.markup_escape_text(text, -1);
-    const lower = text.toLowerCase();
-    const marks: boolean[] = new Array(text.length).fill(false);
-    for (const term of terms) {
-        const t = term.toLowerCase();
-        let from = 0;
-        for (;;) {
-            const at = lower.indexOf(t, from);
-            if (at < 0)
-                break;
-            for (let i = at; i < at + t.length && i < marks.length; i++)
-                marks[i] = true;
-            from = at + t.length;
-        }
-    }
-    let out = '';
-    let open = false;
-    for (let i = 0; i < text.length; i++) {
-        if (marks[i] && !open) {
-            out += '<b>';
-            open = true;
-        } else if (!marks[i] && open) {
-            out += '</b>';
-            open = false;
-        }
-        out += GLib.markup_escape_text(text[i], -1);
-    }
-    return open ? `${out}</b>` : out;
-}
+export {highlightMarkup};
 
 export class ResultList {
     readonly actor: St.BoxLayout;
@@ -91,6 +73,9 @@ export class ResultList {
     private readonly _empty: St.Label;
     private readonly _results = new Map<St.Button, SearchResult>();
     private _cancelEmpty: (() => void) | null = null;
+    private _cancelStale: (() => void) | null = null;
+    private _stale = false;
+    private _pending = false;
     private _selected: St.Button | null = null;
     private _selectionVisible = true;
 
@@ -102,34 +87,63 @@ export class ResultList {
             style_class: 'spawn-result-list',
             orientation: Clutter.Orientation.VERTICAL,
             x_expand: true,
+            y_expand: true,
         });
-        this._empty = new St.Label({text: 'No results', style_class: 'spawn-empty-label', x_align: Clutter.ActorAlign.CENTER, visible: false});
+        this._empty = new St.Label({
+            text: 'No results',
+            style_class: 'spawn-empty-label',
+            x_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.CENTER,
+            y_expand: true,
+            visible: false,
+        });
         this.actor.add_child(this._empty);
         scope.add(() => {
             this._cancelEmpty?.();
+            this._cancelStale?.();
             this.actor.destroy();
         }, 'ResultList');
     }
 
     get hasResults(): boolean {
-        return this._sections.some(s => s.rows.length > 0);
+        return !this._stale && this._sections.some(s => s.rows.length > 0);
+    }
+
+    get hasPending(): boolean {
+        return this._pending;
+    }
+
+    beginQuery(): void {
+        this._host.tooltips?.hide();
+        this._pending = true;
+        this._empty.hide();
+        this._cancelEmpty?.();
+        this._cancelEmpty = null;
+        if (!this._sections.some(s => s.rows.length > 0)) {
+            this._clearSections();
+            this._armEmpty();
+            return;
+        }
+        if (this._stale)
+            return; // already waiting; the drop timer keeps its original deadline
+        this._stale = true;
+        for (const s of this._sections)
+            s.box.opacity = STALE_OPACITY;
+        this._updateSelection();
+        this._cancelStale = this._scope.timeout(STALE_MS, () => {
+            this._cancelStale = null;
+            this._clearSections();
+            this._armEmpty();
+        });
     }
 
     reset(): void {
         this._host.tooltips?.hide();
-        this._cancelEmpty?.();
-        this._cancelEmpty = null;
-        for (const s of this._sections)
-            s.box.destroy();
-        this._sections.length = 0;
-        this._results.clear();
-        this._selected = null;
+        this._pending = false;
+        this._clearSections();
         this._selectionVisible = true;
         this._empty.hide();
-        this._cancelEmpty = this._scope.timeout(EMPTY_DELAY_MS, () => {
-            this._cancelEmpty = null;
-            this._empty.visible = !this.hasResults;
-        });
+        this._armEmpty();
     }
 
     addBatch(batch: SearchBatch): void {
@@ -137,11 +151,16 @@ export class ResultList {
         const results = batch.results.slice(0, max);
         if (results.length === 0)
             return;
+        if (this._stale)
+            this._clearSections();
+        this._pending = false;
+        this._cancelEmpty?.();
+        this._cancelEmpty = null;
         this._empty.hide();
 
         const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-result-section'});
         box.add_child(new St.Label({text: batch.providerTitle, style_class: 'spawn-section-title'}));
-        const section: Section = {providerId: batch.providerId, order: orderOf(batch.providerId), box, rows: []};
+        const section: Section = {providerId: batch.providerId, order: batch.order, box, rows: []};
         for (const result of results) {
             const row = this._makeRow(result, batch.query);
             box.add_child(row);
@@ -163,6 +182,8 @@ export class ResultList {
     }
 
     first(): St.Widget | null {
+        if (this._stale)
+            return null;
         return this._sections.find(s => s.rows.length > 0)?.rows[0] ?? null;
     }
 
@@ -190,6 +211,47 @@ export class ResultList {
         this._updateSelection();
     }
 
+    private _clearSections(): void {
+        this._cancelStale?.();
+        this._cancelStale = null;
+        this._stale = false;
+        for (const s of this._sections)
+            s.box.destroy();
+        this._sections.length = 0;
+        this._results.clear();
+        this._selected = null;
+    }
+
+    private _armEmpty(): void {
+        this._cancelEmpty?.();
+        this._cancelEmpty = this._scope.timeout(EMPTY_DELAY_MS, () => {
+            this._cancelEmpty = null;
+            this._empty.visible = !this.hasResults;
+        });
+    }
+
+    private _makeIcon(result: SearchResult): St.Widget {
+        const size = iconSizeFor(this._settings, 'icon-size-apps', 28);
+        if (typeof result.createIcon === 'function') {
+            try {
+                const made = result.createIcon(size);
+                if (made instanceof St.Widget) {
+                    made.add_style_class_name('spawn-row-icon');
+                    made.y_align = Clutter.ActorAlign.CENTER;
+                    return made;
+                }
+            } catch (e) {
+                error('creating a result icon failed', e);
+            }
+        }
+        const icon = new St.Icon({style_class: 'spawn-row-icon', icon_size: size, y_align: Clutter.ActorAlign.CENTER});
+        if (result.icon)
+            icon.gicon = result.icon;
+        else
+            icon.icon_name = 'application-x-executable';
+        return icon;
+    }
+
     private _updateSelection(): void {
         const first = this.first() as St.Button | null;
         if (this._selected && (this._selected !== first || !this._selectionVisible)) {
@@ -214,15 +276,7 @@ export class ResultList {
     private _makeRow(result: SearchResult, query: string): St.Button {
         const button = makeItemButton('spawn-row spawn-result-row');
         const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
-        const icon = new St.Icon({
-            style_class: 'spawn-row-icon',
-            icon_size: iconSizeFor(this._settings, 'icon-size-apps', 28),
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-        if (result.icon)
-            icon.gicon = result.icon;
-        else
-            icon.icon_name = 'application-x-executable';
+        const icon = this._makeIcon(result);
         box.add_child(icon);
 
         const text = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, y_align: Clutter.ActorAlign.CENTER, x_expand: true});
@@ -233,7 +287,7 @@ export class ResultList {
             title.text = result.title;
         title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         text.add_child(title);
-        if (result.description && this._settings.get('show-search-result-details')) {
+        if (result.description && (result.alwaysShowDescription || this._settings.get('show-search-result-details'))) {
             const d = new St.Label({text: result.description, style_class: 'spawn-row-description'});
             d.clutter_text.ellipsize = Pango.EllipsizeMode.END;
             text.add_child(d);

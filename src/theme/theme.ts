@@ -13,6 +13,7 @@
 //   new Theme(scope, settings)
 //   theme.start(): void            write + load; idempotent; follows settings live
 //   theme.cssPath: string | null   path of the generated file once written
+//                                  (start() also sweeps theme dirs left behind by crashed sessions)
 //   buildCss(input: ThemeInput): string   PURE; unit-tested (tests/theme.test.js, implemented in theme/css.ts)
 //   accentColor(name: string): string     PURE; GNOME accent name -> css colour (blue default)
 //   sanitizeColor(value: string): string | null   PURE; null when `value` is not a safe colour
@@ -109,7 +110,34 @@ export class Theme {
             warn('cannot watch the GNOME accent colour', e);
         }
 
+        this._sweepStale();
         this._reload();
+    }
+
+    /**
+     * Removes `$XDG_RUNTIME_DIR/spawn/<other token>/theme.css` leftovers of a shell that crashed
+     * before its dispose ran. Every normal path removes its own dir, and the previous instance of
+     * this session is already disposed when a new Theme starts, so any other token is stale.
+     */
+    private _sweepStale(): void {
+        try {
+            const parent = GLib.path_get_dirname(this._dir());
+            const dir = Gio.File.new_for_path(parent);
+            if (!dir.query_exists(null))
+                return;
+            const children = dir.enumerate_children('standard::name,standard::type', Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null);
+            for (let info = children.next_file(null); info; info = children.next_file(null)) {
+                const name = info.get_name();
+                if (name === this._token || info.get_file_type() !== Gio.FileType.DIRECTORY)
+                    continue;
+                const stale = GLib.build_filenamev([parent, name]);
+                GLib.unlink(GLib.build_filenamev([stale, 'theme.css']));
+                GLib.rmdir(stale);
+            }
+            children.close(null);
+        } catch (e) {
+            warn('cannot sweep stale theme directories', e);
+        }
     }
 
     private _input(): ThemeInput {

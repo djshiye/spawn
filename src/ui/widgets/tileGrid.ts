@@ -45,7 +45,8 @@ export class TileGrid {
         let row: St.BoxLayout | null = null;
         tiles.forEach((tile, i) => {
             if (i % this._columns === 0) {
-                row = new St.BoxLayout({style_class: 'spawn-tile-row'});
+                // y_expand false: tiles may expand (multi-line labels: equal height per row) without stretching the rows
+                row = new St.BoxLayout({style_class: 'spawn-tile-row', y_expand: false});
                 this.actor.add_child(row);
             }
             tile.set_width(tileWidth);

@@ -10,7 +10,9 @@
 // Public API:
 //   new SpawnLayout(scope, services, host)
 //   layout.actor: St.Widget            content root (class "spawn-layout")
-//   layout.onOpen(): void              menu is about to be shown (reset view, focus search)
+//   layout.onOpen(anchor?, side?): void  menu is about to be shown from `anchor` (which decides the
+//                                      work area the popup is clamped to) opening towards `side`
+//                                      (reset view, "Auto" search position, focus search)
 //   layout.onClosed(): void            menu was hidden (clear search, release caches)
 //   layout.handleKey(event): boolean   Escape routing: true when the layout consumed the key
 //   layout.search(query): void         put `query` in the search entry (dev / D-Bus hook)
@@ -21,12 +23,14 @@
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
-import type Shell from 'gi://Shell';
+import Shell from 'gi://Shell';
 import St from 'gi://St';
 
+import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {ShortcutId} from '../core/constants.js';
+import {debounce} from '../core/debounce.js';
 import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
@@ -48,7 +52,7 @@ import {ShortcutRow, type ShortcutHost} from './widgets/shortcutRow.js';
 import {TileGrid} from './widgets/tileGrid.js';
 import {TooltipManager} from './widgets/tooltip.js';
 import {UserCard} from './widgets/userCard.js';
-import {iconSizeFor, launchApp, lookupApp, ownedScope, scrollIntoView} from './util.js';
+import {applyScrollSettings, displayName, iconSizeFor, launchApp, lookupApp, ownedScope, scrollIntoView} from './util.js';
 
 export interface LayoutHost {
     /** Close the popup (e.g. after launching an app). */
@@ -61,20 +65,48 @@ export interface LayoutHost {
 
 export type ViewId = 'pinned' | 'frequent' | 'categories' | 'all' | 'folder' | 'results';
 
-const MIN_LEFT_WIDTH = 420;
+/**
+ * Floors the code enforces whatever the settings say (the prefs spin rows use the same minimums):
+ * left pane 420 px (4 tile columns need ~390), right pane 180 px (avatar + names + 3 power buttons).
+ */
+export const MIN_LEFT_WIDTH = 420;
+export const MIN_RIGHT_WIDTH = 180;
 const MIN_COLUMNS = 3;
 const TILE_TARGET_WIDTH = 88;
-/** Horizontal space used by the left pane's own padding and the scrollbar gutter. */
-const LEFT_CHROME = 28;
+/**
+ * Horizontal space used inside the left pane that tiles cannot use: its own 8 + 8 px padding and
+ * the 8 + 8 px grid gutter (`.spawn-tile-grid` padding, which also absorbs a classic scrollbar).
+ */
+const LEFT_CHROME = 32;
+const MIN_HEIGHT = 360;
+/** Popup frame around the layout: content padding 2x8, shadow margins 3+3 / 14, arrow, breathing room. */
+const FRAME_W = 16 + 6;
+const FRAME_H = 16 + 14 + 14;
+const SCREEN_MARGIN = 8;
+/** Right pane margin (4) + vertical separator with its margins (1 + 2 x 6). */
+const PANE_GAP = 4;
+const SEPARATOR_W = 13;
 
 const RELAYOUT_KEYS = [
     'menu-height', 'menu-width-adjustment', 'left-panel-width', 'right-panel-width',
     'icon-size-grid', 'default-menu-view', 'vert-separator', 'search-entry-location', 'search-hidden',
+    'multi-lined-labels', 'apps-show-generic-names', 'max-frequent-apps',
 ] as const;
+
+/** Read once when a view is built: a change rebuilds the lists / re-applies scroll behaviour. */
+const VIEW_KEYS = [
+    'scrollview-fade-effect', 'scrollbars-visible', 'scrollbars-overlay',
+    'icon-size-apps', 'apps-show-extra-details', 'apps-show-generic-names', 'max-frequent-apps',
+    'icon-size-categories', 'icon-style-categories',
+] as const;
+
+/** installed-changed bursts (a package transaction) are coalesced into one refresh. */
+const INSTALLED_COALESCE_MS = 300;
 
 const RIGHT_KEYS = [
     'directory-shortcuts', 'application-shortcuts', 'icon-size-shortcuts', 'icon-style-shortcuts',
     'right-panel-width', 'show-user-avatar',
+    'scrollview-fade-effect', 'scrollbars-visible', 'scrollbars-overlay',
 ] as const;
 
 type Dir = 'up' | 'down' | 'left' | 'right';
@@ -143,6 +175,15 @@ export class SpawnLayout implements ShortcutHost {
     private _cols = 4;
     private _tileWidth = 96;
     private _tileIconSize = DEFAULT_TILE_ICON_SIZE;
+    /** Icon size / label mode / naming the cached tiles were built with; a change rebuilds them. */
+    private _tileSignature = '';
+    private _side: St.Side = St.Side.TOP;
+    private _anchor: St.Widget | null = null;
+    /** Where the search entry currently sits (resolved from `search-entry-location`, "Auto" included). */
+    private _searchTop = false;
+    /** Return was pressed before the first batch of the query arrived: activate it when it does. */
+    private _activateWhenReady = false;
+    private readonly _scrolls: St.ScrollView[] = [];
     private _destroyed = false;
 
     readonly tooltips: TooltipManager;
@@ -209,8 +250,8 @@ export class SpawnLayout implements ShortcutHost {
         this._stack = new St.BoxLayout({style_class: 'spawn-stack', orientation: Clutter.Orientation.VERTICAL, x_expand: true, y_expand: true});
 
         this._nav = new St.BoxLayout({style_class: 'spawn-nav'});
-        this._backButton = this._navButton('go-previous-symbolic', 'Back', () => this._back());
-        this._allAppsButton = this._navButton('view-app-grid-symbolic', 'All Apps', () => this._openAllApps());
+        this._backButton = this._navButton('go-previous-symbolic', _('Back'), () => this._back());
+        this._allAppsButton = this._navButton('view-app-grid-symbolic', _('All Apps'), () => this._openAllApps());
         this._nav.add_child(this._backButton);
         this._nav.add_child(this._allAppsButton);
 
@@ -221,10 +262,7 @@ export class SpawnLayout implements ShortcutHost {
 
         // search wiring
         this._search.onTextChanged(scope, text => this._onSearchText(text));
-        this._search.onActivate(scope, () => {
-            if (this._view === 'results')
-                this._results?.activateFirst();
-        });
+        this._search.onActivate(scope, () => this._onSearchActivate());
         this._search.onNavigate(scope, (key, shift) => this._onSearchKey(key, shift));
 
         // input
@@ -240,7 +278,12 @@ export class SpawnLayout implements ShortcutHost {
 
         settings.onChanged(scope, [...RELAYOUT_KEYS], () => this._relayout());
         settings.onChanged(scope, [...RIGHT_KEYS], () => this._buildRight());
+        settings.onChanged(scope, [...VIEW_KEYS], () => this._onViewSettings());
 
+        // Apps installed / removed while the shell runs: pinned tiles (and ghosts) follow. AppIndex
+        // only connects to this once it is built, so listen here too.
+        const installed = debounce(scope, INSTALLED_COALESCE_MS, () => this._onInstalledChanged());
+        scope.connect(Shell.AppSystem.get_default(), 'installed-changed', () => installed.call());
     }
 
     // ---- ShortcutHost / hosts ----
@@ -255,15 +298,24 @@ export class SpawnLayout implements ShortcutHost {
 
     // ---- public hooks ----
 
-    onOpen(): void {
+    onOpen(anchor: St.Widget | null = null, side: St.Side = St.Side.TOP): void {
         if (this._destroyed)
             return;
         this._isOpen = true;
+        this._anchor = anchor;
+        this._side = side;
+        try {
+            this._services.warmUp();
+        } catch (e) {
+            error('layout warm-up failed', e);
+        }
         try {
             this._context.close();
             this._search.setSilently('');
             this._cancelSearch();
             this._applyMetrics();
+            if (this._searchOnTop() !== this._searchTop)
+                this._arrangeLeft();
             this._setView(this._defaultView());
             this._search.actor.visible = !this._services.settings.get('search-hidden');
             if (this._search.actor.visible)
@@ -281,6 +333,7 @@ export class SpawnLayout implements ShortcutHost {
             this._context.close();
             this._tooltips.hide();
             this._cancelSearch();
+            this._activateWhenReady = false;
             this._search.setSilently('');
             this._results?.reset();
             this._services.search.cancel();
@@ -355,24 +408,51 @@ export class SpawnLayout implements ShortcutHost {
             tooltip: this._tooltips.debugText(),
             columns: this._cols,
             size: [this.actor.width, this.actor.height],
+            searchTop: this._searchTop,
+            side: this._side,
+            tileWidth: this._tileWidth,
+            leftWidth: this._left.width,
+            rightWidth: this._right.width,
         };
     }
 
     // ---- sizes ----
 
-    private _leftWidth(): number {
-        const s = this._services.settings;
-        return Math.max(MIN_LEFT_WIDTH, s.get('left-panel-width') + s.get('menu-width-adjustment'));
+    /** Work area of the monitor the popup opens on (the anchor's, else the primary one). */
+    private _workArea(): {width: number; height: number} | null {
+        try {
+            const lm = Main.layoutManager;
+            const index = this._anchor ? lm.findIndexForActor(this._anchor) : lm.primaryIndex;
+            const wa = lm.getWorkAreaForMonitor(index >= 0 ? index : lm.primaryIndex);
+            return wa ? {width: wa.width, height: wa.height} : null;
+        } catch {
+            return null;
+        }
     }
 
+    /**
+     * Pane widths and menu height from the settings, clamped to the work area of the anchor's
+     * monitor: the left pane shrinks first (never below MIN_LEFT_WIDTH), then the right pane (never
+     * below MIN_RIGHT_WIDTH); the height never exceeds the work area minus the popup frame.
+     */
     private _applyMetrics(): void {
         const s = this._services.settings;
-        const left = this._leftWidth();
-        const right = Math.max(180, s.get('right-panel-width'));
+        let left = Math.max(MIN_LEFT_WIDTH, s.get('left-panel-width') + s.get('menu-width-adjustment'));
+        let right = Math.max(MIN_RIGHT_WIDTH, s.get('right-panel-width'));
         const sep = s.get('vert-separator');
-        const monitor = Main.layoutManager.primaryMonitor;
-        const maxH = monitor ? monitor.height - 120 : 800;
-        const height = Math.max(360, Math.min(s.get('menu-height'), maxH));
+        const wa = this._workArea();
+
+        let maxH = Infinity;
+        if (wa) {
+            maxH = Math.max(0, wa.height - 2 * SCREEN_MARGIN - FRAME_H);
+            const maxW = wa.width - 2 * SCREEN_MARGIN - FRAME_W - PANE_GAP - (sep ? SEPARATOR_W : 0);
+            if (left + right > maxW) {
+                left = Math.max(MIN_LEFT_WIDTH, maxW - right);
+                if (left + right > maxW)
+                    right = Math.max(MIN_RIGHT_WIDTH, maxW - left);
+            }
+        }
+        const height = Math.max(Math.min(MIN_HEIGHT, maxH), Math.min(s.get('menu-height'), maxH));
 
         this._left.set_width(left);
         this._right.set_width(right);
@@ -397,6 +477,32 @@ export class SpawnLayout implements ShortcutHost {
             this._setView(this._view);
     }
 
+    /** Settings that are read once when a view is built: re-apply scrolling, rebuild the lists. */
+    private _onViewSettings(): void {
+        if (this._destroyed)
+            return;
+        const s = this._services.settings;
+        for (const scroll of [...this._scrolls, this._categories?.appScroll(), this._categories?.columnScroll(), this._folderView?.scroll])
+            if (scroll) applyScrollSettings(scroll, s);
+        this._categories?.refresh();
+        this._pinnedDirty = true;
+        if (this._isOpen)
+            this._setView(this._view);
+    }
+
+    private _onInstalledChanged(): void {
+        if (this._destroyed)
+            return;
+        // An app may have appeared (a ghost tile becomes real) or vanished (a tile becomes a ghost).
+        if (this._pinnedSubscribed)
+            this._services.pinned.invalidate();
+        this._pinnedDirty = true;
+        if (this._isOpen && this._view === 'pinned')
+            this._syncPinnedIfNeeded();
+        if (this._isOpen && this._view === 'folder')
+            this._folderView?.refresh();
+    }
+
     // ---- chrome ----
 
     private _navButton(iconName: string, text: string, cb: () => void): St.Button {
@@ -410,9 +516,21 @@ export class SpawnLayout implements ShortcutHost {
         return button;
     }
 
+    /**
+     * Search entry on top? `Top` / `Bottom` as set; `Auto` puts it on the side nearest the panel
+     * (arrow side TOP = popup below a top panel = entry on top; BOTTOM = popup above = entry below).
+     */
+    private _searchOnTop(): boolean {
+        const loc = this._services.settings.get('search-entry-location') as string;
+        if (loc === 'Auto')
+            return this._side === St.Side.TOP;
+        return loc === 'Top';
+    }
+
     /** (Re)order the left pane children: search, stack, nav according to settings. */
     private _arrangeLeft(): void {
-        const top = this._services.settings.get('search-entry-location') === 'Top';
+        const top = this._searchOnTop();
+        this._searchTop = top;
         for (const c of [this._search.actor, this._stack, this._nav]) {
             if (c.get_parent() === this._left)
                 this._left.remove_child(c);
@@ -451,7 +569,7 @@ export class SpawnLayout implements ShortcutHost {
         this._right.add_child(this._userCard.actor);
 
         const shortcutsBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-shortcuts-box'});
-        const scroll = this._makeScroll(shortcutsBox, 'spawn-shortcuts');
+        const scroll = this._makeScroll(shortcutsBox, 'spawn-shortcuts', false);
         const iconSize = iconSizeFor(s, 'icon-size-shortcuts', 16);
         const symbolic = s.get('icon-style-shortcuts') === 'Symbolic';
 
@@ -492,17 +610,19 @@ export class SpawnLayout implements ShortcutHost {
         this._right.add_child(this._powerBar.actor);
     }
 
-    private _makeScroll(child: St.Widget, styleClass: string): St.ScrollView {
+    /** `track`: remember it so scroll settings changes re-apply live (views built once, not the right pane). */
+    private _makeScroll(child: St.Widget, styleClass: string, track = true): St.ScrollView {
         const settings = this._services.settings;
         const scroll = new St.ScrollView({
-            style_class: `${styleClass}${settings.get('scrollview-fade-effect') ? ' vfade' : ''}`,
+            style_class: styleClass,
             hscrollbar_policy: St.PolicyType.NEVER,
-            vscrollbar_policy: settings.get('scrollbars-visible') ? St.PolicyType.AUTOMATIC : St.PolicyType.EXTERNAL,
-            overlay_scrollbars: settings.get('scrollbars-overlay'),
             x_expand: true,
             y_expand: true,
         });
+        applyScrollSettings(scroll, settings);
         scroll.add_child(child);
+        if (track)
+            this._scrolls.push(scroll);
         return scroll;
     }
 
@@ -569,7 +689,7 @@ export class SpawnLayout implements ShortcutHost {
                 this._frequentBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-list'});
                 this._frequentScroll = this._makeScroll(this._frequentBox, 'spawn-frequent');
             }
-            this._fillFrequent(this._frequentBox as St.BoxLayout, 0);
+            this._fillFrequent(this._frequentBox as St.BoxLayout);
             return [add(this._frequentScroll)];
         }
         case 'categories':
@@ -597,7 +717,7 @@ export class SpawnLayout implements ShortcutHost {
     private _ensurePinned(): St.ScrollView {
         if (!this._pinnedScroll) {
             this._pinnedBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-pinned-box'});
-            this._pinnedBox.add_child(new St.Label({text: 'Pinned', style_class: 'spawn-section-title'}));
+            this._pinnedBox.add_child(new St.Label({text: _('Pinned'), style_class: 'spawn-section-title'}));
             this._pinnedBox.add_child(this._grid.actor);
             this._pinnedScroll = this._makeScroll(this._pinnedBox, 'spawn-pinned');
             acceptDrops(this._scope, this._pinnedScroll, this._services.pinned, {kind: 'grid', index: () => -1});
@@ -624,7 +744,13 @@ export class SpawnLayout implements ShortcutHost {
             this._folderView = new FolderView(this._scope.child('folder view'), this._services, {
                 ...this._tileHostWithTips(),
                 back: () => this._back(),
-                metrics: () => ({columns: this._cols, tileWidth: this._tileWidth, iconSize: this._tileIconSize}),
+                metrics: () => ({
+                    columns: this._cols,
+                    tileWidth: this._tileWidth,
+                    iconSize: this._tileIconSize,
+                    multiLine: this._services.settings.get('multi-lined-labels'),
+                }),
+                openMissingContext: (tile, id) => this._context.open(tile, {kind: 'custom', id}),
             });
         }
         return this._folderView;
@@ -634,18 +760,30 @@ export class SpawnLayout implements ShortcutHost {
         return this._tileHost;
     }
 
-    private _fillFrequent(box: St.BoxLayout, limitOverride: number): void {
+    /** `max-frequent-apps`; anything below 1 (hand-edited dconf) falls back to the default of 8. */
+    private _frequentLimit(): number {
+        const n = this._services.settings.get('max-frequent-apps');
+        return n > 0 ? n : 8;
+    }
+
+    private _fillFrequent(box: St.BoxLayout): void {
         this._tooltips.hide();
         for (const c of box.get_children())
             c.destroy();
         const s = this._services.settings;
-        const limit = limitOverride > 0 ? limitOverride : Math.max(0, s.get('max-frequent-apps'));
         const opts = {iconSize: iconSizeFor(s, 'icon-size-apps', 28), description: s.get('apps-show-extra-details')};
-        const apps = this._services.appIndex.frequent(limit);
+        const apps = this._services.appIndex.frequent(this._frequentLimit());
         for (const app of apps)
-            box.add_child(new AppRow(app, this._tileHostWithTips(), opts).actor);
-        if (apps.length === 0)
-            box.add_child(new St.Label({text: 'Nothing here yet', style_class: 'spawn-empty-label', x_align: Clutter.ActorAlign.CENTER}));
+            box.add_child(new AppRow(app, this._tileHostWithTips(), {...opts, name: displayName(app, s)}).actor);
+        if (apps.length === 0) {
+            box.add_child(new St.Label({
+                text: _('Nothing here yet'),
+                style_class: 'spawn-empty-label',
+                x_align: Clutter.ActorAlign.CENTER,
+                y_align: Clutter.ActorAlign.CENTER,
+                y_expand: true,
+            }));
+        }
     }
 
     /** Pinned_And_Frequent_Apps: a frequent section under the pinned grid. */
@@ -661,10 +799,10 @@ export class SpawnLayout implements ShortcutHost {
             return;
         const section = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
         section.add_child(new St.Widget({style_class: 'spawn-separator', x_expand: true}));
-        section.add_child(new St.Label({text: 'Frequent', style_class: 'spawn-section-title'}));
+        section.add_child(new St.Label({text: _('Frequent'), style_class: 'spawn-section-title'}));
         const rows = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
         section.add_child(rows);
-        this._fillFrequent(rows, Math.max(1, this._services.settings.get('max-frequent-apps')) || 8);
+        this._fillFrequent(rows);
         box.add_child(section);
         this._frequentSection = section;
     }
@@ -699,21 +837,51 @@ export class SpawnLayout implements ShortcutHost {
     private _syncPinned(): void {
         this._tooltips.hide();
         const store = this._services.pinned;
+        const settings = this._services.settings;
+        const multiLine = settings.get('multi-lined-labels');
+        const generic = settings.get('apps-show-generic-names');
+
+        // Tiles keep their icon size / label mode / naming from when they were built: a change in
+        // any of them rebuilds every tile (otherwise old and new sizes mix in one grid).
+        const signature = `${this._tileIconSize}|${multiLine}|${generic}`;
+        if (signature !== this._tileSignature) {
+            this._tileSignature = signature;
+            for (const [key, entry] of [...this._tileEntries]) {
+                this._tileEntries.delete(key);
+                entry.release();
+                entry.widget.destroy();
+            }
+        }
+
         const keep = new Set<string>();
         const tiles: St.Widget[] = [];
+        const tileOpts = {iconSize: this._tileIconSize, multiLine};
+
+        // A pinned app whose .desktop file is gone (uninstalled, unmounted Flatpak remote) stays in
+        // the settings; it shows as a dimmed tile whose context menu offers "Unpin".
+        const ghost = (id: string, key: string): TileEntry => {
+            const {scope, release} = ownedScope(this._scope, key);
+            const name = id.replace(/\.desktop$/, '');
+            const open = () => this._context.open(tile.actor, {kind: 'custom', id});
+            const tile = new ActionTile(name, 'application-x-executable', open, undefined, {...tileOpts, context: open});
+            tile.actor.add_style_class_name('spawn-tile-missing');
+            tile.actor.opacity = 130;
+            this._tooltips.attach(tile.actor, null, () => _('%s (not installed)').format(name));
+            return {scope, release, widget: tile.actor};
+        };
 
         const make = (item: PinnedItem): {key: string; entry: TileEntry} | null => {
             switch (item.kind) {
             case 'app': {
-                const key = `a:${item.id}`;
+                const app = item.missing ? null : lookupApp(this._services, item.id);
+                const key = `${app ? 'a' : 'm'}:${item.id}`;
                 const existing = this._tileEntries.get(key);
                 if (existing)
                     return {key, entry: existing};
-                const app = lookupApp(this._services, item.id);
                 if (!app)
-                    return null;
+                    return {key, entry: ghost(item.id, key)};
                 const {scope, release} = ownedScope(this._scope, key);
-                const tile = new AppTile(app, this._tileHostWithTips(), {iconSize: this._tileIconSize});
+                const tile = new AppTile(app, this._tileHostWithTips(), {...tileOpts, name: displayName(app, settings)});
                 enableDrag(scope, tile.actor, {id: item.id});
                 acceptDrops(scope, tile.actor, store, {kind: 'app', id: item.id});
                 return {key, entry: {widget: tile.actor, scope, release}};
@@ -727,7 +895,7 @@ export class SpawnLayout implements ShortcutHost {
                 }
                 const {scope, release} = ownedScope(this._scope, key);
                 const tile = new FolderTile(item.uuid, item.name, this._folderIcons(item.uuid),
-                    this._folderHost, {iconSize: this._tileIconSize});
+                    this._folderHost, tileOpts);
                 enableDrag(scope, tile.actor, {id: item.uuid, isFolder: true});
                 acceptDrops(scope, tile.actor, store, {kind: 'folder', uuid: item.uuid});
                 return {key, entry: {widget: tile.actor, scope, release, folder: tile}};
@@ -740,17 +908,21 @@ export class SpawnLayout implements ShortcutHost {
                 const {scope, release} = ownedScope(this._scope, key);
                 const id = item.entry.id;
                 const tile = new ActionTile(item.entry.name || id, item.entry.icon || 'application-x-executable',
-                    () => this._runCustom(id), {tooltips: this._tooltips}, {iconSize: this._tileIconSize});
-                enableDrag(scope, tile.actor, {id});
-                acceptDrops(scope, tile.actor, store, {kind: 'app', id});
+                    () => this._runCustom(id), {tooltips: this._tooltips},
+                    {...tileOpts, context: () => this._context.open(tile.actor, {kind: 'custom', id})});
+                enableDrag(scope, tile.actor, {id, isCustom: true});
+                acceptDrops(scope, tile.actor, store, {kind: 'app', id, isCustom: true});
                 return {key, entry: {widget: tile.actor, scope, release}};
             }
             }
         };
 
-        for (const item of store.items()) {
+        for (const item of store.items(true)) {
             const made = make(item);
             if (!made)
+                continue;
+            // The same id twice in pinned-apps (hand-edited dconf, import) must not add one actor twice.
+            if (keep.has(made.key))
                 continue;
             keep.add(made.key);
             this._tileEntries.set(made.key, made.entry);
@@ -787,7 +959,10 @@ export class SpawnLayout implements ShortcutHost {
 
     private _showFolder(uuid: string): void {
         const fv = this._ensureFolderView();
-        fv.show(uuid);
+        // The folder vanished (deleted elsewhere, emptied): show() already went back to the default
+        // view, so do not switch to an empty folder view.
+        if (!fv.show(uuid))
+            return;
         this._setView('folder');
         const first = fv.tiles()[0];
         if (this._isOpen)
@@ -820,6 +995,7 @@ export class SpawnLayout implements ShortcutHost {
             return;
         const query = text.trim();
         this._cancelSearch();
+        this._activateWhenReady = false;
         if (query.length === 0) {
             if (this._view === 'results')
                 this._setView(this._defaultView());
@@ -831,7 +1007,9 @@ export class SpawnLayout implements ShortcutHost {
         }
         this._setView('results');
         const results = this._results as ResultList;
-        results.reset();
+        // Keep the previous rows (dimmed) until the first batch of this query arrives: no blank
+        // flash between keystrokes.
+        results.beginQuery();
         results.setSelectionVisible(true);
         const token = this._searchToken;
         try {
@@ -839,10 +1017,35 @@ export class SpawnLayout implements ShortcutHost {
                 if (token !== this._searchToken || this._destroyed)
                     return;
                 results.addBatch(batch);
+                if (this._activateWhenReady && results.first()) {
+                    this._activateWhenReady = false;
+                    results.activateFirst();
+                }
             });
         } catch (e) {
             error('search failed', e);
         }
+    }
+
+    /**
+     * Return in the search entry: activate the first result of the CURRENT query. Typing and
+     * pressing Return inside the debounce window must not do nothing: flush the pending query
+     * (synchronous providers deliver before flush() returns); if slower providers still owe the
+     * first row, activate it as soon as it arrives.
+     */
+    private _onSearchActivate(): void {
+        if (this._view !== 'results' || this._search.text.trim().length === 0)
+            return;
+        const results = this._results;
+        if (!results)
+            return;
+        try {
+            this._searchHandle?.flush();
+        } catch (e) {
+            error('search flush failed', e);
+        }
+        if (!results.activateFirst())
+            this._activateWhenReady = true;
     }
 
     private _onSearchKey(key: number, shift: boolean): boolean {
@@ -851,7 +1054,7 @@ export class SpawnLayout implements ShortcutHost {
             this._focusMain();
             return true;
         case Clutter.KEY_Up:
-            if (this._services.settings.get('search-entry-location') === 'Bottom')
+            if (!this._searchTop)
                 this._focusMain(true);
             return true;
         case Clutter.KEY_Tab:
@@ -867,7 +1070,8 @@ export class SpawnLayout implements ShortcutHost {
     private _updateNav(): void {
         const dv = this._services.settings.get('default-menu-view');
         const back = this._canGoBack();
-        this._backButton.visible = back;
+        // The folder view has its own Back button next to the title: one control per action.
+        this._backButton.visible = back && this._view !== 'folder';
         this._allAppsButton.visible = !back && isDefaultViewPinnedish(dv);
         this._nav.visible = this._backButton.visible || this._allAppsButton.visible;
         // dragging out of a folder onto Back removes the app from the folder
@@ -942,7 +1146,7 @@ export class SpawnLayout implements ShortcutHost {
     private _leftColumn(): Group[] {
         const out: Group[] = [];
         const search = this._searchGroup();
-        const top = this._services.settings.get('search-entry-location') === 'Top';
+        const top = this._searchTop;
         if (search && top)
             out.push(search);
         out.push(...this._mainGroups().filter(g => g.items.length > 0));
@@ -984,7 +1188,9 @@ export class SpawnLayout implements ShortcutHost {
         }
         const groups = this._mainGroups().filter(g => g.items.length > 0);
         if (groups.length === 0) {
-            this._focusItem(this._navGroup() ?? undefined);
+            // Results still pending (or none): stay where the focus is instead of jumping to Back.
+            if (this._view !== 'results')
+                this._focusItem(this._navGroup() ?? undefined);
             return;
         }
         this._focusItem(last ? groups[groups.length - 1] : groups[0], last ? 'last' : 'first');
@@ -1031,6 +1237,13 @@ export class SpawnLayout implements ShortcutHost {
             }
             if (cols === 1 && index + delta >= 0 && index + delta < n)
                 return this._focusItem(group, index + delta);
+            if (inCats) {
+                // The category column is not one of the left column's groups: leave it explicitly.
+                const search = this._searchGroup();
+                if (delta > 0)
+                    return this._focusItem(this._navGroup() ?? (!this._searchTop && search ? search : undefined), 'first') || true;
+                return (this._searchTop && search ? this._focusItem(search, 'first') : false) || true;
+            }
             const next = col[groupIdx + delta];
             if (next)
                 return this._focusItem(next, delta > 0 ? Math.min(index % Math.max(cols, 1), next.items.length - 1) : 'last');
@@ -1081,7 +1294,7 @@ export class SpawnLayout implements ShortcutHost {
         const nav = this._navGroup();
         const right = this._rightGroups().filter(g => g.items.length > 0);
         const focus = global.stage.key_focus as Clutter.Actor | null;
-        const top = this._services.settings.get('search-entry-location') === 'Top';
+        const top = this._searchTop;
 
         const add = (g: Group | null | undefined, which: 'first' | 'last' = 'first') => {
             if (g && g.items.length)
