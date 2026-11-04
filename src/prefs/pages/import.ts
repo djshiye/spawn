@@ -171,7 +171,7 @@ export function createImportPage(ctx: PrefsContext): Adw.PreferencesPage {
         // Will import.
         const importGroup = new Adw.PreferencesGroup({
             title: 'Will import',
-            description: 'Values that differ from Spawn Menu\'s defaults.',
+            description: 'Values that differ from Spawn\'s defaults.',
         });
         if (changed.length === 0) {
             importGroup.add(plainRow('Nothing differs from the defaults'));
@@ -208,7 +208,7 @@ export function createImportPage(ctx: PrefsContext): Adw.PreferencesPage {
 
         // Skipped.
         if (plan.skipped.length > 0) {
-            const g = new Adw.PreferencesGroup({title: 'Skipped', description: 'No equivalent in Spawn Menu.'});
+            const g = new Adw.PreferencesGroup({title: 'Skipped', description: 'No equivalent in Spawn.'});
             for (const s of plan.skipped)
                 g.add(plainRow(prettyKey(s.key), s.reason, 'action-unavailable-symbolic', s.key));
             addGroup(g);

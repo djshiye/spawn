@@ -1,7 +1,7 @@
 // ShortcutRow: right-pane shortcut (directory, application, built-in or separator) built from one
 // Entry of directory-shortcuts / application-shortcuts.
 //
-// Resolves SpawnMenu_* ids (core/constants.ts ShortcutId), .desktop ids and absolute paths /
+// Resolves Spawn_* ids (core/constants.ts ShortcutId), .desktop ids and absolute paths /
 // shell commands. Separators render as a thin line. Power ids are handled by the PowerBar
 // helpers in powerBar.ts.
 //
@@ -34,7 +34,7 @@ import type {TooltipManager} from './tooltip.js';
 
 export interface ShortcutHost {
     close(): void;
-    /** Switch to the all-apps view (SpawnMenu_ShowAllApplications). */
+    /** Switch to the all-apps view (Spawn_ShowAllApplications). */
     showAllApps?(): void;
     tooltips?: TooltipManager;
 }
@@ -77,7 +77,7 @@ function openUri(uri: string): void {
 
 function customIcon(entry: Entry): string | null {
     const icon = entry.icon;
-    if (!icon || icon.startsWith('SpawnMenu_') || icon.startsWith('ArcMenu_'))
+    if (!icon || icon.startsWith('Spawn_') || icon.startsWith('ArcMenu_'))
         return null;
     return icon;
 }
@@ -154,7 +154,7 @@ export function resolveShortcut(entry: Entry): ResolvedShortcut | null {
         const u = id.includes('://') ? id : GLib.filename_to_uri(id, null);
         return {name: name || GLib.path_get_basename(id), icon: icon ?? 'folder-symbolic', run: host => { host.close(); openUri(u); }};
     }
-    if (id.startsWith('SpawnMenu_') || id.startsWith('ArcMenu_'))
+    if (id.startsWith('Spawn_') || id.startsWith('ArcMenu_'))
         return null;
     if (!id)
         return null;
@@ -185,17 +185,17 @@ export class ShortcutRow {
         const scope = opts.scope;
         this.isSeparator = entry.id === ShortcutId.SEPARATOR || entry.id === 'ArcMenu_Separator';
         if (this.isSeparator) {
-            this.actor = new St.Widget({style_class: 'spawn-menu-separator', x_expand: true});
+            this.actor = new St.Widget({style_class: 'spawn-separator', x_expand: true});
             return;
         }
 
         const resolved = resolveShortcut(entry);
-        const button = makeItemButton('spawn-menu-shortcut-row');
+        const button = makeItemButton('spawn-shortcut-row');
         this.actor = button;
 
-        const box = new St.BoxLayout({style_class: 'spawn-menu-row-box', x_expand: true});
+        const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
         const icon = new St.Icon({
-            style_class: 'spawn-menu-shortcut-icon',
+            style_class: 'spawn-shortcut-icon',
             icon_size: opts.iconSize ?? 16,
             y_align: Clutter.ActorAlign.CENTER,
         });
@@ -210,7 +210,7 @@ export class ShortcutRow {
         }
         const label = new St.Label({
             text: resolved?.name ?? entry.name ?? entry.id,
-            style_class: 'spawn-menu-shortcut-label',
+            style_class: 'spawn-shortcut-label',
             y_align: Clutter.ActorAlign.CENTER,
             x_expand: true,
         });

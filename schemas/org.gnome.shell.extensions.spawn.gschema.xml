@@ -1,53 +1,53 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Spawn Menu settings. Key names and value formats mirror ArcMenu's schema
+<!-- Spawn settings. Key names and value formats mirror ArcMenu's schema
      (GPL-2.0-or-later) where the meaning is the same; see docs/SETTINGS.md. -->
-<schemalist gettext-domain="spawn-menu">
-  <enum id="org.gnome.shell.extensions.spawn-menu.menu-position">
+<schemalist gettext-domain="spawn">
+  <enum id="org.gnome.shell.extensions.spawn.menu-position">
     <value value="0" nick="Left"/>
     <value value="1" nick="Center"/>
     <value value="2" nick="Right"/>
   </enum>
-  <enum id="org.gnome.shell.extensions.spawn-menu.menu-button-click-action">
+  <enum id="org.gnome.shell.extensions.spawn.menu-button-click-action">
     <value value="0" nick="Menu"/>
     <value value="1" nick="None"/>
   </enum>
-  <enum id="org.gnome.shell.extensions.spawn-menu.menu-button-appearance">
+  <enum id="org.gnome.shell.extensions.spawn.menu-button-appearance">
     <value value="0" nick="Icon"/>
     <value value="1" nick="Text"/>
     <value value="2" nick="Icon_Text"/>
     <value value="3" nick="Text_Icon"/>
     <value value="4" nick="None"/>
   </enum>
-  <enum id="org.gnome.shell.extensions.spawn-menu.avatar-style">
+  <enum id="org.gnome.shell.extensions.spawn.avatar-style">
     <value value="0" nick="Round"/>
     <value value="1" nick="Square"/>
   </enum>
-  <enum id="org.gnome.shell.extensions.spawn-menu.default-menu-view">
+  <enum id="org.gnome.shell.extensions.spawn.default-menu-view">
     <value value="0" nick="Pinned_Apps"/>
     <value value="1" nick="Categories_List"/>
     <value value="2" nick="Frequent_Apps"/>
     <value value="3" nick="All_Programs"/>
     <value value="4" nick="Pinned_And_Frequent_Apps"/>
   </enum>
-  <enum id="org.gnome.shell.extensions.spawn-menu.all-apps-button-action">
+  <enum id="org.gnome.shell.extensions.spawn.all-apps-button-action">
     <value value="0" nick="Categories_List"/>
     <value value="1" nick="All_Programs"/>
   </enum>
-  <enum id="org.gnome.shell.extensions.spawn-menu.searchbar-location">
+  <enum id="org.gnome.shell.extensions.spawn.searchbar-location">
     <value value="0" nick="Bottom"/>
     <value value="1" nick="Top"/>
   </enum>
-  <enum id="org.gnome.shell.extensions.spawn-menu.power-display-style">
+  <enum id="org.gnome.shell.extensions.spawn.power-display-style">
     <value value="0" nick="Default"/>
     <value value="1" nick="In_Line"/>
     <value value="2" nick="Menu"/>
   </enum>
-  <enum id="org.gnome.shell.extensions.spawn-menu.menu-item-icon-style">
+  <enum id="org.gnome.shell.extensions.spawn.menu-item-icon-style">
     <value value="0" nick="Full_Color"/>
     <value value="1" nick="Symbolic"/>
   </enum>
 
-  <schema id="org.gnome.shell.extensions.spawn-menu.folder">
+  <schema id="org.gnome.shell.extensions.spawn.folder">
     <key name="name" type="s">
       <default>''</default>
       <summary>Folder display name</summary>
@@ -59,8 +59,8 @@
     </key>
   </schema>
 
-  <schema id="org.gnome.shell.extensions.spawn-menu" path="/org/gnome/shell/extensions/spawn-menu/">
-    <child name="folders" schema="org.gnome.shell.extensions.spawn-menu.folder"/>
+  <schema id="org.gnome.shell.extensions.spawn" path="/org/gnome/shell/extensions/spawn/">
+    <child name="folders" schema="org.gnome.shell.extensions.spawn.folder"/>
     <key name="dev-mode" type="b">
       <default>false</default>
       <summary>Enable the in-process D-Bus Dev interface (headless testing only)</summary>
@@ -99,7 +99,7 @@
       <summary>Menu keyboard shortcut</summary>
       <description>Custom accelerator(s) that toggle the menu, e.g. ["&lt;Super>space"]; empty = off</description>
     </key>
-    <key name="position-in-panel" enum="org.gnome.shell.extensions.spawn-menu.menu-position">
+    <key name="position-in-panel" enum="org.gnome.shell.extensions.spawn.menu-position">
       <default>'Left'</default>
       <summary>Position of the menu button in the panel</summary>
     </key>
@@ -108,7 +108,7 @@
       <summary>Button position offset</summary>
       <description>Number of panel items to skip from the chosen edge</description>
     </key>
-    <key name="menu-button-appearance" enum="org.gnome.shell.extensions.spawn-menu.menu-button-appearance">
+    <key name="menu-button-appearance" enum="org.gnome.shell.extensions.spawn.menu-button-appearance">
       <default>'Icon'</default>
       <summary>What the menu button shows</summary>
     </key>
@@ -130,23 +130,23 @@
       <summary>Button horizontal padding</summary>
       <description>Button horizontal padding in px (-1 = theme default)</description>
     </key>
-    <key name="menu-button-left-click-action" enum="org.gnome.shell.extensions.spawn-menu.menu-button-click-action">
+    <key name="menu-button-left-click-action" enum="org.gnome.shell.extensions.spawn.menu-button-click-action">
       <default>'Menu'</default>
       <summary>Left click action</summary>
     </key>
-    <key name="menu-button-right-click-action" enum="org.gnome.shell.extensions.spawn-menu.menu-button-click-action">
+    <key name="menu-button-right-click-action" enum="org.gnome.shell.extensions.spawn.menu-button-click-action">
       <default>'None'</default>
       <summary>Right click action</summary>
     </key>
-    <key name="menu-button-middle-click-action" enum="org.gnome.shell.extensions.spawn-menu.menu-button-click-action">
+    <key name="menu-button-middle-click-action" enum="org.gnome.shell.extensions.spawn.menu-button-click-action">
       <default>'Menu'</default>
       <summary>Middle click action</summary>
     </key>
-    <key name="default-menu-view" enum="org.gnome.shell.extensions.spawn-menu.default-menu-view">
+    <key name="default-menu-view" enum="org.gnome.shell.extensions.spawn.default-menu-view">
       <default>'Pinned_Apps'</default>
       <summary>View shown when the menu opens</summary>
     </key>
-    <key name="all-apps-button-action" enum="org.gnome.shell.extensions.spawn-menu.all-apps-button-action">
+    <key name="all-apps-button-action" enum="org.gnome.shell.extensions.spawn.all-apps-button-action">
       <default>'Categories_List'</default>
       <summary>What the All Apps button shows</summary>
     </key>
@@ -194,7 +194,7 @@
       <default>true</default>
       <summary>Show the user avatar card in the right pane</summary>
     </key>
-    <key name="avatar-style" enum="org.gnome.shell.extensions.spawn-menu.avatar-style">
+    <key name="avatar-style" enum="org.gnome.shell.extensions.spawn.avatar-style">
       <default>'Round'</default>
       <summary>Avatar shape</summary>
     </key>
@@ -223,15 +223,15 @@
       <summary>Pinned grid icon size</summary>
       <description>Icon size of pinned-app grid tiles (keys width/height/size, -1 = default)</description>
     </key>
-    <key name="icon-style-categories" enum="org.gnome.shell.extensions.spawn-menu.menu-item-icon-style">
+    <key name="icon-style-categories" enum="org.gnome.shell.extensions.spawn.menu-item-icon-style">
       <default>'Symbolic'</default>
       <summary>Category icon style</summary>
     </key>
-    <key name="icon-style-shortcuts" enum="org.gnome.shell.extensions.spawn-menu.menu-item-icon-style">
+    <key name="icon-style-shortcuts" enum="org.gnome.shell.extensions.spawn.menu-item-icon-style">
       <default>'Symbolic'</default>
       <summary>Shortcut icon style</summary>
     </key>
-    <key name="icon-style-buttons" enum="org.gnome.shell.extensions.spawn-menu.menu-item-icon-style">
+    <key name="icon-style-buttons" enum="org.gnome.shell.extensions.spawn.menu-item-icon-style">
       <default>'Symbolic'</default>
       <summary>Button icon style</summary>
     </key>
@@ -246,33 +246,33 @@
     </key>
     <key name="directory-shortcuts" type="aa{ss}">
       <default>[
-          {'id': 'SpawnMenu_Home', 'name': 'Home', 'icon': 'SpawnMenu_Home'},
-          {'id': 'SpawnMenu_Documents', 'name': 'Documents', 'icon': 'SpawnMenu_Documents'},
-          {'id': 'SpawnMenu_Downloads', 'name': 'Downloads', 'icon': 'SpawnMenu_Downloads'},
-          {'id': 'SpawnMenu_Music', 'name': 'Music', 'icon': 'SpawnMenu_Music'},
-          {'id': 'SpawnMenu_Pictures', 'name': 'Pictures', 'icon': 'SpawnMenu_Pictures'},
-          {'id': 'SpawnMenu_Videos', 'name': 'Videos', 'icon': 'SpawnMenu_Videos'}
+          {'id': 'Spawn_Home', 'name': 'Home', 'icon': 'Spawn_Home'},
+          {'id': 'Spawn_Documents', 'name': 'Documents', 'icon': 'Spawn_Documents'},
+          {'id': 'Spawn_Downloads', 'name': 'Downloads', 'icon': 'Spawn_Downloads'},
+          {'id': 'Spawn_Music', 'name': 'Music', 'icon': 'Spawn_Music'},
+          {'id': 'Spawn_Pictures', 'name': 'Pictures', 'icon': 'Spawn_Pictures'},
+          {'id': 'Spawn_Videos', 'name': 'Videos', 'icon': 'Spawn_Videos'}
         ]</default>
       <summary>Directory shortcuts</summary>
-      <description>Directory shortcuts in the right pane (SpawnMenu_* ids or custom {id: path, name, icon})</description>
+      <description>Directory shortcuts in the right pane (Spawn_* ids or custom {id: path, name, icon})</description>
     </key>
     <key name="application-shortcuts" type="aa{ss}">
       <default>[
-          {'id': 'SpawnMenu_Software', 'name': 'Software'},
+          {'id': 'Spawn_Software', 'name': 'Software'},
           {'id': 'org.gnome.Settings.desktop'},
           {'id': 'org.gnome.tweaks.desktop'},
           {'id': 'org.gnome.Ptyxis.desktop'},
-          {'id': 'SpawnMenu_ActivitiesOverview', 'name': 'Activities Overview', 'icon': 'view-fullscreen-symbolic'}
+          {'id': 'Spawn_ActivitiesOverview', 'name': 'Activities Overview', 'icon': 'view-fullscreen-symbolic'}
         ]</default>
       <summary>Application shortcuts</summary>
-      <description>Application shortcuts in the right pane (SpawnMenu_* ids, .desktop ids, separators)</description>
+      <description>Application shortcuts in the right pane (Spawn_* ids, .desktop ids, separators)</description>
     </key>
     <key name="power-options" type="a(ib)">
       <default>[(0, true), (1, true), (2, true), (3, true), (4, false), (5, false), (6, false), (7, false)]</default>
       <summary>Power buttons</summary>
       <description>Power buttons: (id, enabled); ids 0 LogOut 1 Lock 2 Restart 3 PowerOff 4 Suspend 5 HybridSleep 6 Hibernate 7 SwitchUser</description>
     </key>
-    <key name="power-display-style" enum="org.gnome.shell.extensions.spawn-menu.power-display-style">
+    <key name="power-display-style" enum="org.gnome.shell.extensions.spawn.power-display-style">
       <default>'Default'</default>
       <summary>How power buttons are displayed</summary>
     </key>
@@ -280,7 +280,7 @@
       <default>false</default>
       <summary>Hide the search entry until the user types</summary>
     </key>
-    <key name="search-entry-location" enum="org.gnome.shell.extensions.spawn-menu.searchbar-location">
+    <key name="search-entry-location" enum="org.gnome.shell.extensions.spawn.searchbar-location">
       <default>'Bottom'</default>
       <summary>Search entry position (top or bottom of the left pane)</summary>
     </key>

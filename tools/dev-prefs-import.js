@@ -9,8 +9,8 @@ const {readArcMenuSnapshot, planMigration, applyMigration} = await import(`file:
 const {SpawnSettings} = await import(`file://${build}/core/settings.js`);
 
 const source = Gio.SettingsSchemaSource.new_from_directory(`${build}/schemas`, Gio.SettingsSchemaSource.get_default(), false);
-const schema = source.lookup('org.gnome.shell.extensions.spawn-menu', true);
-const settings = new SpawnSettings(Gio.Settings.new_full(schema, null, '/org/gnome/shell/extensions/spawn-menu/'), source);
+const schema = source.lookup('org.gnome.shell.extensions.spawn', true);
+const settings = new SpawnSettings(Gio.Settings.new_full(schema, null, '/org/gnome/shell/extensions/spawn/'), source);
 
 const snapshot = readArcMenuSnapshot(build);
 if (!snapshot)

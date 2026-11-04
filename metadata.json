@@ -1,10 +1,10 @@
 {
-  "uuid": "spawn-menu@djshiye.github.io",
-  "name": "Spawn Menu",
+  "uuid": "spawn@djshiye.github.io",
+  "name": "Spawn",
   "description": "A fast, resilient application menu for GNOME Shell. A ground-up replacement for ArcMenu with Dash to Panel support and one-click settings import.",
   "shell-version": ["51"],
-  "settings-schema": "org.gnome.shell.extensions.spawn-menu",
-  "gettext-domain": "spawn-menu",
-  "url": "https://github.com/djshiye/spawn-menu",
+  "settings-schema": "org.gnome.shell.extensions.spawn",
+  "gettext-domain": "spawn",
+  "url": "https://github.com/djshiye/spawn",
   "version": 1
 }

@@ -1,7 +1,7 @@
 // Preferences entry point (Adw). Runs in the prefs process: no Main, no global.
 //
 // Public API:
-//   default class SpawnMenuPreferences extends ExtensionPreferences
+//   default class SpawnPreferences extends ExtensionPreferences
 //   fillPreferencesWindow(window): adds the pages in PAGES order; each page comes from
 //   prefs/pages/<name>.ts (create<Name>Page(ctx) -> Adw.PreferencesPage)
 
@@ -29,7 +29,7 @@ const PAGES = [
     createAboutPage,
 ];
 
-export default class SpawnMenuPreferences extends ExtensionPreferences {
+export default class SpawnPreferences extends ExtensionPreferences {
     override async fillPreferencesWindow(window: Parameters<ExtensionPreferences['fillPreferencesWindow']>[0]): Promise<void> {
         const schemaSource = Gio.SettingsSchemaSource.new_from_directory(
             this.dir.get_child('schemas').get_path() ?? '',

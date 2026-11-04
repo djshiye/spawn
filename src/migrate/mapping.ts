@@ -1,4 +1,4 @@
-// Pure ArcMenu -> Spawn Menu settings mapping. No gi:// imports: unit-tested with gjs -m
+// Pure ArcMenu -> Spawn settings mapping. No gi:// imports: unit-tested with gjs -m
 // against tests/fixtures/arcmenu-user.json (a snapshot of docs/research/user-arcmenu-settings.ini).
 //
 // Public API (re-exported by migrate/arcmenu.ts):
@@ -7,7 +7,7 @@
 //   describeItem(item): string, describePlan(plan): string[]
 //
 // Rules: only keys the user actually changed in ArcMenu (`snapshot.values`) are migrated, so
-// every other setting keeps Spawn Menu's own default. Every user-set key ends up either in
+// every other setting keeps Spawn's own default. Every user-set key ends up either in
 // `plan.items` (as `item.from`) or in `plan.skipped` with a reason. The only exception is
 // `show-activities-button`, which is migrated from its effective value even when untouched,
 // because ArcMenu hides the Activities button by default and the user would otherwise see it
@@ -68,7 +68,7 @@ const ICON_STYLE = ['Full_Color', 'Symbolic'] as const;
 const POWER_STYLE = ['Default', 'In_Line', 'Menu'] as const;
 const SEARCHBAR = ['Bottom', 'Top'] as const;
 
-/** Spawn Menu key -> kind, for keys whose ArcMenu name is identical. */
+/** Spawn key -> kind, for keys whose ArcMenu name is identical. */
 const SAME_NAME: ReadonlyArray<readonly [SettingKey, Kind]> = [
     ['multi-monitor', 'b'],
     ['activate-on-launch', 'b'],
@@ -182,9 +182,9 @@ function sortKeys(v: unknown): unknown {
 // ------------------------------------------------------------------------------------------
 // Keys that are deliberately not migrated, with the reason shown in the preview.
 
-const NO_LAYOUT = 'Spawn Menu has a single layout';
+const NO_LAYOUT = 'Spawn has a single layout';
 const SKIP_EXACT: Readonly<Record<string, string>> = {
-    'menu-layout': 'handled separately (Spawn Menu has a single layout)',
+    'menu-layout': 'handled separately (Spawn has a single layout)',
     'force-menu-location': 'menu placement is always anchored to the button',
     'menu-position-alignment': 'not supported in v1',
     'menu-arrow-rise': 'menu arrow is not used',
@@ -230,7 +230,7 @@ const SKIP_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
 ];
 
 function skipReason(key: string): string {
-    return SKIP_EXACT[key] ?? SKIP_PATTERNS.find(([re]) => re.test(key))?.[1] ?? 'no equivalent in Spawn Menu v1';
+    return SKIP_EXACT[key] ?? SKIP_PATTERNS.find(([re]) => re.test(key))?.[1] ?? 'no equivalent in Spawn v1';
 }
 
 // ------------------------------------------------------------------------------------------
@@ -248,7 +248,7 @@ function label(e: Entry): string {
 }
 
 /**
- * Rewrites built-in ids and icons from ArcMenu_* to SpawnMenu_*; drops ArcMenu-only items
+ * Rewrites built-in ids and icons from ArcMenu_* to Spawn_*; drops ArcMenu-only items
  * (settings entries, unknown built-ins, commands that launch ArcMenu's prefs).
  */
 export function convertEntries(entries: Entry[], where: string, warnings: string[]): Entry[] {
@@ -280,7 +280,7 @@ export function convertEntries(entries: Entry[], where: string, warnings: string
 
 const CLICK_ACTION: Readonly<Record<string, 'Menu' | 'None'>> = {ArcMenu: 'Menu', ContextMenu: 'None', None: 'None'};
 
-/** Maps an ArcMenu `menu-button-icon` value to Spawn Menu's format; null if unsupported. */
+/** Maps an ArcMenu `menu-button-icon` value to Spawn's format; null if unsupported. */
 export function convertButtonIcon(value: string): string | null {
     const resolved = resolveButtonIcon(value, ICON_MARKER);
     if (resolved.kind === 'file')
@@ -384,7 +384,7 @@ export function planMigration(snapshot: ArcMenuSnapshot, spawnDefaults?: Partial
         const v = values['menu-button-icon'];
         const mapped = typeof v === 'string' ? convertButtonIcon(v) : null;
         if (mapped === null) {
-            skip('menu-button-icon', 'icon is not available in Spawn Menu');
+            skip('menu-button-icon', 'icon is not available in Spawn');
             plan.warnings.push(`menu-button-icon: unsupported icon '${String(v)}'; keeping the default icon`);
         } else {
             add('menu-button-icon', 'menu-button-icon', mapped);
@@ -395,10 +395,10 @@ export function planMigration(snapshot: ArcMenuSnapshot, spawnDefaults?: Partial
     if (isSet('menu-layout')) {
         const v = values['menu-layout'];
         if (v === 'arcmenu') {
-            skip('menu-layout', "ArcMenu's 'arcmenu' layout is Spawn Menu's only layout");
+            skip('menu-layout', "ArcMenu's 'arcmenu' layout is Spawn's only layout");
         } else {
-            skip('menu-layout', 'Spawn Menu has a single layout');
-            plan.warnings.push(`menu-layout '${String(v)}' is not available; Spawn Menu uses its own 'spawn' layout`);
+            skip('menu-layout', 'Spawn has a single layout');
+            plan.warnings.push(`menu-layout '${String(v)}' is not available; Spawn uses its own 'spawn' layout`);
         }
     }
 

@@ -13,8 +13,8 @@ shots="$dev/shots"
 
 uuid="$(node -p "require('$root/metadata.json').uuid")"
 dtp_uuid="dash-to-panel@jderose9.github.com"
-dest="io.github.djshiye.SpawnMenu"
-path="/io/github/djshiye/SpawnMenu"
+dest="io.github.djshiye.Spawn"
+path="/io/github/djshiye/Spawn"
 
 dbus-update-activation-environment XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME XDG_RUNTIME_DIR
 
@@ -42,8 +42,8 @@ cleanup() {
         mkdir -p "$dev/logs"
         cp "$log" "$dev/logs/${SPAWN_LOG_NAME:-$scenario}.log"
         echo
-        echo "---- shell log (filtered: spawn-menu | JS ERROR | Extension | TypeError) ----"
-        grep -E 'spawn-menu|JS ERROR|Extension|TypeError' "$log" || echo "(no matching lines)"
+        echo "---- shell log (filtered: spawn | JS ERROR | Extension | TypeError) ----"
+        grep -E 'spawn|JS ERROR|Extension|TypeError' "$log" || echo "(no matching lines)"
         echo "---- end of log (full log: $log) ----"
     fi
 }
@@ -70,7 +70,7 @@ wait_active() { # uuid, timeout seconds
 dev_call() { # method [args...]
     local m="$1"
     shift
-    gdbus call --session --dest "$dest" --object-path "$path" --method "io.github.djshiye.SpawnMenu.Dev.$m" "$@" 2>&1
+    gdbus call --session --dest "$dest" --object-path "$path" --method "io.github.djshiye.Spawn.Dev.$m" "$@" 2>&1
 }
 
 screenshot() { # name
@@ -82,7 +82,7 @@ screenshot() { # name
 ui_call() { # method [args...]  (dev-only Ui interface, src/ui/devHooks.ts)
     local m="$1"
     shift
-    gdbus call --session --dest "$dest" --object-path "$path/Ui" --method "io.github.djshiye.SpawnMenu.Ui.$m" "$@" 2>&1
+    gdbus call --session --dest "$dest" --object-path "$path/Ui" --method "io.github.djshiye.Spawn.Ui.$m" "$@" 2>&1
 }
 
 # gdbus prints GVariant text, e.g. ('{"a":1}',); unwrap the single string.
@@ -129,19 +129,19 @@ open_menu() { dev_call Open >/dev/null; sleep "${1:-1.2}"; }
 close_menu() { dev_call Close >/dev/null; sleep 0.5; }
 
 pinned_ids() { # prints the top-level pinned-apps ids from the sandbox dconf, in order
-    dconf read /org/gnome/shell/extensions/spawn-menu/pinned-apps | python3 -c '
+    dconf read /org/gnome/shell/extensions/spawn/pinned-apps | python3 -c '
 import ast, sys
 print(" ".join(e["id"] for e in ast.literal_eval(sys.stdin.read().strip())))'
 }
 
 folder_ids() { # <folder-uuid>
-    dconf read "/org/gnome/shell/extensions/spawn-menu/folders/$1/pinned-apps" | python3 -c '
+    dconf read "/org/gnome/shell/extensions/spawn/folders/$1/pinned-apps" | python3 -c '
 import ast, sys
 print(" ".join(e["id"] for e in ast.literal_eval(sys.stdin.read().strip())))'
 }
 
 reset_seed() { # restore the seeded settings between scenarios of one session (dev-mode stays on)
-    local k="/org/gnome/shell/extensions/spawn-menu/" e i
+    local k="/org/gnome/shell/extensions/spawn/" e i
     dev_call Close >/dev/null
     for e in $(dconf list "$k"); do
         case "$e" in
@@ -172,22 +172,22 @@ open_menu() { dev_call Open >/dev/null; sleep "${1:-1.2}"; }
 close_menu() { dev_call Close >/dev/null; sleep 0.5; }
 
 pinned_ids() { # prints the top-level pinned-apps ids from the sandbox dconf, in order
-    dconf read /org/gnome/shell/extensions/spawn-menu/pinned-apps | python3 -c '
+    dconf read /org/gnome/shell/extensions/spawn/pinned-apps | python3 -c '
 import ast, sys
 print(" ".join(e["id"] for e in ast.literal_eval(sys.stdin.read().strip())))'
 }
 
 folder_ids() { # <folder-uuid>
-    dconf read "/org/gnome/shell/extensions/spawn-menu/folders/$1/pinned-apps" | python3 -c '
+    dconf read "/org/gnome/shell/extensions/spawn/folders/$1/pinned-apps" | python3 -c '
 import ast, sys
 print(" ".join(e["id"] for e in ast.literal_eval(sys.stdin.read().strip())))'
 }
 
 reset_seed() { # restore the seeded settings between scenarios of one session
     dev_call Close >/dev/null
-    dconf reset -f /org/gnome/shell/extensions/spawn-menu/
-    dconf load /org/gnome/shell/extensions/spawn-menu/ <"$root/tools/dev/seed.ini"
-    dconf write /org/gnome/shell/extensions/spawn-menu/dev-mode true
+    dconf reset -f /org/gnome/shell/extensions/spawn/
+    dconf load /org/gnome/shell/extensions/spawn/ <"$root/tools/dev/seed.ini"
+    dconf write /org/gnome/shell/extensions/spawn/dev-mode true
     sleep 1.5
 }
 
@@ -198,14 +198,14 @@ attachment_status() {
 # ---------------------------------------------------------------- isolation check
 if [ "$scenario" = "isolation" ]; then
     before="$(stat -c '%Y %s' "$SPAWN_REAL_DCONF" 2>/dev/null || echo none)"
-    dconf write /spawn-menu-isolation-test/x 1
+    dconf write /spawn-isolation-test/x 1
     sleep 1
     dump="$(dconf dump /)"
     after="$(stat -c '%Y %s' "$SPAWN_REAL_DCONF" 2>/dev/null || echo none)"
     echo "dconf dump inside the sandbox:"
     echo "$dump"
     echo "real dconf db: before=[$before] after=[$after]"
-    if [ "$before" = "$after" ] && [ -f "$dev/config/dconf/user" ] && echo "$dump" | grep -q 'spawn-menu-isolation-test'; then
+    if [ "$before" = "$after" ] && [ -f "$dev/config/dconf/user" ] && echo "$dump" | grep -q 'spawn-isolation-test'; then
         echo "ISOLATION OK"
         exit 0
     fi
@@ -246,11 +246,11 @@ enabled="$enabled]"
 dconf write /org/gnome/shell/enabled-extensions "$enabled"
 dconf write /org/gnome/shell/disable-user-extensions false
 dconf write /org/gnome/shell/welcome-dialog-last-shown-version "'999'"
-dconf write /org/gnome/shell/extensions/spawn-menu/dev-mode true
+dconf write /org/gnome/shell/extensions/spawn/dev-mode true
 if [ "$seeded" = 1 ]; then
     # The user's setup: pinned apps, 3 folders, shortcuts, Fedora button icon, Orchis-Dark-Compact (when installed).
-    dconf load /org/gnome/shell/extensions/spawn-menu/ <"$root/tools/dev/seed.ini"
-    dconf write /org/gnome/shell/extensions/spawn-menu/dev-mode true
+    dconf load /org/gnome/shell/extensions/spawn/ <"$root/tools/dev/seed.ini"
+    dconf write /org/gnome/shell/extensions/spawn/dev-mode true
     [ "$use_theme" = 1 ] && dconf write /org/gnome/shell/extensions/user-theme/name "'$theme_name'"
     echo "seeded settings loaded (theme: $([ "$use_theme" = 1 ] && echo "$theme_name" || echo "default"))"
 fi
@@ -368,7 +368,7 @@ hotkeys)
     dev_call EmitOverlayKey >/dev/null
     sleep 0.5
     hk_check "overlay-key fires our toggle" toggles "$((before + 1))"
-    dconf write /org/gnome/shell/extensions/spawn-menu/super-key-toggle false
+    dconf write /org/gnome/shell/extensions/spawn/super-key-toggle false
     sleep 1
     hk_check "Super released when setting is off" superActive False
     hk_check "GNOME handler unblocked again" firstUnblocked "$gnome_id"
@@ -376,15 +376,15 @@ hotkeys)
     dev_call EmitOverlayKey >/dev/null
     sleep 0.5
     hk_check "overlay-key no longer toggles the menu" toggles "$before"
-    dconf write /org/gnome/shell/extensions/spawn-menu/super-key-toggle true
+    dconf write /org/gnome/shell/extensions/spawn/super-key-toggle true
     sleep 1
     hk_check "Super intercepted again" superActive True
     hk_check "GNOME handler blocked again" firstUnblocked "$(hk_field ourHandler)"
     # custom accelerator
-    dconf write /org/gnome/shell/extensions/spawn-menu/menu-hotkey "['<Super>space']"
+    dconf write /org/gnome/shell/extensions/spawn/menu-hotkey "['<Super>space']"
     sleep 1.5
     hk_check "accelerator bound" accelBound True
-    dconf write /org/gnome/shell/extensions/spawn-menu/menu-hotkey "@as []"
+    dconf write /org/gnome/shell/extensions/spawn/menu-hotkey "@as []"
     sleep 1.5
     hk_check "accelerator unbound" accelBound False
     # disable + re-enable: the handler must be found again and be intercepted
@@ -396,10 +396,10 @@ hotkeys)
     hk_check "GNOME handler id unchanged after re-enable" gnomeHandler "$gnome_id"
     ;;
 theme)
-    # The generated stylesheet lives under $XDG_RUNTIME_DIR/spawn-menu/<token>/theme.css, is
+    # The generated stylesheet lives under $XDG_RUNTIME_DIR/spawn/<token>/theme.css, is
     # regenerated on settings changes and removed again on disable.
     sleep 3
-    rt="$XDG_RUNTIME_DIR/spawn-menu"
+    rt="$XDG_RUNTIME_DIR/spawn"
     theme_files() { find "$rt" -name theme.css 2>/dev/null; }
     check() { # description, condition-exit-code
         if [ "$2" = 0 ]; then echo "ok   $1"; else echo "FAIL $1"; status=1; fi
@@ -407,16 +407,16 @@ theme)
     f1="$(theme_files)"
     echo "theme file: $f1"
     [ -n "$f1" ] && grep -q '#3584e4' "$f1"; check "accent css written" $?
-    dconf write /org/gnome/shell/extensions/spawn-menu/override-menu-theme true
-    dconf write /org/gnome/shell/extensions/spawn-menu/menu-button-bg-color "(true, 'rgb(10,20,30)')"
+    dconf write /org/gnome/shell/extensions/spawn/override-menu-theme true
+    dconf write /org/gnome/shell/extensions/spawn/menu-button-bg-color "(true, 'rgb(10,20,30)')"
     sleep 1
     f2="$(theme_files)"
     [ "$(echo "$f2" | wc -l)" = 1 ] && grep -q 'rgb(10,20,30)' "$f2" && grep -q 'popup-menu-content' "$f2"; check "css regenerated (single file) after settings change" $?
     # Visual check of the panel button colour: vivid red, Overview closed (with Super released
     # the overlay-key goes to GNOME, which toggles the Overview), Activities button hidden.
-    dconf write /org/gnome/shell/extensions/spawn-menu/menu-button-bg-color "(true, 'rgb(255,0,0)')"
-    dconf write /org/gnome/shell/extensions/spawn-menu/super-key-toggle false
-    dconf write /org/gnome/shell/extensions/spawn-menu/hide-activities-button true
+    dconf write /org/gnome/shell/extensions/spawn/menu-button-bg-color "(true, 'rgb(255,0,0)')"
+    dconf write /org/gnome/shell/extensions/spawn/super-key-toggle false
+    dconf write /org/gnome/shell/extensions/spawn/hide-activities-button true
     sleep 1
     dev_call EmitOverlayKey >/dev/null
     sleep 2
@@ -494,12 +494,12 @@ esac
 # ---------------------------------------------------------------- verdict
 sleep 1
 # An uncaught exception prints "JS ERROR: ..." on a line without our path; only the stack frames
-# that follow mention spawn-menu@djshiye, so look at the lines after each error marker too.
-if grep -E '\[spawn-menu\]' "$log" | grep -Eq 'ERROR:|failed|threw' ||
-    grep -A12 -E 'JS ERROR|TypeError|ReferenceError|SyntaxError' "$log" | grep -q 'spawn-menu@djshiye'; then
-    echo "RESULT: spawn-menu errors found in the shell log"
+# that follow mention spawn@djshiye, so look at the lines after each error marker too.
+if grep -E '\[spawn\]' "$log" | grep -Eq 'ERROR:|failed|threw' ||
+    grep -A12 -E 'JS ERROR|TypeError|ReferenceError|SyntaxError' "$log" | grep -q 'spawn@djshiye'; then
+    echo "RESULT: spawn errors found in the shell log"
     status=1
 else
-    echo "RESULT: no spawn-menu errors in the shell log"
+    echo "RESULT: no spawn errors in the shell log"
 fi
 exit "$status"

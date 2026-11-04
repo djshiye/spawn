@@ -1,7 +1,7 @@
-# Spawn Menu — v1 specification
+# Spawn — v1 specification
 
 A GNOME Shell 51 application menu, rebuilt from the ground up to replace ArcMenu
-(GPL-2.0-or-later; Spawn Menu is a derivative work under the same licence and credits
+(GPL-2.0-or-later; Spawn is a derivative work under the same licence and credits
 ArcMenu). Research on ArcMenu's internals lives in `docs/research/`; read the file for
 your area before writing code.
 
@@ -38,7 +38,7 @@ your area before writing code.
   providers (optional). Debounce 80 ms, cancel stale queries, results streamed
   per provider.
 - Hotkeys: Super key toggles menu (optional), custom accelerator (default
-  `<Super>space` off by default), D-Bus `io.github.djshiye.SpawnMenu` method
+  `<Super>space` off by default), D-Bus `io.github.djshiye.Spawn` method
   `Toggle`. Super interception must be **in memory only** (block GNOME's handler,
   connect ours); never write mutter's `overlay-key` to dconf.
 - Option to hide the Activities button (restore its *previous* visibility).
@@ -48,7 +48,7 @@ your area before writing code.
   (so it works even after ArcMenu is removed), maps every v1 key and copies pinned
   folders, shows a preview of what will be imported, and offers to disable ArcMenu.
 - Dev hook (only when `dev-mode` key is true): D-Bus
-  `io.github.djshiye.SpawnMenu.Dev` with `Open()`, `Close()`, `Search(s)`,
+  `io.github.djshiye.Spawn.Dev` with `Open()`, `Close()`, `Search(s)`,
   `Screenshot(s path)` (uses Shell.Screenshot in-process), `Benchmark(s sections)` (in-shell timings, see README)
   for headless testing; plus a `.Ui` interface (src/ui/devHooks.ts) to drive the menu.
 
@@ -58,15 +58,15 @@ extra categories links, intellihide integration beyond showing the panel.
 ## Tech
 - TypeScript (strict) compiled by `tsc` to ES modules for GJS; types from
   `@girs/gnome-shell@51` and `@girs/*`. No bundler; one output file per module.
-- UUID `spawn-menu@djshiye.github.io`, `shell-version: ["51"]`,
-  settings schema `org.gnome.shell.extensions.spawn-menu`
-  (path `/org/gnome/shell/extensions/spawn-menu/`), relocatable folder schema
-  `org.gnome.shell.extensions.spawn-menu.folder` at `…/folders/<uuid>/`.
+- UUID `spawn@djshiye.github.io`, `shell-version: ["51"]`,
+  settings schema `org.gnome.shell.extensions.spawn`
+  (path `/org/gnome/shell/extensions/spawn/`), relocatable folder schema
+  `org.gnome.shell.extensions.spawn.folder` at `…/folders/<uuid>/`.
 - Setting names mirror ArcMenu's where the meaning is the same (simplifies
   migration and docs). Same value formats (e.g. pinned-apps `aa{ss}`,
   `(bs)` override tuples).
 - `tools/build.sh` → `build/` (tsc, copy assets, glib-compile-schemas) and
-  `dist/spawn-menu@djshiye.github.io.shell-extension.zip`.
+  `dist/spawn@djshiye.github.io.shell-extension.zip`.
 - `tools/install.sh` → installs build into `~/.local/share/gnome-shell/extensions/`.
 - `tools/dev-shell.sh` → headless GNOME Shell (`gnome-shell --headless --wayland
   --virtual-monitor 1600x900 --no-x11` inside `dbus-run-session`) with isolated
@@ -82,11 +82,11 @@ extra categories links, intellihide integration beyond showing the panel.
 
 ```
 src/
-  extension.ts            SpawnMenuExtension: enable/disable only; builds a Scope
+  extension.ts            SpawnExtension: enable/disable only; builds a Scope
   core/scope.ts           Scope: LIFO disposer. add(fn), connect(obj, sig, cb),
                           timeout(ms, cb), idle(cb), child(); dispose() runs each
                           teardown in try/catch, logs, never throws. Re-usable.
-  core/log.ts             log/warn/error with "[spawn-menu]" prefix
+  core/log.ts             log/warn/error with "[spawn]" prefix
   core/settings.ts        typed accessors over Gio.Settings + folder schema
   core/debounce.ts
   panel/targets.ts        PanelTargets: resolves CURRENT targets every time
@@ -115,9 +115,9 @@ src/
   search/rank.ts          pure ranking functions (unit-tested)
   search/providers/*.ts   apps, windows, recentFiles, shellProviders
   input/hotkeys.ts        Super interception (in memory) + accelerator
-  input/dbus.ts           io.github.djshiye.SpawnMenu (+ Dev when dev-mode)
+  input/dbus.ts           io.github.djshiye.Spawn (+ Dev when dev-mode)
   theme/theme.ts          accent + optional custom colours → stylesheet written
-                          synchronously to $XDG_RUNTIME_DIR/spawn-menu/theme.css,
+                          synchronously to $XDG_RUNTIME_DIR/spawn/theme.css,
                           loaded into St theme, unloaded on dispose
   prefs.ts                Adw preferences window
   prefs/pages/*.ts

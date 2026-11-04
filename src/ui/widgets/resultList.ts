@@ -99,11 +99,11 @@ export class ResultList {
         this._settings = settings;
         this._host = host;
         this.actor = new St.BoxLayout({
-            style_class: 'spawn-menu-result-list',
+            style_class: 'spawn-result-list',
             orientation: Clutter.Orientation.VERTICAL,
             x_expand: true,
         });
-        this._empty = new St.Label({text: 'No results', style_class: 'spawn-menu-empty-label', x_align: Clutter.ActorAlign.CENTER, visible: false});
+        this._empty = new St.Label({text: 'No results', style_class: 'spawn-empty-label', x_align: Clutter.ActorAlign.CENTER, visible: false});
         this.actor.add_child(this._empty);
         scope.add(() => {
             this._cancelEmpty?.();
@@ -139,8 +139,8 @@ export class ResultList {
             return;
         this._empty.hide();
 
-        const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-menu-result-section'});
-        box.add_child(new St.Label({text: batch.providerTitle, style_class: 'spawn-menu-section-title'}));
+        const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-result-section'});
+        box.add_child(new St.Label({text: batch.providerTitle, style_class: 'spawn-section-title'}));
         const section: Section = {providerId: batch.providerId, order: orderOf(batch.providerId), box, rows: []};
         for (const result of results) {
             const row = this._makeRow(result, batch.query);
@@ -212,10 +212,10 @@ export class ResultList {
     }
 
     private _makeRow(result: SearchResult, query: string): St.Button {
-        const button = makeItemButton('spawn-menu-row spawn-menu-result-row');
-        const box = new St.BoxLayout({style_class: 'spawn-menu-row-box', x_expand: true});
+        const button = makeItemButton('spawn-row spawn-result-row');
+        const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
         const icon = new St.Icon({
-            style_class: 'spawn-menu-row-icon',
+            style_class: 'spawn-row-icon',
             icon_size: iconSizeFor(this._settings, 'icon-size-apps', 28),
             y_align: Clutter.ActorAlign.CENTER,
         });
@@ -226,7 +226,7 @@ export class ResultList {
         box.add_child(icon);
 
         const text = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, y_align: Clutter.ActorAlign.CENTER, x_expand: true});
-        const title = new St.Label({style_class: 'spawn-menu-row-label'});
+        const title = new St.Label({style_class: 'spawn-row-label'});
         if (this._settings.get('highlight-search-result-terms'))
             title.clutter_text.set_markup(highlightMarkup(result.title, query));
         else
@@ -234,7 +234,7 @@ export class ResultList {
         title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         text.add_child(title);
         if (result.description && this._settings.get('show-search-result-details')) {
-            const d = new St.Label({text: result.description, style_class: 'spawn-menu-row-description'});
+            const d = new St.Label({text: result.description, style_class: 'spawn-row-description'});
             d.clutter_text.ellipsize = Pango.EllipsizeMode.END;
             text.add_child(d);
         }

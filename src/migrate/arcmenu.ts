@@ -1,4 +1,4 @@
-// ArcMenu -> Spawn Menu migration: Gio.Settings I/O around the pure mapping in migrate/mapping.ts.
+// ArcMenu -> Spawn migration: Gio.Settings I/O around the pure mapping in migrate/mapping.ts.
 //
 // Responsibility: read ArcMenu's settings through the BUNDLED compiled schema
 // (data/migration/arcmenu/gschemas.compiled, so it works even when ArcMenu is uninstalled),
@@ -7,7 +7,7 @@
 // against docs/research/user-arcmenu-settings.ini (tests/migrate.test.js).
 //
 // Value rules the mapping must implement (see docs/SETTINGS.md):
-//   * ArcMenu_* shortcut ids -> SpawnMenu_* (core/constants.ts ARCMENU_ID_PREFIX/SPAWN_ID_PREFIX);
+//   * ArcMenu_* shortcut ids -> Spawn_* (core/constants.ts ARCMENU_ID_PREFIX/SPAWN_ID_PREFIX);
 //     ArcMenu-only items (ArcMenu_Settings, ArcMenu_PanelExtensionSettings, ArcMenu_ArcMenuIcon
 //     entries) are dropped with a warning.
 //   * hide-activities-button = !show-activities-button
@@ -88,7 +88,7 @@ export function readArcMenuSnapshot(extensionDir: string): ArcMenuSnapshot | nul
         }
         return {values, defaults, folders};
     } catch (e) {
-        logError(e as Error, '[spawn-menu] reading the ArcMenu settings failed');
+        logError(e as Error, '[spawn] reading the ArcMenu settings failed');
         return null;
     }
 }
@@ -140,13 +140,13 @@ export function disableArcMenu(): Promise<boolean> {
                         const reply = conn?.call_finish(res);
                         resolve(reply?.deepUnpack<[boolean]>()[0] ?? false);
                     } catch (e) {
-                        logError(e as Error, '[spawn-menu] DisableExtension failed');
+                        logError(e as Error, '[spawn] DisableExtension failed');
                         resolve(false);
                     }
                 },
             );
         } catch (e) {
-            logError(e as Error, '[spawn-menu] DisableExtension failed');
+            logError(e as Error, '[spawn] DisableExtension failed');
             resolve(false);
         }
     });

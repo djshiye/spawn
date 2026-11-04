@@ -14,7 +14,7 @@ key Ctrl+a 0.2
 for c in G a m e s 2; do key "$c" 0.1; done
 key Return 0.8
 screenshot ui-folder-renamed
-name="$(dconf read "/org/gnome/shell/extensions/spawn-menu/folders/$F_INTERNET/name")"
+name="$(dconf read "/org/gnome/shell/extensions/spawn/folders/$F_INTERNET/name")"
 expect "folder name stored in dconf" "$name" "'Games2'"
 key Escape 0.6
 expect_state "Escape leaves the folder" layout.view pinned

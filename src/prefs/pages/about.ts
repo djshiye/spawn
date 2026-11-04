@@ -35,8 +35,8 @@ export function createAboutPage(ctx: PrefsContext): Adw.PreferencesPage {
     });
 
     const meta = ctx.metadata;
-    const name = String(meta['name'] ?? 'Spawn Menu');
-    const url = String(meta['url'] ?? 'https://github.com/djshiye/spawn-menu');
+    const name = String(meta['name'] ?? 'Spawn');
+    const url = String(meta['url'] ?? 'https://github.com/djshiye/spawn');
     const version = String(meta['version-name'] ?? meta['version'] ?? '');
 
     const head = new Adw.PreferencesGroup();
@@ -71,7 +71,7 @@ export function createAboutPage(ctx: PrefsContext): Adw.PreferencesPage {
             ctx,
             'ArcMenu',
             'https://gitlab.com/arcmenu/ArcMenu',
-            'Spawn Menu is a derivative work of ArcMenu (GPL-2.0-or-later) and keeps its layout, settings names and icon set. Thanks to the ArcMenu authors and contributors.',
+            'Spawn is a derivative work of ArcMenu (GPL-2.0-or-later) and keeps its layout, settings names and icon set. Thanks to the ArcMenu authors and contributors.',
         ),
         linkRow(ctx, 'Dash to Panel', 'https://github.com/home-sweet-gnome/dash-to-panel', 'Supported as a panel host'),
     ]));

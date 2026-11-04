@@ -8,7 +8,7 @@
 #     dtp-toggle   with --with-dtp: toggle Dash to Panel off/on 10x, verify our button is
 #                  still attached, screenshot (dtp-toggle.png)
 #     hotkeys      Super handler blocked/unblocked in memory (setting on/off, re-enable), accelerator bind
-#     theme        generated stylesheet written/regenerated/removed under $XDG_RUNTIME_DIR/spawn-menu
+#     theme        generated stylesheet written/regenerated/removed under $XDG_RUNTIME_DIR/spawn
 #     lifecycle    enable -> open -> search -> close -> disable -> enable; works with or without
 #                  --with-dtp
 #     isolation    only verify that dconf writes land in .dev/ and not in the real profile
@@ -21,7 +21,7 @@
 #     bench        seeded: in-shell benchmark (Dev.Benchmark) -> table, raw JSON in .dev/bench.json
 #     all          smoke, lifecycle, hotkeys, theme, dtp-toggle (with DtP), dtp-open (with DtP),
 #                  ui, shots, bench; each in its own fresh shell; prints a summary and exits
-#                  non-zero if any scenario failed or logged a spawn-menu error
+#                  non-zero if any scenario failed or logged a spawn error
 #     <other>      any tools/dev/scenarios/<name>.sh is run as a scenario
 #   --seed       load tools/dev/seed.ini (the user's pinned apps, 3 folders, shortcuts, Orchis theme
 #                when installed) into the sandbox; implied by ui*, dtp-open, shots and bench

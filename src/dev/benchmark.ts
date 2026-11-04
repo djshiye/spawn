@@ -1,4 +1,4 @@
-// In-shell benchmark behind the dev D-Bus method io.github.djshiye.SpawnMenu.Dev.Benchmark(s sections).
+// In-shell benchmark behind the dev D-Bus method io.github.djshiye.Spawn.Dev.Benchmark(s sections).
 // Only reachable while `dev-mode` is true. Times everything with GLib.get_monotonic_time() inside
 // the shell process, so D-Bus / gdbus latency is not part of any number.
 //

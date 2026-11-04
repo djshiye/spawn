@@ -83,7 +83,7 @@ export class TooltipManager {
 
     private _show(widget: St.Widget, text: string): void {
         if (!this._label) {
-            this._label = new St.Label({style_class: 'dash-label spawn-menu-tooltip', visible: false});
+            this._label = new St.Label({style_class: 'dash-label spawn-tooltip', visible: false});
             this._label.clutter_text.line_wrap = true;
             Main.uiGroup.add_child(this._label);
         }

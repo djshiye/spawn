@@ -35,12 +35,12 @@ export class AppRow {
 
     constructor(app: Shell.App, host: TileHost, opts: RowOptions = {}) {
         this._app = app;
-        const button = makeItemButton('spawn-menu-row');
+        const button = makeItemButton('spawn-row');
         this.actor = button;
 
-        const box = new St.BoxLayout({style_class: 'spawn-menu-row-box', x_expand: true});
+        const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
         const icon = new St.Icon({
-            style_class: 'spawn-menu-row-icon',
+            style_class: 'spawn-row-icon',
             icon_size: opts.iconSize ?? DEFAULT_ROW_ICON_SIZE,
             y_align: Clutter.ActorAlign.CENTER,
         });
@@ -54,12 +54,12 @@ export class AppRow {
             y_align: Clutter.ActorAlign.CENTER,
             x_expand: true,
         });
-        const label = new St.Label({text: app.get_name(), style_class: 'spawn-menu-row-label'});
+        const label = new St.Label({text: app.get_name(), style_class: 'spawn-row-label'});
         label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         text.add_child(label);
         const desc = opts.description ? app.get_description() : null;
         if (desc) {
-            const dl = new St.Label({text: desc.split('\n')[0], style_class: 'spawn-menu-row-description'});
+            const dl = new St.Label({text: desc.split('\n')[0], style_class: 'spawn-row-description'});
             dl.clutter_text.ellipsize = Pango.EllipsizeMode.END;
             text.add_child(dl);
         }

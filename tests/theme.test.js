@@ -29,15 +29,15 @@ test('default CSS: accent only, no override or button rules', () => {
     assert(css.includes('#3584e4'), 'accent present');
     assert(css.includes('rgba(53, 132, 228, 0.25)'), 'focus alpha');
     assert(!css.includes('.popup-menu-content'), 'no override rules');
-    assert(!css.includes('.panel-button.spawn-menu-button'), 'no disabled button rules');
+    assert(!css.includes('.panel-button.spawn-button'), 'no disabled button rules');
 });
 
 test('override adds popup colours, font size and item states', () => {
     const css = buildCss(input({override: true}));
-    assert(css.includes('.spawn-menu-popup .popup-menu-content'));
+    assert(css.includes('.spawn-popup .popup-menu-content'));
     assert(css.includes('background-color: rgba(48,48,49,0.98);'));
     assert(css.includes('font-size: 11pt;'));
-    assert(css.includes('.spawn-menu-popup .spawn-menu-tile:hover'));
+    assert(css.includes('.spawn-popup .spawn-tile:hover'));
     assert(css.includes('rgb(80,80,81)'));
 });
 
@@ -47,12 +47,12 @@ test('button tuples apply only when enabled, independent of override', () => {
     base.buttonColors.borderWidth = [true, 2];
     base.buttonColors.hoverBg = [true, 'rgb(1,2,3)'];
     const css = buildCss(base);
-    assert(css.includes('#panel .panel-button.spawn-menu-button {'), 'selector outranks the shell theme');
+    assert(css.includes('#panel .panel-button.spawn-button {'), 'selector outranks the shell theme');
     assert(css.includes('color: #ff0000;'));
     assert(css.includes('border-width: 2px;'));
-    assert(css.includes('#panel .panel-button.spawn-menu-button:hover'));
+    assert(css.includes('#panel .panel-button.spawn-button:hover'));
     assert(css.includes('box-shadow: inset 0 0 0 100px rgb(1,2,3);'), 'hover colour overrides the theme overlay');
-    assert(!css.includes('spawn-menu-button:active'), 'disabled active tuple omitted');
+    assert(!css.includes('spawn-button:active'), 'disabled active tuple omitted');
 });
 
 test('unsafe colour strings are dropped, never embedded', () => {
@@ -75,7 +75,7 @@ test('unsafe colour strings are dropped, never embedded', () => {
 test('invalid accent falls back to blue; search radius is optional', () => {
     assert(buildCss(input({accent: 'evil;}'})).includes('#3584e4'));
     assert(!buildCss(input()).includes('border-radius: 25px'));
-    assert(buildCss(input({searchEntryRadius: [true, 25]})).includes('.spawn-menu-search-box {\n    border-radius: 25px;'));
+    assert(buildCss(input({searchEntryRadius: [true, 25]})).includes('.spawn-search-box {\n    border-radius: 25px;'));
     assert(!buildCss(input({searchEntryRadius: [false, 25]})).includes('border-radius: 25px'));
 });
 

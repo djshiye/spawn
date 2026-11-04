@@ -4,8 +4,8 @@
 // app grid), accept drops on the grid (reorder / append), on an app tile (drop in the middle
 // creates a folder from the two apps, near the left/right edge reorders), on a folder tile
 // (middle adds, edges reorder) and on a "remove from folder" zone. All mutations go through
-// PinnedStore. Drop feedback uses the classes spawn-menu-drop-target (middle) and
-// spawn-menu-drop-before / spawn-menu-drop-after (reorder).
+// PinnedStore. Drop feedback uses the classes spawn-drop-target (middle) and
+// spawn-drop-before / spawn-drop-after (reorder).
 //
 // Public API:
 //   enableDrag(scope, tile: St.Widget, payload: DragPayload): void
@@ -54,7 +54,7 @@ interface Delegate {
     acceptDrop?: (source: Delegate, actor: Clutter.Actor, x: number, y: number) => boolean;
 }
 
-const DROP_CLASSES = ['spawn-menu-drop-target', 'spawn-menu-drop-before', 'spawn-menu-drop-after'];
+const DROP_CLASSES = ['spawn-drop-target', 'spawn-drop-before', 'spawn-drop-after'];
 
 function delegateOf(actor: Clutter.Actor): Delegate {
     const holder = actor as unknown as {_delegate?: Delegate};
@@ -207,9 +207,9 @@ export function acceptDrops(scope: Scope, target: St.Widget, store: PinnedStore,
         if (drop.kind === 'grid')
             return DND.DragMotionResult.MOVE_DROP;
         if (drop.kind === 'unfolder' || zone === 'onto')
-            target.add_style_class_name('spawn-menu-drop-target');
+            target.add_style_class_name('spawn-drop-target');
         else
-            target.add_style_class_name(zone === 'before' ? 'spawn-menu-drop-before' : 'spawn-menu-drop-after');
+            target.add_style_class_name(zone === 'before' ? 'spawn-drop-before' : 'spawn-drop-after');
         return DND.DragMotionResult.MOVE_DROP;
     };
 

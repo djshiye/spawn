@@ -83,7 +83,7 @@ export function describeEntry(entry: Entry): {title: string; subtitle?: string; 
             return {title: entry.name || info.get_display_name(), subtitle: entry.id, icon: info.get_icon() ?? 'application-x-executable'};
         return {title: entry.name || entry.id, subtitle: 'Not installed', icon: 'dialog-question-symbolic'};
     }
-    return {title: entry.name || entry.id, subtitle: entry.id, icon: entry.icon && !entry.icon.startsWith('SpawnMenu_') ? entry.icon : 'application-x-executable-symbolic'};
+    return {title: entry.name || entry.id, subtitle: entry.id, icon: entry.icon && !entry.icon.startsWith('Spawn_') ? entry.icon : 'application-x-executable-symbolic'};
 }
 
 function clearGroup(group: Adw.PreferencesGroup, rows: Gtk.Widget[]): void {

@@ -1,12 +1,12 @@
-# Spawn Menu settings
+# Spawn settings
 
-Schema `org.gnome.shell.extensions.spawn-menu` (path `/org/gnome/shell/extensions/spawn-menu/`) plus the relocatable
-`org.gnome.shell.extensions.spawn-menu.folder` schema, instantiated at `.../spawn-menu/folders/<uuid>/` (keys `name` (s),
+Schema `org.gnome.shell.extensions.spawn` (path `/org/gnome/shell/extensions/spawn/`) plus the relocatable
+`org.gnome.shell.extensions.spawn.folder` schema, instantiated at `.../spawn/folders/<uuid>/` (keys `name` (s),
 `pinned-apps` (aa{ss})). A folder shows up in `pinned-apps` as
 `{'id': '<uuid>', 'name': '<name>', 'isFolder': 'true'}`.
 
 Conventions: enum keys store the nick string; `(bs)`/`(bi)` are `(enabled, value)` overrides
-(value ignored when `enabled` is false); built-in shortcut ids use the prefix `SpawnMenu_`
+(value ignored when `enabled` is false); built-in shortcut ids use the prefix `Spawn_`
 (ArcMenu's `ArcMenu_` prefix is rewritten by the migration).
 `menu-button-icon` is a bundled file name from `data/icons/`, an absolute path, or a
 themed icon name.
@@ -81,8 +81,8 @@ Enum differences from ArcMenu: `menu-button-*-click-action` is `Menu|None` (ArcM
 | Key | Type | Default | Migrates from (ArcMenu) |
 |---|---|---|---|
 | `pinned-apps` | aa{ss} | `[ {'id': 'firefox.desktop'}, {'id': 'org.gnome.Nautilus.d...` | `pinned-apps` |
-| `directory-shortcuts` | aa{ss} | `[ {'id': 'SpawnMenu_Home', 'name': 'Home', 'icon': 'Spawn...` | `directory-shortcuts`  (ArcMenu_ ids -> SpawnMenu_) |
-| `application-shortcuts` | aa{ss} | `[ {'id': 'SpawnMenu_Software', 'name': 'Software'}, {'id'...` | `application-shortcuts`  (ArcMenu_ ids -> SpawnMenu_) |
+| `directory-shortcuts` | aa{ss} | `[ {'id': 'Spawn_Home', 'name': 'Home', 'icon': 'Spawn...` | `directory-shortcuts`  (ArcMenu_ ids -> Spawn_) |
+| `application-shortcuts` | aa{ss} | `[ {'id': 'Spawn_Software', 'name': 'Software'}, {'id'...` | `application-shortcuts`  (ArcMenu_ ids -> Spawn_) |
 | `power-options` | a(ib) | `[(0, true), (1, true), (2, true), (3, true), (4, false), ...` | `power-options` |
 | `power-display-style` | enum power-display-style | `'Default'` | `power-display-style` |
 
@@ -136,7 +136,7 @@ Enum differences from ArcMenu: `menu-button-*-click-action` is `Menu|None` (ArcM
 | `prefs-visible-page` | i | `0` | `prefs-visible-page` |
 | `migration-done` | b | `false` | new |
 
-## Folder schema `org.gnome.shell.extensions.spawn-menu.folder`
+## Folder schema `org.gnome.shell.extensions.spawn.folder`
 
 | Key | Type | Default | Migrates from (ArcMenu) |
 |---|---|---|---|

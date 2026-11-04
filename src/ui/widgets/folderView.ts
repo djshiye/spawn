@@ -57,31 +57,31 @@ export class FolderView {
         this._tileScope = scope.child('folder tiles');
 
         this.actor = new St.BoxLayout({
-            style_class: 'spawn-menu-folder-view',
+            style_class: 'spawn-folder-view',
             orientation: Clutter.Orientation.VERTICAL,
             x_expand: true,
             y_expand: true,
         });
 
-        this._header = new St.BoxLayout({style_class: 'spawn-menu-folder-header', reactive: true});
-        this._backButton = makeItemButton('spawn-menu-row spawn-menu-folder-back');
+        this._header = new St.BoxLayout({style_class: 'spawn-folder-header', reactive: true});
+        this._backButton = makeItemButton('spawn-row spawn-folder-back');
         this._backButton.x_expand = false;
         this._backButton.set_child(new St.Icon({icon_name: 'go-previous-symbolic', icon_size: 16}));
         wireItem(this._backButton, {activate: () => host.back()});
         host.tooltips?.attach(this._backButton, null, () => 'Back');
 
-        this._nameButton = makeItemButton('spawn-menu-row spawn-menu-folder-name');
+        this._nameButton = makeItemButton('spawn-row spawn-folder-name');
         this._nameButton.x_expand = false;
-        const nameBox = new St.BoxLayout({style_class: 'spawn-menu-row-box'});
-        this._nameLabel = new St.Label({style_class: 'spawn-menu-folder-title', y_align: Clutter.ActorAlign.CENTER});
+        const nameBox = new St.BoxLayout({style_class: 'spawn-row-box'});
+        this._nameLabel = new St.Label({style_class: 'spawn-folder-title', y_align: Clutter.ActorAlign.CENTER});
         this._nameLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         nameBox.add_child(this._nameLabel);
-        nameBox.add_child(new St.Icon({icon_name: 'document-edit-symbolic', icon_size: 14, style_class: 'spawn-menu-folder-edit-icon', y_align: Clutter.ActorAlign.CENTER}));
+        nameBox.add_child(new St.Icon({icon_name: 'document-edit-symbolic', icon_size: 14, style_class: 'spawn-folder-edit-icon', y_align: Clutter.ActorAlign.CENTER}));
         this._nameButton.set_child(nameBox);
         wireItem(this._nameButton, {activate: () => this.startRename()});
         host.tooltips?.attach(this._nameButton, null, () => 'Rename folder');
 
-        this._hint = new St.Label({text: 'Drop here to take out of folder', style_class: 'spawn-menu-folder-hint', y_align: Clutter.ActorAlign.CENTER, visible: false});
+        this._hint = new St.Label({text: 'Drop here to take out of folder', style_class: 'spawn-folder-hint', y_align: Clutter.ActorAlign.CENTER, visible: false});
         this._header.add_child(this._backButton);
         this._header.add_child(this._nameButton);
         this._header.add_child(this._hint);
@@ -173,7 +173,7 @@ export class FolderView {
         const uuid = this._uuid;
         const entry = new St.Entry({
             text: this._nameLabel.text,
-            style_class: 'spawn-menu-folder-rename',
+            style_class: 'spawn-folder-rename',
             x_expand: true,
             can_focus: true,
         });

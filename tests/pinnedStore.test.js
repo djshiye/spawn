@@ -8,9 +8,9 @@ import {FOLDER_SCHEMA_ID, FolderSettings, SCHEMA_ID, SpawnSettings} from '../bui
 import {PinnedStore} from '../build/model/pinned.js';
 import {assert, assertEquals, run, sleep, test} from './harness.js';
 
-const tmp = GLib.dir_make_tmp('spawn-menu-test-XXXXXX');
+const tmp = GLib.dir_make_tmp('spawn-test-XXXXXX');
 const here = GLib.path_get_dirname(import.meta.url.replace('file://', ''));
-const xml = GLib.build_filenamev([here, '..', 'schemas', 'org.gnome.shell.extensions.spawn-menu.gschema.xml']);
+const xml = GLib.build_filenamev([here, '..', 'schemas', 'org.gnome.shell.extensions.spawn.gschema.xml']);
 Gio.File.new_for_path(xml).copy(Gio.File.new_for_path(GLib.build_filenamev([tmp, 'schema.gschema.xml'])), Gio.FileCopyFlags.OVERWRITE, null, null);
 const [ok, , err] = GLib.spawn_command_line_sync(`glib-compile-schemas ${tmp}`);
 if (!ok)
@@ -23,7 +23,7 @@ GLib.spawn_command_line_sync(`rm -rf ${tmp}`); // the compiled schema is already
 class MemSettings extends SpawnSettings {
     folder(uuid) {
         const schema = source.lookup(FOLDER_SCHEMA_ID, true);
-        return new FolderSettings(uuid, Gio.Settings.new_full(schema, backend, `/org/gnome/shell/extensions/spawn-menu/folders/${uuid}/`));
+        return new FolderSettings(uuid, Gio.Settings.new_full(schema, backend, `/org/gnome/shell/extensions/spawn/folders/${uuid}/`));
     }
 }
 

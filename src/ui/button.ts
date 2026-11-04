@@ -65,14 +65,14 @@ export class MenuButton extends PanelMenu.Button {
     private _cancelTooltip: (() => void) | null = null;
 
     constructor(deps: MenuButtonDeps) {
-        super(0.5, 'Spawn Menu', true);
+        super(0.5, 'Spawn', true);
         this._deps = deps;
 
-        this.add_style_class_name('spawn-menu-button');
+        this.add_style_class_name('spawn-button');
 
-        this._box = new St.BoxLayout({style_class: 'spawn-menu-button-box'});
-        this._icon = new St.Icon({style_class: 'spawn-menu-button-icon system-status-icon', y_align: Clutter.ActorAlign.CENTER});
-        this._label = new St.Label({style_class: 'spawn-menu-button-label', y_align: Clutter.ActorAlign.CENTER});
+        this._box = new St.BoxLayout({style_class: 'spawn-button-box'});
+        this._icon = new St.Icon({style_class: 'spawn-button-icon system-status-icon', y_align: Clutter.ActorAlign.CENTER});
+        this._label = new St.Label({style_class: 'spawn-button-label', y_align: Clutter.ActorAlign.CENTER});
         this.add_child(this._box);
 
         const gesture = new Clutter.ClickGesture();

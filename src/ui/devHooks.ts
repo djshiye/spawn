@@ -1,8 +1,8 @@
 // Dev-only D-Bus hooks for driving the menu UI from the headless dev shell (tools/dev-shell*).
 //
 // Exported ONLY while the `dev-mode` setting is true (follows the setting live), on the object
-// /io/github/djshiye/SpawnMenu/Ui, interface io.github.djshiye.SpawnMenu.Ui, over the same bus
-// connection that owns io.github.djshiye.SpawnMenu (so it is reachable with that destination).
+// /io/github/djshiye/Spawn/Ui, interface io.github.djshiye.Spawn.Ui, over the same bus
+// connection that owns io.github.djshiye.Spawn (so it is reachable with that destination).
 //
 //   Search(s query)          type `query` into the search entry
 //   ShowView(s id)           pinned | frequent | categories | all | results | default
@@ -28,10 +28,10 @@ import type {Scope} from '../core/scope.js';
 import type {SpawnSettings} from '../core/settings.js';
 import type {SpawnPopup} from './menu.js';
 
-const PATH = '/io/github/djshiye/SpawnMenu/Ui';
+const PATH = '/io/github/djshiye/Spawn/Ui';
 const IFACE = `
 <node>
-  <interface name="io.github.djshiye.SpawnMenu.Ui">
+  <interface name="io.github.djshiye.Spawn.Ui">
     <method name="Search"><arg type="s" direction="in" name="query"/></method>
     <method name="ShowView"><arg type="s" direction="in" name="id"/></method>
     <method name="OpenFolder"><arg type="i" direction="in" name="index"/></method>

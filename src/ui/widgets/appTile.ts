@@ -42,7 +42,7 @@ export class AppTile {
 
     constructor(app: Shell.App, host: TileHost, opts: TileOptions = {}) {
         this._app = app;
-        const button = makeItemButton('spawn-menu-tile');
+        const button = makeItemButton('spawn-tile');
         this.actor = button;
         buildTileContent(button, app.get_name(), app.get_icon(), opts.iconSize ?? DEFAULT_TILE_ICON_SIZE, host.tooltips);
         wireItem(button, {
@@ -68,7 +68,7 @@ export class ActionTile {
     readonly actor: St.Button;
 
     constructor(name: string, icon: Gio.Icon | string, activate: (ctrl: boolean) => void, host?: {tooltips?: TooltipManager}, opts: TileOptions = {}) {
-        const button = makeItemButton('spawn-menu-tile');
+        const button = makeItemButton('spawn-tile');
         this.actor = button;
         buildTileContent(button, name, icon, opts.iconSize ?? DEFAULT_TILE_ICON_SIZE, host?.tooltips);
         wireItem(button, {activate});
@@ -90,10 +90,10 @@ export function buildTileContent(button: St.Button, name: string, icon: Gio.Icon
         orientation: Clutter.Orientation.VERTICAL,
         x_align: Clutter.ActorAlign.CENTER,
         y_align: Clutter.ActorAlign.CENTER,
-        style_class: 'spawn-menu-tile-box',
+        style_class: 'spawn-tile-box',
     });
     const iconActor = new St.Icon({
-        style_class: 'spawn-menu-tile-icon',
+        style_class: 'spawn-tile-icon',
         icon_size: iconSize,
         x_align: Clutter.ActorAlign.CENTER,
     });
@@ -103,7 +103,7 @@ export function buildTileContent(button: St.Button, name: string, icon: Gio.Icon
         iconActor.gicon = icon;
     const label = new St.Label({
         text: name,
-        style_class: 'spawn-menu-tile-label',
+        style_class: 'spawn-tile-label',
         x_align: Clutter.ActorAlign.CENTER,
         x_expand: true,
     });

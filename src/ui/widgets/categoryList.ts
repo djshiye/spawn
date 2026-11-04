@@ -74,13 +74,13 @@ export class CategoryList {
     constructor(scope: Scope, services: Services, host: TileHost) {
         this._services = services;
         this._host = host;
-        this.actor = new St.BoxLayout({style_class: 'spawn-menu-category-list', x_expand: true, y_expand: true});
+        this.actor = new St.BoxLayout({style_class: 'spawn-category-list', x_expand: true, y_expand: true});
 
-        this._columnBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, style_class: 'spawn-menu-category-column-box'});
-        this._column = this._makeScroll(this._columnBox, 'spawn-menu-category-column');
-        this._separator = new St.Widget({style_class: 'spawn-menu-vseparator', y_expand: true});
-        this._appsBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-menu-category-apps-box'});
-        this._appsScroll = this._makeScroll(this._appsBox, 'spawn-menu-category-apps');
+        this._columnBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, style_class: 'spawn-category-column-box'});
+        this._column = this._makeScroll(this._columnBox, 'spawn-category-column');
+        this._separator = new St.Widget({style_class: 'spawn-vseparator', y_expand: true});
+        this._appsBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-category-apps-box'});
+        this._appsScroll = this._makeScroll(this._appsBox, 'spawn-category-apps');
         this._appsScroll.x_expand = true;
 
         this.actor.add_child(this._column);
@@ -195,11 +195,11 @@ export class CategoryList {
     private _buildColumn(): void {
         const size = iconSizeFor(this._services.settings, 'icon-size-categories', 16);
         for (const cat of this._categories()) {
-            const button = makeItemButton('spawn-menu-row spawn-menu-category-row');
-            const box = new St.BoxLayout({style_class: 'spawn-menu-row-box', x_expand: true});
-            const icon = new St.Icon({style_class: 'spawn-menu-category-icon', icon_size: size, y_align: Clutter.ActorAlign.CENTER});
+            const button = makeItemButton('spawn-row spawn-category-row');
+            const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
+            const icon = new St.Icon({style_class: 'spawn-category-icon', icon_size: size, y_align: Clutter.ActorAlign.CENTER});
             icon.gicon = Gio.ThemedIcon.new(cat.icon);
-            const label = new St.Label({text: cat.name, style_class: 'spawn-menu-row-label', y_align: Clutter.ActorAlign.CENTER, x_expand: true});
+            const label = new St.Label({text: cat.name, style_class: 'spawn-row-label', y_align: Clutter.ActorAlign.CENTER, x_expand: true});
             label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
             box.add_child(icon);
             box.add_child(label);
@@ -253,7 +253,7 @@ export class CategoryList {
             if (apps.length === 0) {
                 box.add_child(new St.Label({
                     text: id === 'frequent' ? 'Nothing here yet' : 'No apps',
-                    style_class: 'spawn-menu-empty-label',
+                    style_class: 'spawn-empty-label',
                     x_align: Clutter.ActorAlign.CENTER,
                 }));
             }

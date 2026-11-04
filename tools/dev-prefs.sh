@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Opens the Spawn Menu preferences window inside an ISOLATED headless GNOME Shell (same isolation
+# Opens the Spawn preferences window inside an ISOLATED headless GNOME Shell (same isolation
 # as tools/dev-shell.sh: every XDG dir lives under .dev/) and screenshots each page.
 #
 # Usage: tools/dev-prefs.sh [--no-arcmenu] [pages...]
@@ -7,7 +7,7 @@
 #   --tall       use a 1600x2600 virtual monitor and stretch the prefs window to nearly full
 #                height, so whole pages fit in one screenshot
 #   --apply-import  run the real migration against the sandbox dconf (tools/dev-prefs-import.js)
-#                and print the resulting spawn-menu dconf dump before opening the prefs
+#                and print the resulting spawn dconf dump before opening the prefs
 #   --dialogs    also screenshot the standalone dialogs (icon picker, app list, folder editor,
 #                shortcut capture, rename prompt) as dialog-<name>.png
 #   --no-arcmenu do not load docs/research/user-arcmenu-settings.ini into the sandbox dconf
@@ -103,7 +103,7 @@ cp -r "$dev/build" "$XDG_DATA_HOME/gnome-shell/extensions/$uuid"
 dconf write /org/gnome/shell/enabled-extensions "['$uuid']"
 dconf write /org/gnome/shell/disable-user-extensions false
 dconf write /org/gnome/shell/welcome-dialog-last-shown-version "'999'"
-dconf write /org/gnome/shell/extensions/spawn-menu/dev-mode true
+dconf write /org/gnome/shell/extensions/spawn/dev-mode true
 if [ "$SPAWN_LOAD_ARC" = 1 ]; then
     dconf load /org/gnome/shell/extensions/arcmenu/ <"$root/docs/research/user-arcmenu-settings.ini"
 fi
@@ -145,12 +145,12 @@ if [ "$SPAWN_APPLY_IMPORT" = 1 ]; then
     echo "---- DisableExtension on the sandbox shell (ArcMenu is not installed there: expect (false,)) ----"
     gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
         --method org.gnome.Shell.Extensions.DisableExtension 'arcmenu@arcmenu.com' 2>&1 | head -3
-    echo "---- sandbox dconf dump: /org/gnome/shell/extensions/spawn-menu/ ----"
-    dconf dump /org/gnome/shell/extensions/spawn-menu/ | cut -c1-200
+    echo "---- sandbox dconf dump: /org/gnome/shell/extensions/spawn/ ----"
+    dconf dump /org/gnome/shell/extensions/spawn/ | cut -c1-200
 fi
 
 for page in $SPAWN_PAGES; do
-    dconf write /org/gnome/shell/extensions/spawn-menu/prefs-visible-page "$page"
+    dconf write /org/gnome/shell/extensions/spawn/prefs-visible-page "$page"
     gnome-extensions prefs "$uuid" >>"$plog" 2>&1 || true
     sleep 3
     # Leave the startup overview so the window is shown at its real size (needs --unsafe-mode).
@@ -158,12 +158,12 @@ for page in $SPAWN_PAGES; do
         --method org.gnome.Shell.Eval 'Main.overview.hide()' >/dev/null 2>&1 || true
     if [ "$SPAWN_TALL" = 1 ]; then
         gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.gnome.Shell.Eval \
-            "global.get_window_actors().map(a => a.meta_window).filter(w => w.get_title() === 'Spawn Menu').forEach(w => w.move_resize_frame(false, 320, 40, 960, 2500))" >/dev/null 2>&1 || true
+            "global.get_window_actors().map(a => a.meta_window).filter(w => w.get_title() === 'Spawn').forEach(w => w.move_resize_frame(false, 320, 40, 960, 2500))" >/dev/null 2>&1 || true
     fi
     sleep 2
     f="$shots/page-$page.png"
-    gdbus call --session --dest io.github.djshiye.SpawnMenu --object-path /io/github/djshiye/SpawnMenu \
-        --method io.github.djshiye.SpawnMenu.Dev.Screenshot "$f" >/dev/null 2>&1 || true
+    gdbus call --session --dest io.github.djshiye.Spawn --object-path /io/github/djshiye/Spawn \
+        --method io.github.djshiye.Spawn.Dev.Screenshot "$f" >/dev/null 2>&1 || true
     if [ -s "$f" ]; then echo "screenshot: $f"; else echo "screenshot FAILED: $f"; status=1; fi
     pid="$(prefs_pid || true)"
     [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
@@ -180,8 +180,8 @@ if [ "$SPAWN_DIALOGS" = 1 ]; then
             --method org.gnome.Shell.Eval 'Main.overview.hide()' >/dev/null 2>&1 || true
         sleep 1
         f="$shots/dialog-$d.png"
-        gdbus call --session --dest io.github.djshiye.SpawnMenu --object-path /io/github/djshiye/SpawnMenu \
-            --method io.github.djshiye.SpawnMenu.Dev.Screenshot "$f" >/dev/null 2>&1 || true
+        gdbus call --session --dest io.github.djshiye.Spawn --object-path /io/github/djshiye/Spawn \
+            --method io.github.djshiye.Spawn.Dev.Screenshot "$f" >/dev/null 2>&1 || true
         if [ -s "$f" ]; then echo "screenshot: $f"; else echo "screenshot FAILED: $f"; status=1; fi
         kill "$dpid" 2>/dev/null || true
         wait "$dpid" 2>/dev/null || true
@@ -189,7 +189,7 @@ if [ "$SPAWN_DIALOGS" = 1 ]; then
 fi
 
 echo "---- shell log (prefs related) ----"
-grep -E 'JS ERROR|spawn-menu|Gjs-CRITICAL|prefs' "$log" | head -40 || true
+grep -E 'JS ERROR|spawn|Gjs-CRITICAL|prefs' "$log" | head -40 || true
 echo "---- prefs log ----"
 cat "$plog" 2>/dev/null | head -60 || true
 exit "$status"

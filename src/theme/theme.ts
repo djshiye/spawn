@@ -3,7 +3,7 @@
 // Responsibility: default look = shell theme (Orchis) classes plus the GNOME accent colour
 // (org.gnome.desktop.interface accent-color, read-only). When `override-menu-theme` is true
 // the colour keys are layered on top. The CSS is written SYNCHRONOUSLY to
-// $XDG_RUNTIME_DIR/spawn-menu/<token>/theme.css (a fresh <token> directory per Theme instance,
+// $XDG_RUNTIME_DIR/spawn/<token>/theme.css (a fresh <token> directory per Theme instance,
 // i.e. per enable, so a late unload of a previous instance can never touch our file), loaded
 // with St.ThemeContext theme.load_stylesheet and unloaded (and the file removed) before every
 // reload and on dispose. Re-generated on settings changes, debounced. No async file creation
@@ -21,24 +21,24 @@
 //
 // Selectors styled (all through generated rules; stylesheet.css stays structural):
 //   Always (accent only):
-//     .spawn-menu-tile / .spawn-menu-row / .spawn-menu-shortcut-row / .spawn-menu-folder-tile
+//     .spawn-tile / .spawn-row / .spawn-shortcut-row / .spawn-folder-tile
 //        :focus  -> accent at 25 % alpha;  :active / :selected / :checked -> accent + white text
-//     .spawn-menu-search-box:focus -> accent border
-//     .spawn-menu-drop-target      -> accent border + accent 20 % background (drag & drop)
-//     .spawn-menu-accent           -> accent text colour (small indicators, "new" dots, ...)
+//     .spawn-search-box:focus -> accent border
+//     .spawn-drop-target      -> accent border + accent 20 % background (drag & drop)
+//     .spawn-accent           -> accent text colour (small indicators, "new" dots, ...)
 //   Panel button (each only when its (bs)/(bi) tuple is enabled, independent of override):
-//     #panel .panel-button.spawn-menu-button            fg, bg, border radius/width/colour
-//     #panel .panel-button.spawn-menu-button:hover, :focus   hover bg / fg
-//     #panel .panel-button.spawn-menu-button:active, :checked (+ :hover)  active bg / fg
+//     #panel .panel-button.spawn-button            fg, bg, border radius/width/colour
+//     #panel .panel-button.spawn-button:hover, :focus   hover bg / fg
+//     #panel .panel-button.spawn-button:active, :checked (+ :hover)  active bg / fg
 //     (the `#panel` prefix is needed to outrank the shell theme, and matches both GNOME's panel
 //     and Dash to Panel's panels; hover/active backgrounds replace the theme's inset box-shadow)
 //   Only when `override-menu-theme` is true:
-//     .spawn-menu-popup                          arrow colours, font size, foreground
-//     .spawn-menu-popup .popup-menu-content      background, border, radius
+//     .spawn-popup                          arrow colours, font size, foreground
+//     .spawn-popup .popup-menu-content      background, border, radius
 //     the item selectors above                   hover/focus + active colours
-//     .spawn-menu-popup StEntry / .hint-text     foreground, separator colour as border
-//     .spawn-menu-separator, .spawn-menu-popup .popup-separator-menu-item-separator  separators
-//   Optional (`searchEntryRadius` enabled): .spawn-menu-search-box border-radius.
+//     .spawn-popup StEntry / .hint-text     foreground, separator colour as border
+//     .spawn-separator, .spawn-popup .popup-separator-menu-item-separator  separators
+//   Optional (`searchEntryRadius` enabled): .spawn-search-box border-radius.
 //   Colour values from settings are validated by sanitizeColor; an invalid colour drops its
 //   rule instead of breaking the stylesheet.
 
@@ -152,7 +152,7 @@ export class Theme {
     }
 
     private _dir(): string {
-        return GLib.build_filenamev([GLib.get_user_runtime_dir(), 'spawn-menu', this._token]);
+        return GLib.build_filenamev([GLib.get_user_runtime_dir(), 'spawn', this._token]);
     }
 
     private _theme(): St.Theme | null {

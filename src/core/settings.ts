@@ -22,7 +22,7 @@ import GLib from 'gi://GLib';
 
 import type {Scope} from './scope.js';
 
-export const SCHEMA_ID = 'org.gnome.shell.extensions.spawn-menu';
+export const SCHEMA_ID = 'org.gnome.shell.extensions.spawn';
 export const FOLDER_SCHEMA_ID = `${SCHEMA_ID}.folder`;
 
 export interface Entry {

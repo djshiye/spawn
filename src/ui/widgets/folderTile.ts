@@ -43,7 +43,7 @@ export class FolderTile {
         const size = opts.iconSize ?? DEFAULT_TILE_ICON_SIZE;
         this._mini = Math.floor((size - 2 * PLATE_PADDING - PLATE_SPACING) / 2);
 
-        const button = makeItemButton('spawn-menu-tile spawn-menu-folder-tile');
+        const button = makeItemButton('spawn-tile spawn-folder-tile');
         this.actor = button;
         button.x_expand = false;
 
@@ -51,18 +51,18 @@ export class FolderTile {
             orientation: Clutter.Orientation.VERTICAL,
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
-            style_class: 'spawn-menu-tile-box',
+            style_class: 'spawn-tile-box',
         });
         const plate = new St.BoxLayout({
             orientation: Clutter.Orientation.VERTICAL,
-            style_class: 'spawn-menu-folder-plate',
+            style_class: 'spawn-folder-plate',
             x_align: Clutter.ActorAlign.CENTER,
             width: size,
             height: size,
         });
         this._rows = [
-            new St.BoxLayout({style_class: 'spawn-menu-folder-plate-row', x_align: Clutter.ActorAlign.CENTER, y_expand: true}),
-            new St.BoxLayout({style_class: 'spawn-menu-folder-plate-row', x_align: Clutter.ActorAlign.CENTER, y_expand: true}),
+            new St.BoxLayout({style_class: 'spawn-folder-plate-row', x_align: Clutter.ActorAlign.CENTER, y_expand: true}),
+            new St.BoxLayout({style_class: 'spawn-folder-plate-row', x_align: Clutter.ActorAlign.CENTER, y_expand: true}),
         ];
         plate.add_child(this._rows[0]);
         plate.add_child(this._rows[1]);
@@ -70,7 +70,7 @@ export class FolderTile {
         this._fallback = new St.Icon({
             icon_name: 'folder-symbolic',
             icon_size: Math.floor(size / 2),
-            style_class: 'spawn-menu-folder-fallback',
+            style_class: 'spawn-folder-fallback',
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
             y_expand: true,
@@ -79,7 +79,7 @@ export class FolderTile {
         plate.add_child(this._fallback);
         this._label = new St.Label({
             text: name,
-            style_class: 'spawn-menu-tile-label',
+            style_class: 'spawn-tile-label',
             x_align: Clutter.ActorAlign.CENTER,
             x_expand: true,
         });
@@ -108,7 +108,7 @@ export class FolderTile {
         }
         const shown = icons.slice(0, 4);
         shown.forEach((gicon, i) => {
-            const icon = new St.Icon({gicon, icon_size: this._mini, style_class: 'spawn-menu-folder-mini'});
+            const icon = new St.Icon({gicon, icon_size: this._mini, style_class: 'spawn-folder-mini'});
             this._rows[i < 2 ? 0 : 1].add_child(icon);
         });
         const empty = shown.length === 0;

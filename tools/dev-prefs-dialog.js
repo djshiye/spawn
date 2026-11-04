@@ -12,12 +12,12 @@ const {chooseApplication, openFolderEditor, promptText} = await import(`file://$
 const {captureShortcut} = await import(`file://${build}/prefs/shortcutDialog.js`);
 
 const source = Gio.SettingsSchemaSource.new_from_directory(`${build}/schemas`, Gio.SettingsSchemaSource.get_default(), false);
-const schema = source.lookup('org.gnome.shell.extensions.spawn-menu', true);
-const settings = new SpawnSettings(Gio.Settings.new_full(schema, null, '/org/gnome/shell/extensions/spawn-menu/'), source);
+const schema = source.lookup('org.gnome.shell.extensions.spawn', true);
+const settings = new SpawnSettings(Gio.Settings.new_full(schema, null, '/org/gnome/shell/extensions/spawn/'), source);
 
-const app = new Adw.Application({application_id: 'io.github.djshiye.SpawnMenu.DevDialog'});
+const app = new Adw.Application({application_id: 'io.github.djshiye.Spawn.DevDialog'});
 app.connect('activate', () => {
-    const window = new Adw.PreferencesWindow({application: app, title: 'Spawn Menu', default_width: 900, default_height: 700});
+    const window = new Adw.PreferencesWindow({application: app, title: 'Spawn', default_width: 900, default_height: 700});
     window.add(new Adw.PreferencesPage());
     window.present();
     const ctx = {settings, extensionDir: build, window, metadata: {}};

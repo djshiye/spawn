@@ -9,7 +9,7 @@
 //
 // Public API:
 //   new SpawnLayout(scope, services, host)
-//   layout.actor: St.Widget            content root (class "spawn-menu-layout")
+//   layout.actor: St.Widget            content root (class "spawn-layout")
 //   layout.onOpen(): void              menu is about to be shown (reset view, focus search)
 //   layout.onClosed(): void            menu was hidden (clear search, release caches)
 //   layout.handleKey(event): boolean   Escape routing: true when the layout consumed the key
@@ -185,7 +185,7 @@ export class SpawnLayout implements ShortcutHost {
         this._context = new AppContextMenu(scope, services, host);
 
         this.actor = new St.BoxLayout({
-            style_class: 'spawn-menu-layout',
+            style_class: 'spawn-layout',
             orientation: Clutter.Orientation.HORIZONTAL,
             reactive: true,
         });
@@ -198,17 +198,17 @@ export class SpawnLayout implements ShortcutHost {
             this.actor.destroy();
         }, 'SpawnLayout actor');
 
-        this._left = new St.BoxLayout({style_class: 'spawn-menu-left-pane', orientation: Clutter.Orientation.VERTICAL, y_expand: true});
-        this._vsep = new St.Widget({style_class: 'spawn-menu-vseparator', y_expand: true});
-        this._right = new St.BoxLayout({style_class: 'spawn-menu-right-pane', orientation: Clutter.Orientation.VERTICAL, y_expand: true});
+        this._left = new St.BoxLayout({style_class: 'spawn-left-pane', orientation: Clutter.Orientation.VERTICAL, y_expand: true});
+        this._vsep = new St.Widget({style_class: 'spawn-vseparator', y_expand: true});
+        this._right = new St.BoxLayout({style_class: 'spawn-right-pane', orientation: Clutter.Orientation.VERTICAL, y_expand: true});
         this.actor.add_child(this._left);
         this.actor.add_child(this._vsep);
         this.actor.add_child(this._right);
 
         this._search = new SearchBox(scope, settings);
-        this._stack = new St.BoxLayout({style_class: 'spawn-menu-stack', orientation: Clutter.Orientation.VERTICAL, x_expand: true, y_expand: true});
+        this._stack = new St.BoxLayout({style_class: 'spawn-stack', orientation: Clutter.Orientation.VERTICAL, x_expand: true, y_expand: true});
 
-        this._nav = new St.BoxLayout({style_class: 'spawn-menu-nav'});
+        this._nav = new St.BoxLayout({style_class: 'spawn-nav'});
         this._backButton = this._navButton('go-previous-symbolic', 'Back', () => this._back());
         this._allAppsButton = this._navButton('view-app-grid-symbolic', 'All Apps', () => this._openAllApps());
         this._nav.add_child(this._backButton);
@@ -400,9 +400,9 @@ export class SpawnLayout implements ShortcutHost {
     // ---- chrome ----
 
     private _navButton(iconName: string, text: string, cb: () => void): St.Button {
-        const button = makeItemButton('spawn-menu-nav-button');
+        const button = makeItemButton('spawn-nav-button');
         button.x_expand = false;
-        const box = new St.BoxLayout({style_class: 'spawn-menu-row-box'});
+        const box = new St.BoxLayout({style_class: 'spawn-row-box'});
         box.add_child(new St.Icon({icon_name: iconName, icon_size: 16, y_align: Clutter.ActorAlign.CENTER}));
         box.add_child(new St.Label({text, y_align: Clutter.ActorAlign.CENTER}));
         button.set_child(box);
@@ -417,15 +417,15 @@ export class SpawnLayout implements ShortcutHost {
             if (c.get_parent() === this._left)
                 this._left.remove_child(c);
         }
-        this._search.actor.remove_style_class_name('spawn-menu-search-top');
-        this._search.actor.remove_style_class_name('spawn-menu-search-bottom');
+        this._search.actor.remove_style_class_name('spawn-search-top');
+        this._search.actor.remove_style_class_name('spawn-search-bottom');
         if (top) {
-            this._search.actor.add_style_class_name('spawn-menu-search-top');
+            this._search.actor.add_style_class_name('spawn-search-top');
             this._left.add_child(this._search.actor);
             this._left.add_child(this._stack);
             this._left.add_child(this._nav);
         } else {
-            this._search.actor.add_style_class_name('spawn-menu-search-bottom');
+            this._search.actor.add_style_class_name('spawn-search-bottom');
             this._left.add_child(this._stack);
             this._left.add_child(this._nav);
             this._left.add_child(this._search.actor);
@@ -450,8 +450,8 @@ export class SpawnLayout implements ShortcutHost {
         this._userCard = new UserCard(scope, s, hostWithTips);
         this._right.add_child(this._userCard.actor);
 
-        const shortcutsBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-menu-shortcuts-box'});
-        const scroll = this._makeScroll(shortcutsBox, 'spawn-menu-shortcuts');
+        const shortcutsBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-shortcuts-box'});
+        const scroll = this._makeScroll(shortcutsBox, 'spawn-shortcuts');
         const iconSize = iconSizeFor(s, 'icon-size-shortcuts', 16);
         const symbolic = s.get('icon-style-shortcuts') === 'Symbolic';
 
@@ -566,8 +566,8 @@ export class SpawnLayout implements ShortcutHost {
         }
         case 'frequent': {
             if (!this._frequentScroll) {
-                this._frequentBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-menu-list'});
-                this._frequentScroll = this._makeScroll(this._frequentBox, 'spawn-menu-frequent');
+                this._frequentBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-list'});
+                this._frequentScroll = this._makeScroll(this._frequentBox, 'spawn-frequent');
             }
             this._fillFrequent(this._frequentBox as St.BoxLayout, 0);
             return [add(this._frequentScroll)];
@@ -587,7 +587,7 @@ export class SpawnLayout implements ShortcutHost {
         case 'results': {
             if (!this._resultsScroll) {
                 this._results = new ResultList(this._scope, this._services.settings, this._resultHost);
-                this._resultsScroll = this._makeScroll(this._results.actor, 'spawn-menu-results');
+                this._resultsScroll = this._makeScroll(this._results.actor, 'spawn-results');
             }
             return [add(this._resultsScroll)];
         }
@@ -596,10 +596,10 @@ export class SpawnLayout implements ShortcutHost {
 
     private _ensurePinned(): St.ScrollView {
         if (!this._pinnedScroll) {
-            this._pinnedBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-menu-pinned-box'});
-            this._pinnedBox.add_child(new St.Label({text: 'Pinned', style_class: 'spawn-menu-section-title'}));
+            this._pinnedBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-pinned-box'});
+            this._pinnedBox.add_child(new St.Label({text: 'Pinned', style_class: 'spawn-section-title'}));
             this._pinnedBox.add_child(this._grid.actor);
-            this._pinnedScroll = this._makeScroll(this._pinnedBox, 'spawn-menu-pinned');
+            this._pinnedScroll = this._makeScroll(this._pinnedBox, 'spawn-pinned');
             acceptDrops(this._scope, this._pinnedScroll, this._services.pinned, {kind: 'grid', index: () => -1});
             if (!this._pinnedSubscribed) {
                 this._pinnedSubscribed = true;
@@ -645,7 +645,7 @@ export class SpawnLayout implements ShortcutHost {
         for (const app of apps)
             box.add_child(new AppRow(app, this._tileHostWithTips(), opts).actor);
         if (apps.length === 0)
-            box.add_child(new St.Label({text: 'Nothing here yet', style_class: 'spawn-menu-empty-label', x_align: Clutter.ActorAlign.CENTER}));
+            box.add_child(new St.Label({text: 'Nothing here yet', style_class: 'spawn-empty-label', x_align: Clutter.ActorAlign.CENTER}));
     }
 
     /** Pinned_And_Frequent_Apps: a frequent section under the pinned grid. */
@@ -660,8 +660,8 @@ export class SpawnLayout implements ShortcutHost {
         if (this._services.settings.get('default-menu-view') !== 'Pinned_And_Frequent_Apps')
             return;
         const section = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
-        section.add_child(new St.Widget({style_class: 'spawn-menu-separator', x_expand: true}));
-        section.add_child(new St.Label({text: 'Frequent', style_class: 'spawn-menu-section-title'}));
+        section.add_child(new St.Widget({style_class: 'spawn-separator', x_expand: true}));
+        section.add_child(new St.Label({text: 'Frequent', style_class: 'spawn-section-title'}));
         const rows = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
         section.add_child(rows);
         this._fillFrequent(rows, Math.max(1, this._services.settings.get('max-frequent-apps')) || 8);

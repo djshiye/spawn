@@ -1,5 +1,5 @@
 # Layout variants: search on top, power buttons as a menu, square avatar, categories default view, hidden search.
-K=/org/gnome/shell/extensions/spawn-menu
+K=/org/gnome/shell/extensions/spawn
 dconf write $K/search-entry-location "'Top'"
 dconf write $K/default-menu-view "'Pinned_And_Frequent_Apps'"
 dconf write $K/power-display-style "'Menu'"

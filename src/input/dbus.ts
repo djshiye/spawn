@@ -1,8 +1,8 @@
 // DBusService: session-bus API.
 //
-// Public interface   io.github.djshiye.SpawnMenu  at /io/github/djshiye/SpawnMenu
+// Public interface   io.github.djshiye.Spawn  at /io/github/djshiye/Spawn
 //   Toggle()                      toggle the menu on the default button
-// Dev interface      io.github.djshiye.SpawnMenu.Dev   (exported ONLY while `dev-mode` is true;
+// Dev interface      io.github.djshiye.Spawn.Dev   (exported ONLY while `dev-mode` is true;
 //                                 follows the setting live)
 //   Open() / Close()
 //   Search(s query)               no-op until the search UI exists
@@ -45,14 +45,14 @@ export interface MenuController {
 
 const MAIN_IFACE = `
 <node>
-  <interface name="io.github.djshiye.SpawnMenu">
+  <interface name="io.github.djshiye.Spawn">
     <method name="Toggle"/>
   </interface>
 </node>`;
 
 const DEV_IFACE = `
 <node>
-  <interface name="io.github.djshiye.SpawnMenu.Dev">
+  <interface name="io.github.djshiye.Spawn.Dev">
     <method name="Open"/>
     <method name="Close"/>
     <method name="Search"><arg type="s" direction="in" name="query"/></method>
@@ -162,7 +162,7 @@ export class DBusService {
     /** Runs `fn`, answering the invocation with the result or a D-Bus error. */
     private _call(invocation: Invocation, fn: () => GLib.Variant | void): void {
         if (this._disposed) {
-            invocation.return_dbus_error('org.freedesktop.DBus.Error.Failed', 'Spawn Menu is disabled');
+            invocation.return_dbus_error('org.freedesktop.DBus.Error.Failed', 'Spawn is disabled');
             return;
         }
         try {
@@ -231,7 +231,7 @@ export class DBusService {
 
     private async _screenshot(path: string): Promise<void> {
         if (this._disposed)
-            throw new Error('Spawn Menu is disabled');
+            throw new Error('Spawn is disabled');
         const file = Gio.File.new_for_path(path);
         const dir = file.get_parent();
         if (dir && !dir.query_exists(null))

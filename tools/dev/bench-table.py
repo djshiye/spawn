@@ -15,7 +15,7 @@ def row(label, st, note=""):
 
 
 print()
-print("Spawn Menu benchmark (times in ms, measured inside the shell with GLib.get_monotonic_time())")
+print("Spawn benchmark (times in ms, measured inside the shell with GLib.get_monotonic_time())")
 print(f"  renderer: {meta.get('gpu', '?')}  monitor: {meta.get('monitor', '?')}  apps in index: {d.get('appIndex', {}).get('apps', '?')}")
 print("  NOTE: the headless shell renders with the real GPU (renderD128), so paint numbers are meaningful,")
 print("        but a virtual monitor has no scanout/vsync, so 'painted' ends at the stage's after-paint.")

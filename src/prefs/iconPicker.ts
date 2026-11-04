@@ -37,7 +37,7 @@ function bundledIcons(ctx: PrefsContext): string[] {
                 names.push(name);
         }
     } catch (e) {
-        console.error(`[spawn-menu] cannot list bundled icons: ${e}`);
+        console.error(`[spawn] cannot list bundled icons: ${e}`);
     }
     return names.sort((a, b) => a.localeCompare(b));
 }

@@ -81,10 +81,10 @@ test('plain copies and tuples', () => {
     assertEquals(item('menu-background-color').value, 'rgba(48,48,49,0.98)');
 });
 
-test('shortcut ids are rewritten to SpawnMenu_', () => {
-    assertEquals(item('directory-shortcuts').value, [{id: 'SpawnMenu_Home', name: 'Home', icon: 'SpawnMenu_Home'}]);
+test('shortcut ids are rewritten to Spawn_', () => {
+    assertEquals(item('directory-shortcuts').value, [{id: 'Spawn_Home', name: 'Home', icon: 'Spawn_Home'}]);
     const apps = item('application-shortcuts').value;
-    assertEquals(apps.map(e => e.id), ['SpawnMenu_Software', 'SpawnMenu_Separator', 'org.gnome.Ptyxis.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']);
+    assertEquals(apps.map(e => e.id), ['Spawn_Software', 'Spawn_Separator', 'org.gnome.Ptyxis.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']);
     assert(!JSON.stringify(plan.items).includes('ArcMenu_'), 'ArcMenu_ id left in the plan');
 });
 
@@ -126,7 +126,7 @@ test('show-activities-button is inverted', () => {
 
 test('other layouts fall back to spawn with a warning', () => {
     const p = planMigration(snap({'menu-layout': 'gnome-menu'}));
-    assertEquals(p.skipped, [{key: 'menu-layout', reason: 'Spawn Menu has a single layout'}]);
+    assertEquals(p.skipped, [{key: 'menu-layout', reason: 'Spawn has a single layout'}]);
     assert(p.warnings.some(w => w.includes('gnome-menu') && w.includes('spawn')));
 });
 
@@ -169,7 +169,7 @@ test('ArcMenu-only entries are dropped with warnings; button icon variants', () 
         {id: 'gnome-extensions prefs arcmenu@arcmenu.com', name: 'x'},
         {id: 'ArcMenu_PowerOff', name: 'Power Off', icon: 'ArcMenu_ArcMenuIcon'},
     ], 'test', warnings);
-    assertEquals(out, [{id: 'SpawnMenu_PowerOff', name: 'Power Off'}]);
+    assertEquals(out, [{id: 'Spawn_PowerOff', name: 'Power Off'}]);
     assertEquals(warnings.length, 2);
     assertEquals(convertButtonIcon('/home/u/i.png'), '/home/u/i.png');
     assertEquals(convertButtonIcon('start-here-symbolic'), 'start-here-symbolic');
@@ -180,7 +180,7 @@ test('ArcMenu-only entries are dropped with warnings; button icon variants', () 
 
 function compileSpawnSchemas() {
     const dir = GLib.dir_make_tmp('spawn-migrate-XXXXXX');
-    for (const f of ['org.gnome.shell.extensions.spawn-menu.gschema.xml']) {
+    for (const f of ['org.gnome.shell.extensions.spawn.gschema.xml']) {
         const src = Gio.File.new_for_path(`${root}/schemas/${f}`);
         src.copy(Gio.File.new_for_path(`${dir}/${f}`), Gio.FileCopyFlags.OVERWRITE, null, null);
     }
@@ -213,11 +213,11 @@ test('round trip: write fixture to ArcMenu schema, read snapshot, plan, apply', 
     assertEquals(JSON.stringify(canon(planMigration(snapshot))) === JSON.stringify(canon(plan)), true, 'plan from the live snapshot differs from the fixture plan');
     assertSame(snapshot.values, fixture.values);
 
-    // 3. apply to a Spawn Menu settings object on the same memory backend.
+    // 3. apply to a Spawn settings object on the same memory backend.
     const dir = compileSpawnSchemas();
     const source = Gio.SettingsSchemaSource.new_from_directory(dir, Gio.SettingsSchemaSource.get_default(), false);
-    const schema = source.lookup('org.gnome.shell.extensions.spawn-menu', true);
-    const settings = new SpawnSettings(Gio.Settings.new_full(schema, null, '/org/gnome/shell/extensions/spawn-menu/'), source);
+    const schema = source.lookup('org.gnome.shell.extensions.spawn', true);
+    const settings = new SpawnSettings(Gio.Settings.new_full(schema, null, '/org/gnome/shell/extensions/spawn/'), source);
     applyMigration(plan, settings);
     assertEquals(settings.get('migration-done'), true);
     assertEquals(settings.get('hide-activities-button'), true);
@@ -225,7 +225,7 @@ test('round trip: write fixture to ArcMenu schema, read snapshot, plan, apply', 
     assertEquals(settings.get('menu-button-icon-size'), 30);
     assertEquals(settings.get('search-entry-border-radius'), [true, 25]);
     assertEquals(settings.get('pinned-apps').length, 6);
-    assertEquals(settings.get('directory-shortcuts')[0].id, 'SpawnMenu_Home');
+    assertEquals(settings.get('directory-shortcuts')[0].id, 'Spawn_Home');
     for (const f of plan.folders) {
         const folder = settings.folder(f.uuid);
         assertEquals(folder.name, f.name);

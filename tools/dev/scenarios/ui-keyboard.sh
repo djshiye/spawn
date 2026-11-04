@@ -2,11 +2,11 @@
 open_menu 1.5
 expect "focus starts in the search entry" "$(state_get layout.focus | cut -c1-12)" "Clutter_Text"
 key Down
-expect "Down moves focus to the first tile" "$(state_get layout.focus)" "St_Button.spawn-menu-tile"
+expect "Down moves focus to the first tile" "$(state_get layout.focus)" "St_Button.spawn-tile"
 key Right; key Right; key Right
-expect "Right x3 lands on the folder tile" "$(state_get layout.focus)" "St_Button.spawn-menu-tile spawn-menu-folder-tile"
+expect "Right x3 lands on the folder tile" "$(state_get layout.focus)" "St_Button.spawn-tile spawn-folder-tile"
 key Down
-expect "Down moves to the row below" "$(state_get layout.focus)" "St_Button.spawn-menu-tile spawn-menu-folder-tile"
+expect "Down moves to the row below" "$(state_get layout.focus)" "St_Button.spawn-tile spawn-folder-tile"
 screenshot ui-keyboard-nav
 echo "-- Tab cycle (focus stays inside the layout)"
 for i in 1 2 3 4 5 6; do

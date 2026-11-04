@@ -1,7 +1,7 @@
 // AppContextMenu: the app right-click / Menu-key / Shift+F10 menu (and the folder menu).
 //
 // App menu = the shell's own AppMenu (open windows, New Window, desktop actions, discrete GPU,
-// App Details in Software, Quit) plus Spawn Menu items: Pin to / Unpin from Menu, Add to Folder
+// App Details in Software, Quit) plus Spawn items: Pin to / Unpin from Menu, Add to Folder
 // (existing folders + New Folder), Remove from Folder. Folder menu: Open, Rename, Delete.
 // It owns its PopupMenuManager so the grab stacks on top of the main popup's; a fresh menu is
 // built for every open and destroyed on close. Mutations go through Services.pinned.
@@ -70,7 +70,7 @@ export class AppContextMenu {
             const manager = new PopupMenu.PopupMenuManager(source);
             Main.uiGroup.add_child(menu.actor);
             menu.actor.hide();
-            menu.actor.add_style_class_name('spawn-menu-context-menu');
+            menu.actor.add_style_class_name('spawn-context-menu');
             manager.addMenu(menu);
             scope.add(() => {
                 manager.removeMenu(menu);
@@ -167,7 +167,7 @@ export class AppContextMenu {
         });
         sub.menu.addMenuItem(create);
 
-        // Spawn Menu items replace the (hidden) Pin-to-Dash slot.
+        // Spawn items replace the (hidden) Pin-to-Dash slot.
         const slot = menu as unknown as {_toggleFavoriteItem?: PopupMenu.PopupBaseMenuItem};
         let at = slot._toggleFavoriteItem ? menu._getMenuItems().indexOf(slot._toggleFavoriteItem) : -1;
         if (at < 0)

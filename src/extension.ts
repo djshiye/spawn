@@ -1,4 +1,4 @@
-// SpawnMenuExtension: enable()/disable() only.
+// SpawnExtension: enable()/disable() only.
 //
 // enable() builds a root Scope and starts each subsystem inside its own child scope, wrapped
 // in try/catch: if one subsystem fails to start, only that subsystem is disposed, the error is
@@ -29,7 +29,7 @@ import {Theme} from './theme/theme.js';
 import {MenuButton} from './ui/button.js';
 import {SpawnPopup} from './ui/menu.js';
 
-export default class SpawnMenuExtension extends Extension {
+export default class SpawnExtension extends Extension {
     private _root: Scope | null = null;
     /** enable() timing, kept for the dev benchmark (Dev.Benchmark). */
     private _enableMs = 0;
@@ -88,7 +88,7 @@ export default class SpawnMenuExtension extends Extension {
     }
 
     private _enable(): void {
-        const root = new Scope('spawn-menu');
+        const root = new Scope('spawn');
         this._root = root;
         this._startMs = {};
 

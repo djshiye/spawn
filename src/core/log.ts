@@ -1,4 +1,4 @@
-// Logging helpers. Every message is prefixed with "[spawn-menu]".
+// Logging helpers. Every message is prefixed with "[spawn]".
 //
 // Public API:
 //   log(...args)    informational (console.log)
@@ -8,7 +8,7 @@
 //
 // This module has no imports so it is usable from unit tests under gjs -m.
 
-const PREFIX = '[spawn-menu]';
+const PREFIX = '[spawn]';
 
 function describe(err: unknown): string {
     if (err instanceof Error)

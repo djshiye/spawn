@@ -168,7 +168,7 @@ export class SpawnPopup {
 
         Main.uiGroup.add_child(menu.actor);
         menu.actor.hide();
-        menu.actor.add_style_class_name('spawn-menu-popup');
+        menu.actor.add_style_class_name('spawn-popup');
 
         // Offer Escape to the layout before the manager's own (capture-phase) handler closes the
         // menu. Added before the manager adds its controller, so it runs first.
@@ -179,7 +179,7 @@ export class SpawnPopup {
                 return Clutter.EVENT_STOP;
             return Clutter.EVENT_PROPAGATE;
         });
-        menu.actor.add_action_full('spawn-menu-escape', Clutter.EventPhase.CAPTURE, keys);
+        menu.actor.add_action_full('spawn-escape', Clutter.EventPhase.CAPTURE, keys);
         manager.addMenu(menu);
 
         layout.actor.get_parent()?.remove_child(layout.actor);

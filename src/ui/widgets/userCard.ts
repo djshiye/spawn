@@ -36,14 +36,14 @@ export class UserCard {
 
     constructor(scope: Scope, settings: SpawnSettings, host: ShortcutHost) {
         this._settings = settings;
-        const button = makeItemButton('spawn-menu-user-card');
+        const button = makeItemButton('spawn-user-card');
         this.actor = button;
 
-        const box = new St.BoxLayout({style_class: 'spawn-menu-user-card-box', x_expand: true});
-        this._avatarBox = new St.Bin({y_align: Clutter.ActorAlign.CENTER, style_class: 'spawn-menu-avatar-box'});
+        const box = new St.BoxLayout({style_class: 'spawn-user-card-box', x_expand: true});
+        this._avatarBox = new St.Bin({y_align: Clutter.ActorAlign.CENTER, style_class: 'spawn-avatar-box'});
         this._label = new St.Label({
             text: GLib.get_real_name() || GLib.get_user_name(),
-            style_class: 'spawn-menu-user-name',
+            style_class: 'spawn-user-name',
             y_align: Clutter.ActorAlign.CENTER,
             x_expand: true,
         });
@@ -97,9 +97,9 @@ export class UserCard {
             if (!w)
                 continue;
             if (square)
-                w.add_style_class_name('spawn-menu-avatar-square');
+                w.add_style_class_name('spawn-avatar-square');
             else
-                w.remove_style_class_name('spawn-menu-avatar-square');
+                w.remove_style_class_name('spawn-avatar-square');
         }
         this.actor.visible = this._settings.get('show-user-avatar');
     }
@@ -111,12 +111,12 @@ export class UserCard {
         if (user?.is_loaded) {
             this._label.text = user.get_real_name() || user.get_user_name() || this._label.text;
             if (!this._avatar) {
-                this._avatar = new AvatarClass(user, {iconSize: AVATAR_SIZE, styleClass: 'user-icon spawn-menu-avatar'});
+                this._avatar = new AvatarClass(user, {iconSize: AVATAR_SIZE, styleClass: 'user-icon spawn-avatar'});
                 this._avatarBox.set_child(this._avatar);
             }
             (this._avatar as unknown as {update(): void}).update();
         } else if (!this._avatar) {
-            this._avatarBox.set_child(new St.Icon({icon_name: 'avatar-default-symbolic', icon_size: AVATAR_SIZE, style_class: 'user-icon spawn-menu-avatar'}));
+            this._avatarBox.set_child(new St.Icon({icon_name: 'avatar-default-symbolic', icon_size: AVATAR_SIZE, style_class: 'user-icon spawn-avatar'}));
         }
         this._applyStyle();
     }

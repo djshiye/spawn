@@ -46,7 +46,7 @@ export class PowerBar {
         this._scope = scope;
         this._settings = settings;
         this._host = host;
-        this.actor = new St.BoxLayout({style_class: 'spawn-menu-power-bar', x_expand: true});
+        this.actor = new St.BoxLayout({style_class: 'spawn-power-bar', x_expand: true});
 
         this._build();
         const sa = systemActions();
@@ -113,7 +113,7 @@ export class PowerBar {
                 const info = POWER_INFO[type];
                 if (!info)
                     continue;
-                const button = makeItemButton('spawn-menu-power-button');
+                const button = makeItemButton('spawn-power-button');
                 button.x_expand = false;
                 button.set_child(new St.Icon({icon_name: info.icon, icon_size: size}));
                 button.accessible_name = info.name;
@@ -127,8 +127,8 @@ export class PowerBar {
     }
 
     private _buildMenuButton(size: number): void {
-        const button = makeItemButton('spawn-menu-power-button spawn-menu-power-menu-button');
-        const box = new St.BoxLayout({style_class: 'spawn-menu-row-box'});
+        const button = makeItemButton('spawn-power-button spawn-power-menu-button');
+        const box = new St.BoxLayout({style_class: 'spawn-row-box'});
         box.add_child(new St.Icon({icon_name: POWER_INFO[PowerType.POWER_OFF].icon, icon_size: size, y_align: Clutter.ActorAlign.CENTER}));
         box.add_child(new St.Label({text: POWER_INFO[PowerType.POWER_OFF].name, y_align: Clutter.ActorAlign.CENTER}));
         button.set_child(box);
@@ -136,7 +136,7 @@ export class PowerBar {
         this._menuButton = button;
 
         const menu = new PopupMenu.PopupMenu(button, 0.5, St.Side.BOTTOM);
-        menu.actor.add_style_class_name('spawn-menu-popup spawn-menu-power-popup');
+        menu.actor.add_style_class_name('spawn-popup spawn-power-popup');
         const manager = new PopupMenu.PopupMenuManager(button);
         manager.addMenu(menu);
         Main.uiGroup.add_child(menu.actor);

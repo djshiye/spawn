@@ -18,7 +18,7 @@ export class TileGrid {
 
     constructor() {
         this.actor = new St.BoxLayout({
-            style_class: 'spawn-menu-tile-grid',
+            style_class: 'spawn-tile-grid',
             orientation: Clutter.Orientation.VERTICAL,
             x_expand: true,
             reactive: true,
@@ -45,7 +45,7 @@ export class TileGrid {
         let row: St.BoxLayout | null = null;
         tiles.forEach((tile, i) => {
             if (i % this._columns === 0) {
-                row = new St.BoxLayout({style_class: 'spawn-menu-tile-row'});
+                row = new St.BoxLayout({style_class: 'spawn-tile-row'});
                 this.actor.add_child(row);
             }
             tile.set_width(tileWidth);

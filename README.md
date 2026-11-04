@@ -1,4 +1,4 @@
-# Spawn Menu
+# Spawn
 
 A fast, resilient application menu for GNOME Shell 51. It replaces
 [ArcMenu](https://gitlab.com/arcmenu/ArcMenu) with a smaller, stricter codebase:
@@ -16,7 +16,7 @@ apps and folders with drag and drop, search, hotkeys, theming, preferences, ArcM
 ## Credits and licence
 
 Based on research into ArcMenu (https://gitlab.com/arcmenu/ArcMenu), GPL-2.0-or-later;
-Spawn Menu is a derivative work under the same licence. ArcMenu's icon set and a copy of its
+Spawn is a derivative work under the same licence. ArcMenu's icon set and a copy of its
 settings schema (used only to migrate settings) are bundled. See `LICENSE`.
 
 ## Build
@@ -28,7 +28,7 @@ npm install
 npm run typecheck   # tsc --noEmit
 npm run lint        # eslint
 npm test            # compiles, then runs the gjs -m unit tests in tests/
-npm run build       # tools/build.sh -> build/ and dist/spawn-menu@djshiye.github.io.shell-extension.zip
+npm run build       # tools/build.sh -> build/ and dist/spawn@djshiye.github.io.shell-extension.zip
 ```
 
 ## Install
@@ -36,7 +36,7 @@ npm run build       # tools/build.sh -> build/ and dist/spawn-menu@djshiye.githu
 ```sh
 tools/install.sh                 # copies build/ to ~/.local/share/gnome-shell/extensions/<uuid>
 tools/install.sh /some/data/dir  # or into <dir>/gnome-shell/extensions/<uuid>
-gnome-extensions enable spawn-menu@djshiye.github.io
+gnome-extensions enable spawn@djshiye.github.io
 ```
 
 Log out and in (Wayland) if the shell does not pick up a new extension.
@@ -50,7 +50,7 @@ or your installed extensions (the inner script refuses to run unless every XDG d
 
 ```sh
 tools/build.sh
-tools/dev-shell.sh all                      # EVERYTHING below, each in a fresh shell; fails on any spawn-menu error
+tools/dev-shell.sh all                      # EVERYTHING below, each in a fresh shell; fails on any spawn error
 tools/dev-shell.sh smoke                    # enable, wait, screenshot to .dev/shots/smoke.png
 tools/dev-shell.sh lifecycle                # enable -> open -> search -> close -> disable -> enable
 tools/dev-shell.sh hotkeys                  # Super interception in memory, accelerator bind/unbind
@@ -64,7 +64,7 @@ tools/dev-shell.sh bench                    # in-shell benchmark -> table, raw J
 ```
 
 `all` runs smoke, lifecycle, hotkeys, theme, dtp-toggle, dtp-open, ui, shots and bench, prints a
-PASS/FAIL summary and exits non-zero if any scenario failed or any `[spawn-menu] ERROR:` /
+PASS/FAIL summary and exits non-zero if any scenario failed or any `[spawn] ERROR:` /
 `JS ERROR` mentioning the extension showed up in a shell log. Per-scenario output and shell logs
 are kept in `.dev/logs/`.
 
@@ -81,9 +81,9 @@ sourced by `tools/dev-shell-inner.sh` and use its helpers (`open_menu`, `key`, `
 `tools/dev/scenarios/<name>.sh` is runnable as `tools/dev-shell.sh <name>`.
 
 Dev-only D-Bus (exported only while the sandbox's `dev-mode` setting is true):
-`io.github.djshiye.SpawnMenu.Dev` (`Open`, `Close`, `Search`, `Screenshot`, `AttachmentStatus`,
-`HotkeyStatus`, `EmitOverlayKey`, `Benchmark`) and `io.github.djshiye.SpawnMenu.Ui` at
-`/io/github/djshiye/SpawnMenu/Ui` (`Search`, `ShowView`, `OpenFolder`, `Key`, `Click`, `Move`, `Drag`,
+`io.github.djshiye.Spawn.Dev` (`Open`, `Close`, `Search`, `Screenshot`, `AttachmentStatus`,
+`HotkeyStatus`, `EmitOverlayKey`, `Benchmark`) and `io.github.djshiye.Spawn.Ui` at
+`/io/github/djshiye/Spawn/Ui` (`Search`, `ShowView`, `OpenFolder`, `Key`, `Click`, `Move`, `Drag`,
 `Pick`, `State`; see `src/ui/devHooks.ts`).
 
 ### Benchmark
