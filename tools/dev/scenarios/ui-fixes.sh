@@ -2,6 +2,7 @@
 K=/org/gnome/shell/extensions/spawn
 apps="$XDG_DATA_HOME/applications"
 mkdir -p "$apps"
+rm -f "$apps"/spawn-*.desktop   # leftovers of an earlier run (the Grid rerun of this scenario)
 mkdesktop() { # id name [exec]
     printf '[Desktop Entry]\nType=Application\nName=%s\nExec=%s\nIcon=utilities-terminal\n' "$2" "${3:-true}" >"$apps/$1"
 }
@@ -44,15 +45,17 @@ open_menu 1.5
 expect "duplicate id shows one tile" "$(state_get layout.tiles)" 2
 expect "no Clutter criticals from the duplicate" "$(clutter_criticals)" "$before"
 
-echo "-- ui #3: icon-size-grid applies to tiles that already exist"
+echo "-- ui #3: icon-size-grid (icon-size-apps in the list) applies to entries that already exist"
 reset_seed
 open_menu 1.5
-iw() { rect spawn-tile-icon 0 | python3 -c 'import json,sys; print(round(json.load(sys.stdin)[2]))'; }
+if [ "$PINNED_DISPLAY" = Grid ]; then size_key=icon-size-grid; big="{'size': 96}"; none="{'size': -1}"; icon_cls=spawn-tile-icon
+else size_key=icon-size-apps; big=64; none=-1; icon_cls=spawn-row-icon; fi
+iw() { rect $icon_cls 0 | python3 -c 'import json,sys; print(round(json.load(sys.stdin)[2]))'; }
 w0="$(iw)"
-dconf write $K/icon-size-grid "{'size': 96}"
+dconf write $K/$size_key "$big"
 sleep 1.2
 w1="$(iw)"
-dconf write $K/icon-size-grid "{'size': -1}"
+dconf write $K/$size_key "$none"
 sleep 1.2
 w2="$(iw)"
 echo "icon widths: default=$w0 big=$w1 back=$w2"
@@ -101,7 +104,7 @@ expect "focus stays in the entry" "$(state_get layout.focus | cut -c1-12)" "Clut
 echo "-- ui #11: Delete Folder moves the apps to the top level"
 reset_seed
 open_menu 1.5
-focus_class spawn-folder-tile 1
+focus_class $FOLDER 1
 key Menu 1; key Down 0.3; key Down 0.3; key Return 0.8   # Open, Rename, Delete Folder
 ids="$(pinned_ids)"
 echo "pinned: $ids"
@@ -113,7 +116,7 @@ reset_seed
 dconf write $K/pinned-apps "[{'id': 'echo hi', 'name': 'Echo', 'icon': 'utilities-terminal'}, {'id': 'steam.desktop'}, {'id': '7d610436-4b17-46cf-99db-97578edac1c1', 'name': 'Internet', 'isFolder': 'true'}]"
 sleep 1
 open_menu 1.5
-src="$(center spawn-tile 0)"; dst="$(center spawn-folder-tile 0)"
+src="$(center $ITEM 0)"; dst="$(center $FOLDER 0)"
 ui_call Move $src >/dev/null; sleep 0.5
 ui_call Drag $src $dst >/dev/null; sleep 2.2
 echo "$(folder_ids 7d610436-4b17-46cf-99db-97578edac1c1)" | grep -q "echo hi" && { echo "FAIL command dropped into a folder"; status=1; } || echo "ok   command tile rejected by the folder"
@@ -121,7 +124,7 @@ reset_seed
 dconf write $K/pinned-apps "[{'id': 'echo hi', 'name': 'Echo', 'icon': 'utilities-terminal'}, {'id': 'steam.desktop'}]"
 sleep 1
 open_menu 1.5
-focus_class spawn-tile 0
+focus_class $ITEM 0
 key Menu 1; key Return 0.8
 echo "$(pinned_ids)" | grep -q "echo hi" && { echo "FAIL command still pinned"; status=1; } || echo "ok   Unpin from Menu works on a command tile"
 
@@ -161,16 +164,16 @@ dconf write $K/pinned-apps "[$ids{'id': 'steam.desktop'}]"
 sleep 1
 open_menu 1.5
 dump_ui "$dev/ux/many.json"
-python3 - "$dev/ux/many.json" <<'PY'
+python3 - "$dev/ux/many.json" "$ITEM" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
-tiles = [i for i in d["items"] if "spawn-tile" in i.get("cls", "").split() and i["w"] > 0]
+tiles = [i for i in d["items"] if sys.argv[2] in i.get("cls", "").split() and i["w"] > 0]
 scroll = next(i for i in d["items"] if "spawn-pinned" in i.get("cls", "").split())
 over = max(t["x"] + t["w"] for t in tiles) - (scroll["x"] + scroll["w"])
 print(f"{len(tiles)} visible tile actors, rightmost tile edge is {over:+g} px from the scroll view edge")
 sys.exit(0 if over <= 0 else 1)
 PY
-check "last tile column is not clipped by the scrollbar" $?
+check "last tile column / row is not clipped by the scrollbar" $?
 screenshot ui-many
 
 echo "-- light shell theme: the popup tags itself and uses dark-on-light tints"

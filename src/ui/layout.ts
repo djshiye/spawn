@@ -2,7 +2,7 @@
 // docs/research/layout.md).
 //
 // Responsibility: build the whole menu content as ONE St actor (`layout.actor`) that SpawnPopup
-// places inside its popup. Left pane: search entry (top or bottom), the main view (pinned grid /
+// places inside its popup. Left pane: search entry (top or bottom), the main view (pinned list or grid /
 // all apps by category / frequent / folder / search results), Back and All Apps buttons. Right
 // pane: avatar, directory + application shortcuts, power bar. Only cheap chrome is built up
 // front; each view is created the first time it is shown.
@@ -39,10 +39,10 @@ import type {PinnedItem} from '../model/pinned.js';
 import type {SearchHandle, SearchResult} from '../search/engine.js';
 import {AppContextMenu} from './contextMenu.js';
 import {acceptDrops, enableDrag} from './dnd.js';
-import {AppRow} from './widgets/appRow.js';
+import {ActionRow, AppRow, DEFAULT_ROW_ICON_SIZE} from './widgets/appRow.js';
 import {ActionTile, AppTile, DEFAULT_TILE_ICON_SIZE, type TileHost} from './widgets/appTile.js';
 import {CategoryList} from './widgets/categoryList.js';
-import {FolderTile, type FolderHost} from './widgets/folderTile.js';
+import {FolderRow, FolderTile, type FolderHost} from './widgets/folderTile.js';
 import {FolderView} from './widgets/folderView.js';
 import {makeItemButton, wireItem} from './widgets/interact.js';
 import {PowerBar} from './widgets/powerBar.js';
@@ -90,7 +90,7 @@ const SEPARATOR_W = 13;
 const RELAYOUT_KEYS = [
     'menu-height', 'menu-width-adjustment', 'left-panel-width', 'right-panel-width',
     'icon-size-grid', 'default-menu-view', 'vert-separator', 'search-entry-location', 'search-hidden',
-    'multi-lined-labels', 'apps-show-generic-names', 'max-frequent-apps',
+    'multi-lined-labels', 'apps-show-generic-names', 'max-frequent-apps', 'pinned-apps-display',
 ] as const;
 
 /** Read once when a view is built: a change rebuilds the lists / re-applies scroll behaviour. */
@@ -121,7 +121,7 @@ interface TileEntry {
     widget: St.Widget;
     scope: Scope;
     release(): void;
-    folder?: FolderTile;
+    folder?: FolderTile | FolderRow;
 }
 
 function isDefaultViewPinnedish(view: string): boolean {
@@ -401,7 +401,9 @@ export class SpawnLayout implements ShortcutHost {
             search: this._search.text,
             focus: focusName,
             focusInLayout: Boolean(focus && this.actor.contains(focus)),
+            focusIndex: this._locate(this._mainGroups(), focus)?.index ?? null,
             tiles: this._grid.tiles().length,
+            display: this._listMode() ? 'List' : 'Grid',
             folder: this._view === 'folder' ? this._folderView?.uuid ?? null : null,
             folderTiles: this._view === 'folder' ? this._folderView?.tiles().length ?? 0 : 0,
             results: this._results?.rows().length ?? 0,
@@ -475,6 +477,9 @@ export class SpawnLayout implements ShortcutHost {
         this._pinnedDirty = true;
         if (this._isOpen)
             this._setView(this._view);
+        // List <-> grid (or a new column count) changes the folder contents too.
+        if (this._view === 'folder')
+            this._folderView?.refresh();
     }
 
     /** Settings that are read once when a view is built: re-apply scrolling, rebuild the lists. */
@@ -488,6 +493,8 @@ export class SpawnLayout implements ShortcutHost {
         this._pinnedDirty = true;
         if (this._isOpen)
             this._setView(this._view);
+        if (this._view === 'folder')
+            this._folderView?.refresh();
     }
 
     private _onInstalledChanged(): void {
@@ -748,7 +755,9 @@ export class SpawnLayout implements ShortcutHost {
                     columns: this._cols,
                     tileWidth: this._tileWidth,
                     iconSize: this._tileIconSize,
-                    multiLine: this._services.settings.get('multi-lined-labels'),
+                    multiLine: this._services.settings.get('multi-lined-labels') && !this._listMode(),
+                    list: this._listMode(),
+                    rowIconSize: this._rowIconSize(),
                 }),
                 openMissingContext: (tile, id) => this._context.open(tile, {kind: 'custom', id}),
             });
@@ -800,7 +809,8 @@ export class SpawnLayout implements ShortcutHost {
         const section = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
         section.add_child(new St.Widget({style_class: 'spawn-separator', x_expand: true}));
         section.add_child(new St.Label({text: _('Frequent'), style_class: 'spawn-section-title'}));
-        const rows = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
+        // Under the pinned LIST the frequent rows use the same pitch / inset as the pinned rows.
+        const rows = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: this._listMode() ? 'spawn-list' : ''});
         section.add_child(rows);
         this._fillFrequent(rows);
         box.add_child(section);
@@ -834,16 +844,30 @@ export class SpawnLayout implements ShortcutHost {
         return icons;
     }
 
+    /** `pinned-apps-display`: pinned apps and folder contents as full-width rows instead of tiles. */
+    private _listMode(): boolean {
+        return this._services.settings.get('pinned-apps-display') === 'List';
+    }
+
+    /** Icon size of list rows: `icon-size-apps`, the same as the frequent / all-apps rows. */
+    private _rowIconSize(): number {
+        return iconSizeFor(this._services.settings, 'icon-size-apps', DEFAULT_ROW_ICON_SIZE);
+    }
+
     private _syncPinned(): void {
         this._tooltips.hide();
         const store = this._services.pinned;
         const settings = this._services.settings;
         const multiLine = settings.get('multi-lined-labels');
         const generic = settings.get('apps-show-generic-names');
+        const list = this._listMode();
+        const rowIconSize = this._rowIconSize();
 
         // Tiles keep their icon size / label mode / naming from when they were built: a change in
-        // any of them rebuilds every tile (otherwise old and new sizes mix in one grid).
-        const signature = `${this._tileIconSize}|${multiLine}|${generic}`;
+        // any of them (or list <-> grid, which swaps tiles for rows) rebuilds every entry
+        // (otherwise old and new sizes mix in one grid).
+        // List rows are always one line (multi-lined-labels is a grid setting).
+        const signature = list ? `list${rowIconSize}|${generic}` : `grid${this._tileIconSize}|${multiLine}|${generic}`;
         if (signature !== this._tileSignature) {
             this._tileSignature = signature;
             for (const [key, entry] of [...this._tileEntries]) {
@@ -855,7 +879,8 @@ export class SpawnLayout implements ShortcutHost {
 
         const keep = new Set<string>();
         const tiles: St.Widget[] = [];
-        const tileOpts = {iconSize: this._tileIconSize, multiLine};
+        const tileOpts = {iconSize: list ? rowIconSize : this._tileIconSize, multiLine: multiLine && !list};
+        const dropOpts = {vertical: list};
 
         // A pinned app whose .desktop file is gone (uninstalled, unmounted Flatpak remote) stays in
         // the settings; it shows as a dimmed tile whose context menu offers "Unpin".
@@ -863,7 +888,9 @@ export class SpawnLayout implements ShortcutHost {
             const {scope, release} = ownedScope(this._scope, key);
             const name = id.replace(/\.desktop$/, '');
             const open = () => this._context.open(tile.actor, {kind: 'custom', id});
-            const tile = new ActionTile(name, 'application-x-executable', open, undefined, {...tileOpts, context: open});
+            const tile = list
+                ? new ActionRow(name, 'application-x-executable', open, undefined, {...tileOpts, context: open})
+                : new ActionTile(name, 'application-x-executable', open, undefined, {...tileOpts, context: open});
             tile.actor.add_style_class_name('spawn-tile-missing');
             tile.actor.opacity = 130;
             this._tooltips.attach(tile.actor, null, () => _('%s (not installed)').format(name));
@@ -881,9 +908,12 @@ export class SpawnLayout implements ShortcutHost {
                 if (!app)
                     return {key, entry: ghost(item.id, key)};
                 const {scope, release} = ownedScope(this._scope, key);
-                const tile = new AppTile(app, this._tileHostWithTips(), {...tileOpts, name: displayName(app, settings)});
+                const name = displayName(app, settings);
+                const tile = list
+                    ? new AppRow(app, this._tileHostWithTips(), {...tileOpts, name, pinned: true})
+                    : new AppTile(app, this._tileHostWithTips(), {...tileOpts, name});
                 enableDrag(scope, tile.actor, {id: item.id});
-                acceptDrops(scope, tile.actor, store, {kind: 'app', id: item.id});
+                acceptDrops(scope, tile.actor, store, {kind: 'app', id: item.id}, dropOpts);
                 return {key, entry: {widget: tile.actor, scope, release}};
             }
             case 'folder': {
@@ -894,10 +924,10 @@ export class SpawnLayout implements ShortcutHost {
                     return {key, entry: existing};
                 }
                 const {scope, release} = ownedScope(this._scope, key);
-                const tile = new FolderTile(item.uuid, item.name, this._folderIcons(item.uuid),
-                    this._folderHost, tileOpts);
+                const Folder = list ? FolderRow : FolderTile;
+                const tile = new Folder(item.uuid, item.name, this._folderIcons(item.uuid), this._folderHost, tileOpts);
                 enableDrag(scope, tile.actor, {id: item.uuid, isFolder: true});
-                acceptDrops(scope, tile.actor, store, {kind: 'folder', uuid: item.uuid});
+                acceptDrops(scope, tile.actor, store, {kind: 'folder', uuid: item.uuid}, dropOpts);
                 return {key, entry: {widget: tile.actor, scope, release, folder: tile}};
             }
             case 'custom': {
@@ -907,11 +937,12 @@ export class SpawnLayout implements ShortcutHost {
                     return {key, entry: existing};
                 const {scope, release} = ownedScope(this._scope, key);
                 const id = item.entry.id;
-                const tile = new ActionTile(item.entry.name || id, item.entry.icon || 'application-x-executable',
+                const Action = list ? ActionRow : ActionTile;
+                const tile = new Action(item.entry.name || id, item.entry.icon || 'application-x-executable',
                     () => this._runCustom(id), {tooltips: this._tooltips},
                     {...tileOpts, context: () => this._context.open(tile.actor, {kind: 'custom', id})});
                 enableDrag(scope, tile.actor, {id, isCustom: true});
-                acceptDrops(scope, tile.actor, store, {kind: 'app', id, isCustom: true});
+                acceptDrops(scope, tile.actor, store, {kind: 'app', id, isCustom: true}, dropOpts);
                 return {key, entry: {widget: tile.actor, scope, release}};
             }
             }
@@ -935,7 +966,7 @@ export class SpawnLayout implements ShortcutHost {
                 entry.widget.destroy();
             }
         }
-        this._grid.setTiles(tiles, this._cols, this._tileWidth);
+        this._grid.setTiles(tiles, list ? 1 : this._cols, list ? -1 : this._tileWidth);
     }
 
     private _runCustom(id: string): void {
@@ -1104,7 +1135,7 @@ export class SpawnLayout implements ShortcutHost {
                 return [];
             return [
                 {id: 'header', items: fv.headerButtons(), cols: 2},
-                {id: 'folder', items: fv.tiles(), cols: this._cols},
+                {id: 'folder', items: fv.tiles(), cols: this._listMode() ? 1 : this._cols},
             ];
         }
         case 'results':

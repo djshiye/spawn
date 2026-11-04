@@ -20,6 +20,10 @@
 //                            Scenarios use it to find targets instead of hard-coded pixels.
 //   Count(s cls) -> i        how many visible actors carry `cls`
 //   FocusActor(s cls, i nth) give the nth visible actor with `cls` the keyboard focus
+//   MenuItems(s cls) -> s    JSON: the items of the visible menu whose actor carries `cls` (e.g. spawn-button-menu):
+//                            [{kind: 'item'|'separator'|'submenu', label, visible, open?, items?}]
+//   Windows() -> s           JSON: [{title, appId, type, minimized, skipTaskbar}] of every window (Show Desktop checks)
+//   FocusInfo() -> s         JSON: {type, cls} of the actor holding the keyboard focus (null when none)
 //   Dump() -> s              JSON: monitor, anchor, popup rect and every visible actor of the popup /
 //                            context menu / tooltip with allocation, padding, margin, colours, font
 //                            (the UX audit measurements; see tools/dev/scenarios/ui-ux-measure.sh)
@@ -55,6 +59,9 @@ const IFACE = `
     <method name="Rect"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/><arg type="s" direction="out" name="rect"/></method>
     <method name="Count"><arg type="s" direction="in" name="cls"/><arg type="i" direction="out" name="count"/></method>
     <method name="FocusActor"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/></method>
+    <method name="MenuItems"><arg type="s" direction="in" name="cls"/><arg type="s" direction="out" name="json"/></method>
+    <method name="Windows"><arg type="s" direction="out" name="json"/></method>
+    <method name="FocusInfo"><arg type="s" direction="out" name="json"/></method>
     <method name="Dump"><arg type="s" direction="out" name="json"/></method>
   </interface>
 </node>`;
@@ -121,7 +128,7 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
             out.push(menu);
         for (const c of Main.uiGroup.get_children()) {
             const cls = (c as St.Widget).style_class ?? '';
-            if (c !== menu && /spawn-(context-menu|tooltip|power-popup)/.test(cls))
+            if (c !== menu && /spawn-(context-menu|button-menu|tooltip|power-popup)/.test(cls))
                 out.push(c);
         }
         return out;
@@ -129,6 +136,27 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
 
     const hasClass = (a: Clutter.Actor, cls: string): boolean =>
         ` ${(a as St.Widget).style_class ?? ''} `.includes(` ${cls} `);
+
+    // Rect / Count / FocusActor also reach the panel button(s): the main panel box and Dash to Panel's.
+    const lookupRoots = (): Clutter.Actor[] => {
+        const out = roots();
+        const panels = new Set<Clutter.Actor>([Main.layoutManager.panelBox]);
+        for (const c of Main.uiGroup.get_children()) {
+            if (c.get_name() === 'panelBox' || (c as St.Widget).style_class?.includes('dashtopanelMainPanel'))
+                panels.add(c);
+        }
+        try {
+            const dtp = (global as unknown as {dashToPanel?: {panels?: Array<{panelBox?: Clutter.Actor}>}}).dashToPanel;
+            for (const p of dtp?.panels ?? []) {
+                if (p.panelBox)
+                    panels.add(p.panelBox);
+            }
+        } catch {
+            // no Dash to Panel
+        }
+        out.push(...panels);
+        return out;
+    };
 
     const findAll = (cls: string): Clutter.Actor[] => {
         const found: Clutter.Actor[] = [];
@@ -140,7 +168,7 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
             for (const c of a.get_children())
                 walk(c);
         };
-        for (const r of roots())
+        for (const r of lookupRoots())
             walk(r);
         return found;
     };
@@ -224,6 +252,41 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
             if (!a)
                 throw new Error(`no visible actor with class '${cls}' at ${nth}`);
             a.grab_key_focus();
+        }),
+        MenuItemsAsync: ([cls]: [string], inv: Invocation) => reply(inv, () => {
+            const actor = findAll(cls)[0];
+            const menu = (actor as unknown as {_delegate?: {_getMenuItems?(): Array<Record<string, any>>}} | undefined)?._delegate;
+            const describe = (items: Array<Record<string, any>>): unknown[] => items.map(item => {
+                const out: Record<string, unknown> = {visible: item.visible};
+                if (String(item.style_class ?? '').includes('popup-separator-menu-item')) {
+                    out['kind'] = 'separator';
+                } else if (item.menu?._getMenuItems) {
+                    out['kind'] = 'submenu';
+                    out['label'] = item.label?.text ?? '';
+                    out['open'] = Boolean(item.menu.isOpen);
+                    out['items'] = describe(item.menu._getMenuItems());
+                } else {
+                    out['kind'] = 'item';
+                    out['label'] = item.label?.text ?? '';
+                }
+                return out;
+            });
+            return new GLib.Variant('(s)', [JSON.stringify(menu?._getMenuItems ? describe(menu._getMenuItems()) : null)]);
+        }),
+        WindowsAsync: (_p: unknown[], inv: Invocation) => reply(inv, () => {
+            const list = global.display.list_all_windows().map(w => ({
+                title: w.title ?? '',
+                appId: w.get_gtk_application_id() ?? w.get_wm_class() ?? '',
+                type: w.window_type,
+                minimized: w.minimized,
+                skipTaskbar: w.skip_taskbar,
+            }));
+            return new GLib.Variant('(s)', [JSON.stringify(list)]);
+        }),
+        FocusInfoAsync: (_p: unknown[], inv: Invocation) => reply(inv, () => {
+            const f = global.stage.key_focus as Clutter.Actor | null;
+            const info = f && f !== global.stage ? {type: f.constructor.name, cls: (f as St.Widget).style_class ?? ''} : null;
+            return new GLib.Variant('(s)', [JSON.stringify(info)]);
         }),
         DumpAsync: (_p: unknown[], inv: Invocation) => reply(inv, () => new GLib.Variant('(s)', [dump()])),
         SearchAsync: ([q]: [string], inv: Invocation) => reply(inv, () => popup.search(q)),

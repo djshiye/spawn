@@ -1,15 +1,17 @@
 // Pinned-apps drag & drop.
 //
 // Responsibility: make tiles draggable (DND.makeDraggable, 200 ms press-and-move like the shell's
-// app grid), accept drops on the grid (reorder / append), on an app tile (drop in the middle
-// creates a folder from the two apps, near the left/right edge reorders), on a folder tile
-// (middle adds, edges reorder) and on a "remove from folder" zone. All mutations go through
-// PinnedStore. Drop feedback uses the classes spawn-drop-target (middle) and
-// spawn-drop-before / spawn-drop-after (reorder).
+// app grid), accept drops on the grid or list (reorder / append), on an app tile or row (drop in
+// the middle creates a folder from the two apps, near the left/right edge - top/bottom edge in a
+// vertical list - reorders), on a folder tile / row (middle adds, edges reorder) and on a "remove
+// from folder" zone. All mutations go through PinnedStore. Drop feedback uses the classes
+// spawn-drop-target (middle) and spawn-drop-before / spawn-drop-after (reorder).
 //
 // Public API:
 //   enableDrag(scope, tile: St.Widget, payload: DragPayload): void
-//   acceptDrops(scope, target: St.Widget, store: PinnedStore, drop: DropTarget): void
+//   acceptDrops(scope, target: St.Widget, store: PinnedStore, drop: DropTarget, opts?: {vertical?}): void
+//        vertical: the target is a row of a vertical list, so before / onto / after are the
+//        top / middle / bottom bands (default: left / middle / right bands of a grid tile)
 //   DragPayload: {id, folderUuid?, isFolder?, isCustom?, onDragBegin?(), onDragEnd?()}
 //        id = desktop id (or folder uuid when isFolder); folderUuid = folder the app is dragged from;
 //        isCustom = a pinned command (it can be reordered but never goes into a folder)
@@ -166,16 +168,20 @@ export function enableDrag(scope: Scope, tile: St.Widget, payload: DragPayload):
     }, 'drag monitor');
 }
 
-function zoneOf(target: St.Widget, x: number): Zone {
-    const w = target.width || 1;
-    if (x < w * 0.22)
+/** Bands of a grid tile (left / middle / right) or, `vertical`, of a list row (top / middle / bottom). */
+function zoneOf(target: St.Widget, x: number, y: number, vertical: boolean): Zone {
+    const size = (vertical ? target.height : target.width) || 1;
+    const pos = vertical ? y : x;
+    const edge = vertical ? 0.3 : 0.22;
+    if (pos < size * edge)
         return 'before';
-    if (x > w * 0.78)
+    if (pos > size * (1 - edge))
         return 'after';
     return 'onto';
 }
 
-export function acceptDrops(scope: Scope, target: St.Widget, store: PinnedStore, drop: DropTarget): void {
+export function acceptDrops(scope: Scope, target: St.Widget, store: PinnedStore, drop: DropTarget, opts: {vertical?: boolean} = {}): void {
+    const vertical = Boolean(opts.vertical);
     const delegate = delegateOf(target);
 
     const canAccept = (source: Delegate | undefined, zone: Zone): boolean => {
@@ -208,10 +214,10 @@ export function acceptDrops(scope: Scope, target: St.Widget, store: PinnedStore,
         }
     };
 
-    const toZone = (x: number): Zone => drop.kind === 'grid' || drop.kind === 'unfolder' ? 'onto' : zoneOf(target, x);
+    const toZone = (x: number, y: number): Zone => drop.kind === 'grid' || drop.kind === 'unfolder' ? 'onto' : zoneOf(target, x, y, vertical);
 
-    delegate.handleDragOver = (source, _actor, x) => {
-        const zone = toZone(x);
+    delegate.handleDragOver = (source, _actor, x, y) => {
+        const zone = toZone(x, y);
         clearDropClasses(target);
         if (!canAccept(source, zone))
             return DND.DragMotionResult.NO_DROP;
@@ -224,8 +230,8 @@ export function acceptDrops(scope: Scope, target: St.Widget, store: PinnedStore,
         return DND.DragMotionResult.MOVE_DROP;
     };
 
-    delegate.acceptDrop = (source, _actor, x) => {
-        const zone = toZone(x);
+    delegate.acceptDrop = (source, _actor, x, y) => {
+        const zone = toZone(x, y);
         clearDropClasses(target);
         if (!canAccept(source, zone))
             return false;

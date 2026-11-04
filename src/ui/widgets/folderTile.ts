@@ -1,9 +1,12 @@
-// FolderTile: pinned-grid tile for a folder: a rounded plate with a 2x2 preview of its first
-// apps (a folder-symbolic icon when none resolve) over the folder name. Click opens the FolderView, right-click / Menu key opens the folder
-// context menu; a drop target for apps (the layout wires ui/dnd.ts).
+// FolderTile / FolderRow: pinned entry for a folder, as a grid tile or as a list row. Both show a
+// rounded plate with a 2x2 preview of the folder's first apps (a folder-symbolic icon when none
+// resolve) and the folder name: the tile puts the name under the plate, the row beside it with a
+// trailing chevron. Click opens the FolderView, right-click / Menu key opens the folder context
+// menu; a drop target for apps (the layout wires ui/dnd.ts).
 //
 // Public API:
 //   new FolderTile(uuid: string, name: string, icons: Gio.Icon[], host: FolderHost, opts?)
+//   new FolderRow(uuid, name, icons, host, opts?)     same API, list row (always one line; opts.iconSize only)
 //   tile.actor: St.Widget
 //   tile.uuid: string
 //   tile.update(name: string, icons: Gio.Icon[]): void
@@ -14,8 +17,10 @@
 
 import Clutter from 'gi://Clutter';
 import type Gio from 'gi://Gio';
+import Pango from 'gi://Pango';
 import St from 'gi://St';
 
+import {DEFAULT_ROW_ICON_SIZE} from './appRow.js';
 import {DEFAULT_TILE_ICON_SIZE, styleTileLabel} from './appTile.js';
 import {makeItemButton, wireItem} from './interact.js';
 import type {TooltipManager} from './tooltip.js';
@@ -26,40 +31,29 @@ export interface FolderHost {
     tooltips?: TooltipManager;
 }
 
-// 4 + 16 + 8 + 16 + 4 = 48: the plate (and its 2x2 mini grid) is exactly an app icon tall.
-// Keep in step with .spawn-folder-plate / .spawn-folder-plate-row in stylesheet.css.
+// Grid plate: 4 + 16 + 8 + 16 + 4 = 48, exactly an app icon tall.
+// List plate (28 px): 2 + 11 + 2 + 11 + 2 = 28.
+// Keep in step with .spawn-folder-plate / .spawn-folder-plate-row (and the .spawn-folder-row
+// overrides) in stylesheet.css.
 const PLATE_PADDING = 4;
 const PLATE_SPACING = 8;
+const ROW_PLATE_PADDING = 2;
+const ROW_PLATE_SPACING = 2;
 
-export class FolderTile {
-    readonly actor: St.Button;
-    private readonly _uuid: string;
-    private readonly _label: St.Label;
+/** The rounded folder icon: up to four mini app icons, or a folder glyph when there are none. */
+class FolderPlate {
+    readonly actor: St.BoxLayout;
     private readonly _rows: [St.BoxLayout, St.BoxLayout];
     private readonly _fallback: St.Icon;
     private readonly _mini: number;
 
-    constructor(uuid: string, name: string, icons: Gio.Icon[], host: FolderHost, opts: {iconSize?: number; multiLine?: boolean} = {}) {
-        this._uuid = uuid;
-        const size = opts.iconSize ?? DEFAULT_TILE_ICON_SIZE;
-        this._mini = Math.floor((size - 2 * PLATE_PADDING - PLATE_SPACING) / 2);
-
-        const button = makeItemButton('spawn-tile spawn-folder-tile');
-        this.actor = button;
-        button.x_expand = false;
-        if (opts.multiLine)
-            button.y_expand = true;
-
-        const box = new St.BoxLayout({
-            orientation: Clutter.Orientation.VERTICAL,
-            x_align: Clutter.ActorAlign.CENTER,
-            y_align: opts.multiLine ? Clutter.ActorAlign.START : Clutter.ActorAlign.CENTER,
-            style_class: 'spawn-tile-box',
-        });
-        const plate = new St.BoxLayout({
+    constructor(size: number, padding: number, spacing: number) {
+        this._mini = Math.max(8, Math.floor((size - 2 * padding - spacing) / 2));
+        this.actor = new St.BoxLayout({
             orientation: Clutter.Orientation.VERTICAL,
             style_class: 'spawn-folder-plate',
             x_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.CENTER,
             width: size,
             height: size,
         });
@@ -67,8 +61,8 @@ export class FolderTile {
             new St.BoxLayout({style_class: 'spawn-folder-plate-row', x_align: Clutter.ActorAlign.CENTER, y_expand: true}),
             new St.BoxLayout({style_class: 'spawn-folder-plate-row', x_align: Clutter.ActorAlign.CENTER, y_expand: true}),
         ];
-        plate.add_child(this._rows[0]);
-        plate.add_child(this._rows[1]);
+        this.actor.add_child(this._rows[0]);
+        this.actor.add_child(this._rows[1]);
         // Shown instead of the mini grid when none of the folder's apps resolve (all missing / empty).
         this._fallback = new St.Icon({
             icon_name: 'folder-symbolic',
@@ -79,32 +73,10 @@ export class FolderTile {
             y_expand: true,
             visible: false,
         });
-        plate.add_child(this._fallback);
-        this._label = new St.Label({
-            text: name,
-            style_class: 'spawn-tile-label',
-            x_align: Clutter.ActorAlign.CENTER,
-            x_expand: true,
-        });
-        styleTileLabel(this._label, Boolean(opts.multiLine));
-        box.add_child(plate);
-        box.add_child(this._label);
-        button.set_child(box);
-
-        host.tooltips?.attach(button, this._label);
-        wireItem(button, {
-            activate: () => host.open(uuid),
-            context: () => host.openContext(button, uuid),
-        });
-        this.update(name, icons);
+        this.actor.add_child(this._fallback);
     }
 
-    get uuid(): string {
-        return this._uuid;
-    }
-
-    update(name: string, icons: Gio.Icon[]): void {
-        this._label.text = name;
+    update(icons: Gio.Icon[]): void {
         for (const row of this._rows) {
             for (const c of row.get_children())
                 c.destroy();
@@ -125,9 +97,110 @@ export class FolderTile {
         this._rows[1].visible = !empty;
         this._fallback.visible = empty;
     }
+}
+
+export class FolderTile {
+    readonly actor: St.Button;
+    private readonly _uuid: string;
+    private readonly _label: St.Label;
+    private readonly _plate: FolderPlate;
+
+    constructor(uuid: string, name: string, icons: Gio.Icon[], host: FolderHost, opts: {iconSize?: number; multiLine?: boolean} = {}) {
+        this._uuid = uuid;
+        const size = opts.iconSize ?? DEFAULT_TILE_ICON_SIZE;
+
+        const button = makeItemButton('spawn-tile spawn-folder-tile');
+        this.actor = button;
+        button.x_expand = false;
+        if (opts.multiLine)
+            button.y_expand = true;
+
+        const box = new St.BoxLayout({
+            orientation: Clutter.Orientation.VERTICAL,
+            x_align: Clutter.ActorAlign.CENTER,
+            y_align: opts.multiLine ? Clutter.ActorAlign.START : Clutter.ActorAlign.CENTER,
+            style_class: 'spawn-tile-box',
+        });
+        this._plate = new FolderPlate(size, PLATE_PADDING, PLATE_SPACING);
+        this._label = new St.Label({
+            text: name,
+            style_class: 'spawn-tile-label',
+            x_align: Clutter.ActorAlign.CENTER,
+            x_expand: true,
+        });
+        styleTileLabel(this._label, Boolean(opts.multiLine));
+        box.add_child(this._plate.actor);
+        box.add_child(this._label);
+        button.set_child(box);
+
+        host.tooltips?.attach(button, this._label);
+        wireItem(button, {
+            activate: () => host.open(uuid),
+            context: () => host.openContext(button, uuid),
+        });
+        this.update(name, icons);
+    }
+
+    get uuid(): string {
+        return this._uuid;
+    }
+
+    update(name: string, icons: Gio.Icon[]): void {
+        this._label.text = name;
+        this._plate.update(icons);
+    }
 
     setWidth(px: number): void {
         this.actor.set_width(px);
+    }
+
+    destroy(): void {
+        this.actor.destroy();
+    }
+}
+
+/** List-mode twin of FolderTile: plate, name and a trailing chevron in a full-width `.spawn-row`. */
+export class FolderRow {
+    readonly actor: St.Button;
+    private readonly _uuid: string;
+    private readonly _label: St.Label;
+    private readonly _plate: FolderPlate;
+
+    constructor(uuid: string, name: string, icons: Gio.Icon[], host: FolderHost, opts: {iconSize?: number} = {}) {
+        this._uuid = uuid;
+        const size = opts.iconSize ?? DEFAULT_ROW_ICON_SIZE;
+        const button = makeItemButton('spawn-row spawn-pinned-row spawn-folder-row');
+        this.actor = button;
+
+        const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
+        this._plate = new FolderPlate(size, ROW_PLATE_PADDING, ROW_PLATE_SPACING);
+        box.add_child(this._plate.actor);
+        this._label = new St.Label({text: name, style_class: 'spawn-row-label', y_align: Clutter.ActorAlign.CENTER, x_expand: true});
+        this._label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        box.add_child(this._label);
+        box.add_child(new St.Icon({
+            icon_name: 'go-next-symbolic',
+            icon_size: 16,
+            style_class: 'spawn-folder-chevron',
+            y_align: Clutter.ActorAlign.CENTER,
+        }));
+        button.set_child(box);
+
+        host.tooltips?.attach(button, this._label);
+        wireItem(button, {
+            activate: () => host.open(uuid),
+            context: () => host.openContext(button, uuid),
+        });
+        this.update(name, icons);
+    }
+
+    get uuid(): string {
+        return this._uuid;
+    }
+
+    update(name: string, icons: Gio.Icon[]): void {
+        this._label.text = name;
+        this._plate.update(icons);
     }
 
     destroy(): void {

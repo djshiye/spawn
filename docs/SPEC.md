@@ -27,8 +27,10 @@ your area before writing code.
     (by category) / Frequent, Back and All Apps buttons.
   - Right: user avatar + name, directory shortcuts (Home, Documents, …), application
     shortcuts (Software, Settings, …, separators), power buttons (power-options).
-  - Pinned apps grid with folders (open/rename/delete, drop app on app = new folder,
-    drag reorder).
+  - Pinned apps as a list (default, like ArcMenu's arcmenu layout: one row per app, a
+    folder row with a chevron) or a grid (`pinned-apps-display`), with folders
+    (open/rename/delete, drop app on app = new folder, drag reorder; in the list the
+    top / middle / bottom band of a row means before / onto / after).
   - App context menu: open windows, new window, desktop actions, pin/unpin,
     add to folder, app details (Software), quit.
   - Keyboard: arrows/Tab/Return/Escape, Menu or Shift+F10 = context menu, typing
@@ -103,8 +105,8 @@ src/
   ui/menu.ts              SpawnPopup: single popup shared by all buttons,
                           re-anchored to the clicked button; lazily builds layout
   ui/layout.ts            the two-pane "spawn" layout
-  ui/widgets/*.ts         AppTile, AppRow, FolderTile, FolderView, CategoryList,
-                          ShortcutRow, PowerBar, UserCard, SearchBox, ResultList
+  ui/widgets/*.ts         AppTile, AppRow (+ ActionRow), FolderTile (+ FolderRow), FolderView,
+                          CategoryList, ShortcutRow, PowerBar, UserCard, SearchBox, ResultList
   ui/contextMenu.ts       app context menu
   ui/dnd.ts               pinned drag & drop
   model/appIndex.ts       AppIndex: Shell.AppSystem + GMenu tree; categories,

@@ -128,11 +128,27 @@ if left and tiles:
     t = tiles[0]
     row("tile size / icon / label font", f'{dim(t)} / {icons[0]["w"]:g} / {first("spawn-tile-label")["fs"]:.2f}', "87 high @ 1-line labels", t["h"] == 87)
 
-# --- folder plate
+# --- pinned list (pinned-apps-display = List): full-width rows, 32 px targets, icon on the 12 px inset
+prows = [i for i in find("spawn-pinned-row") if i["w"] > 0]
+if left and prows:
+    hs = sorted({i["h"] for i in prows})
+    row("pinned row size", f'{prows[0]["w"]:g} x {hs[0]:g}..{hs[-1]:g}', ">= 32 high", hs[0] >= 32)
+    edge = left["x"] + 8
+    row("pinned row left edge", f'{prows[0]["x"]:g}', f"{edge:g}", abs(prows[0]["x"] - edge) <= 0.5)
+    ic = after(prows[0], "St_Icon")
+    if ic:
+        row("pinned row icon inset", f'{ic["x"] - prows[0]["x"]:g}', "12 (= section title text inset)", abs(ic["x"] - prows[0]["x"] - 12) <= 1.5)
+    gaps = [round(b["y"] - (a["y"] + a["h"]), 1) for a, b in zip(prows, prows[1:])]
+    row("pinned row pitch (gap px)", sorted(set(gaps)) or "-", "1 everywhere (as the right pane)", all(abs(g - 1) <= 0.5 for g in gaps))
+
+# --- folder plate (48 px on a grid tile, row-icon sized in a list row)
 plate = first("spawn-folder-plate")
-if plate:
+if plate and not prows:
     mini = first("spawn-folder-mini")
     row("folder plate / mini icon", f'{dim(plate)} / {dim(mini)}', "48x48 / 16x16", plate["w"] == 48 and plate["h"] == 48 and (mini is None or (mini["w"] == 16 and mini["h"] == 16)))
+elif plate:
+    mini = first("spawn-folder-mini")
+    row("folder plate / mini icon (list)", f'{dim(plate)} / {dim(mini)}', "square, mini = (plate - 6) / 2", plate["w"] == plate["h"] and (mini is None or abs(mini["w"] * 2 + 6 - plate["w"]) <= 1))
 
 # --- type scale
 sizes = sorted({round(i["fs"], 2) for i in items if i.get("fs") and (i["type"].startswith("St_Label"))})

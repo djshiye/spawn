@@ -5,6 +5,9 @@
 //   new TileGrid()
 //   grid.actor: St.BoxLayout
 //   grid.setTiles(tiles: St.Widget[], columns: number, tileWidth: number): void
+//                               tileWidth <= 0 leaves the widths alone (list mode: one column of
+//                               full-width rows; the grid then carries `spawn-pinned-list`)
+//                               (the same tiles in the same place again is a no-op: keeps the focus)
 //   grid.tiles(): St.Widget[]
 //   grid.columns: number
 
@@ -15,6 +18,7 @@ export class TileGrid {
     readonly actor: St.BoxLayout;
     private _tiles: St.Widget[] = [];
     private _columns = 1;
+    private _width = -1;
 
     constructor() {
         this.actor = new St.BoxLayout({
@@ -34,7 +38,14 @@ export class TileGrid {
     }
 
     setTiles(tiles: St.Widget[], columns: number, tileWidth: number): void {
+        const same = this._columns === Math.max(1, columns) && this._width === tileWidth && tiles.length > 0 &&
+            tiles.length === this._tiles.length && tiles.every((t, i) => t === this._tiles[i] && t.get_parent()?.get_parent() === this.actor);
+        // Nothing moved (a model refresh that changed nothing visible): leave the rows alone, so the
+        // keyboard focus on a tile survives it.
+        if (same)
+            return;
         this._columns = Math.max(1, columns);
+        this._width = tileWidth;
         this._tiles = tiles;
         // Detach tiles first so destroying the old rows does not destroy them.
         for (const row of this.actor.get_children()) {
@@ -49,8 +60,15 @@ export class TileGrid {
                 row = new St.BoxLayout({style_class: 'spawn-tile-row', y_expand: false});
                 this.actor.add_child(row);
             }
-            tile.set_width(tileWidth);
+            if (tileWidth > 0)
+                tile.set_width(tileWidth);
+            else
+                tile.set_width(-1);
             row?.add_child(tile);
         });
+        if (this._columns === 1 && tileWidth <= 0)
+            this.actor.add_style_class_name('spawn-pinned-list');
+        else
+            this.actor.remove_style_class_name('spawn-pinned-list');
     }
 }

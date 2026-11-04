@@ -1,22 +1,26 @@
 // AppRow: list row for a Shell.App (All Apps / Frequent / category lists).
 //
 // Icon, name and (apps-show-extra-details) a dimmed description. Launch + context menu behave
-// like AppTile.
+// like AppTile. Also the list-mode rows of the pinned view (`pinned: true`) and ActionRow, the
+// ActionTile twin for ghosts and pinned commands.
 //
 // Public API:
 //   new AppRow(app: Shell.App, host: TileHost, opts?: RowOptions)
 //   row.actor: St.Widget
 //   row.app: Shell.App
 //   row.destroy()
-//   RowOptions: {iconSize?, description?: boolean, folderUuid?, symbolic?, name?}
+//   RowOptions: {iconSize?, description?: boolean, folderUuid?, symbolic?, name?, pinned?}
+//   new ActionRow(name, icon, activate, host?, opts?)   arbitrary action; opts: {iconSize?, context?}
 
 import Clutter from 'gi://Clutter';
+import type Gio from 'gi://Gio';
 import type Shell from 'gi://Shell';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import type {TileHost} from './appTile.js';
 import {makeItemButton, wireItem} from './interact.js';
+import type {TooltipManager} from './tooltip.js';
 import {symbolicGIcon} from '../util.js';
 
 export interface RowOptions {
@@ -27,9 +31,12 @@ export interface RowOptions {
     symbolic?: boolean;
     /** Label text instead of the app name (apps-show-generic-names). */
     name?: string;
+    /** A row of the pinned list (drag source / drop target, marked `spawn-pinned-row`). */
+    pinned?: boolean;
 }
 
 export const DEFAULT_ROW_ICON_SIZE = 28;
+
 
 export class AppRow {
     readonly actor: St.Button;
@@ -37,7 +44,7 @@ export class AppRow {
 
     constructor(app: Shell.App, host: TileHost, opts: RowOptions = {}) {
         this._app = app;
-        const button = makeItemButton('spawn-row');
+        const button = makeItemButton(opts.pinned ? 'spawn-row spawn-pinned-row' : 'spawn-row');
         this.actor = button;
 
         const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
@@ -77,6 +84,38 @@ export class AppRow {
 
     get app(): Shell.App {
         return this._app;
+    }
+
+    destroy(): void {
+        this.actor.destroy();
+    }
+}
+
+/** List-mode ActionTile: a row that runs an arbitrary action (ghost of a missing app, pinned command). */
+export class ActionRow {
+    readonly actor: St.Button;
+
+    constructor(name: string, icon: Gio.Icon | string, activate: (ctrl: boolean) => void, host?: {tooltips?: TooltipManager},
+        opts: {iconSize?: number; context?: () => void} = {}) {
+        const button = makeItemButton('spawn-row spawn-pinned-row');
+        this.actor = button;
+        const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
+        const iconActor = new St.Icon({
+            style_class: 'spawn-row-icon',
+            icon_size: opts.iconSize ?? DEFAULT_ROW_ICON_SIZE,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        if (typeof icon === 'string')
+            iconActor.icon_name = icon;
+        else
+            iconActor.gicon = icon;
+        box.add_child(iconActor);
+        const label = new St.Label({text: name, style_class: 'spawn-row-label', y_align: Clutter.ActorAlign.CENTER, x_expand: true});
+        label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        box.add_child(label);
+        button.set_child(box);
+        host?.tooltips?.attach(button, label);
+        wireItem(button, {activate, context: opts.context});
     }
 
     destroy(): void {

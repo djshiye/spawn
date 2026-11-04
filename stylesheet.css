@@ -259,6 +259,27 @@
     spacing: 0;
 }
 
+/* pinned-apps-display = List: one full-width .spawn-row per entry (same metrics as .spawn-list:
+ * 1 px pitch, row inset 12 px so icons line up with the section title and the right pane). */
+.spawn-tile-grid.spawn-pinned-list {
+    padding: 0 4px 0 0;
+    spacing: 1px;
+}
+
+/* List-mode folder row: the folder plate shrinks to the row icon (2 + 11 + 2 + 11 + 2 = 28). */
+.spawn-folder-row .spawn-folder-plate {
+    padding: 2px;
+    border-radius: 6px;
+}
+
+.spawn-folder-row .spawn-folder-plate-row {
+    spacing: 2px;
+}
+
+.spawn-folder-chevron {
+    color: rgba(255, 255, 255, 0.5);
+}
+
 .spawn-tile {
     border-radius: 12px;
     padding: 8px 4px;
@@ -305,7 +326,8 @@
     spacing: 8px;
 }
 
-.spawn-folder-tile:hover .spawn-folder-plate {
+.spawn-folder-tile:hover .spawn-folder-plate,
+.spawn-folder-row:hover .spawn-folder-plate {
     background-color: rgba(255, 255, 255, 0.16);
 }
 
@@ -317,6 +339,15 @@
 
 .spawn-drop-after {
     box-shadow: inset -3px 0 0 st-transparentize(-st-accent-color, 0);
+}
+
+/* rows of a vertical list: the insertion mark is a top / bottom edge */
+.spawn-pinned-row.spawn-drop-before {
+    box-shadow: inset 0 3px 0 0 st-transparentize(-st-accent-color, 0);
+}
+
+.spawn-pinned-row.spawn-drop-after {
+    box-shadow: inset 0 -3px 0 0 st-transparentize(-st-accent-color, 0);
 }
 
 /* ---- folder view ---- */
@@ -476,6 +507,57 @@
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
+/* ---- panel button context menu (src/ui/buttonMenu.ts) ----
+ * Orchis paints an expanded submenu (Power Options) near-white with dark text inside a dark menu:
+ * give it a quiet tint of the menu instead, with the menu's own light text, and make the open
+ * header row a tinted "active" row rather than white. */
+
+.spawn-button-menu .popup-sub-menu {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    box-shadow: none;
+    border: none;
+    color: inherit;
+}
+
+.spawn-button-menu .popup-sub-menu .popup-menu-item {
+    color: inherit;
+    padding-left: 12px;
+    padding-right: 12px;
+}
+
+.spawn-button-menu .popup-sub-menu .popup-menu-item:hover,
+.spawn-button-menu .popup-sub-menu .popup-menu-item:focus,
+.spawn-button-menu .popup-sub-menu .popup-menu-item:active {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: inherit;
+}
+
+.spawn-button-menu .popup-submenu-menu-item:open {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: inherit;
+    box-shadow: none;
+}
+
+.spawn-light.spawn-button-menu .popup-sub-menu,
+.spawn-light .spawn-button-menu .popup-sub-menu {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.spawn-light.spawn-button-menu .popup-sub-menu .popup-menu-item:hover,
+.spawn-light.spawn-button-menu .popup-sub-menu .popup-menu-item:focus,
+.spawn-light.spawn-button-menu .popup-sub-menu .popup-menu-item:active,
+.spawn-light .spawn-button-menu .popup-sub-menu .popup-menu-item:hover,
+.spawn-light .spawn-button-menu .popup-sub-menu .popup-menu-item:focus,
+.spawn-light .spawn-button-menu .popup-sub-menu .popup-menu-item:active {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.spawn-light.spawn-button-menu .popup-submenu-menu-item:open,
+.spawn-light .spawn-button-menu .popup-submenu-menu-item:open {
+    background-color: rgba(0, 0, 0, 0.08);
+}
+
 /* ---- light shell themes ----
  * ui/menu.ts adds .spawn-light to the popup (and the context menu) when the shell theme's popup
  * foreground is dark. Everything above that is a white tint gets its black twin here; the dark
@@ -524,8 +606,13 @@
     background-color: rgba(0, 0, 0, 0.1);
 }
 
-.spawn-light .spawn-folder-tile:hover .spawn-folder-plate {
+.spawn-light .spawn-folder-tile:hover .spawn-folder-plate,
+.spawn-light .spawn-folder-row:hover .spawn-folder-plate {
     background-color: rgba(0, 0, 0, 0.16);
+}
+
+.spawn-light .spawn-folder-chevron {
+    color: rgba(0, 0, 0, 0.5);
 }
 
 .spawn-light .spawn-power-bar {

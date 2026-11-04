@@ -20,7 +20,7 @@
 // planMigration(snapshot, spawnDefaults?, env?): env.iconExists(file) lets the caller veto a
 // button icon that is not on disk (this module cannot touch the file system).
 
-import {ARCMENU_ID_PREFIX, ShortcutId, SPAWN_ID_PREFIX} from '../core/constants.js';
+import {ARCMENU_ID_PREFIX, ContextMenuId, ShortcutId, SPAWN_ICON, SPAWN_ID_PREFIX} from '../core/constants.js';
 import {resolveButtonIcon} from '../core/icons.js';
 import {isValidFolderId} from '../core/folderId.js';
 import type {Entry, SettingKey} from '../core/settings.js';
@@ -88,6 +88,18 @@ const AVATAR = ['Round', 'Square'] as const;
 const ICON_STYLE = ['Full_Color', 'Symbolic'] as const;
 const POWER_STYLE = ['Default', 'In_Line', 'Menu'] as const;
 const SEARCHBAR = ['Bottom', 'Top'] as const;
+
+/**
+ * How each ArcMenu layout (MenuLayoutsInfo id) displays its items: the `display_type` its
+ * constructor passes to BaseMenuLayout (menulayouts/*.js). Layouts missing here (GNOME Overview,
+ * unknown ids) leave Spawn's default.
+ */
+const PINNED_DISPLAY: Readonly<Record<string, 'List' | 'Grid'>> = {
+    'arcmenu': 'List', 'brisk': 'List', 'budgie': 'List', 'gnome-menu': 'List', 'mint': 'List', 'whisker': 'List',
+    'plasma': 'List', 'tognee': 'List', 'windows': 'List', 'zest': 'List', 'runner': 'List',
+    '11': 'Grid', 'az': 'Grid', 'enterprise': 'Grid', 'insider': 'Grid', 'pop': 'Grid', 'redmond': 'Grid',
+    'sleek': 'Grid', 'unity': 'Grid', 'chromebook': 'Grid', 'elementary': 'Grid', 'raven': 'Grid',
+};
 
 /** Spawn key -> kind, for keys whose ArcMenu name is identical. */
 const SAME_NAME: ReadonlyArray<readonly [SettingKey, Kind]> = [
@@ -205,7 +217,6 @@ const SKIP_EXACT: Readonly<Record<string, string>> = {
     'force-menu-location': 'menu placement is always anchored to the button',
     'menu-position-alignment': 'not supported in v1',
     'menu-arrow-rise': 'menu arrow is not used',
-    'context-menu-items': 'the button context menu is not part of v1',
     'menu-themes': 'theme presets are not part of v1',
     'extra-categories': 'extra categories are not part of v1',
     'arcmenu-extra-categories-links': 'extra categories are not part of v1',
@@ -294,6 +305,45 @@ export function convertEntries(entries: Entry[], where: string, warnings: string
     return out;
 }
 
+const ARCMENU_SETTINGS_PAGES: ReadonlySet<string> = new Set([
+    'ArcMenu_SettingsMenu', 'ArcMenu_SettingsLayout', 'ArcMenu_SettingsButton', 'ArcMenu_SettingsAbout', 'ArcMenu_SettingsTheme',
+]);
+const ARCMENU_ICON = 'ArcMenu_ArcMenuIcon';
+
+/**
+ * `context-menu-items`: like convertEntries, but ArcMenu's own entries become Spawn's:
+ * ArcMenu_Settings -> Spawn_Settings ("Spawn Settings", the Spawn button icon), ArcMenu_Settings<Page>
+ * (no such pages in Spawn) -> Spawn_Settings with a warning, ArcMenu_PanelExtensionSettings ->
+ * Spawn_PanelExtensionSettings, icon ArcMenu_ArcMenuIcon -> Spawn_SpawnIcon; everything else as in
+ * convertEntries (apps kept, other ArcMenu_ ids -> Spawn_ or dropped with a warning).
+ */
+export function convertContextMenuEntries(entries: Entry[], where: string, warnings: string[]): Entry[] {
+    const out: Entry[] = [];
+    for (const entry of entries) {
+        const icon = entry.icon === ARCMENU_ICON ? SPAWN_ICON : entry.icon;
+        const isPage = ARCMENU_SETTINGS_PAGES.has(entry.id);
+        if (entry.id === 'ArcMenu_Settings' || isPage) {
+            if (isPage)
+                warnings.push(`${where}: '${label(entry)}' opened an ArcMenu settings page; Spawn has no such page, using Spawn Settings`);
+            // A name the user chose is kept; ArcMenu's own labels ("ArcMenu Settings", page names) become Spawn's.
+            const custom = entry.id === 'ArcMenu_Settings' && entry.name && entry.name !== 'ArcMenu Settings' ? entry.name : 'Spawn Settings';
+            out.push({id: ContextMenuId.SETTINGS, name: custom, icon: icon ?? SPAWN_ICON});
+            continue;
+        }
+        if (entry.id === 'ArcMenu_PanelExtensionSettings') {
+            out.push({...entry, id: ContextMenuId.PANEL_EXTENSION_SETTINGS, ...(icon === undefined ? {} : {icon})});
+            continue;
+        }
+        const converted = convertEntries([entry], where, warnings)[0];
+        if (!converted)
+            continue;
+        if (icon === SPAWN_ICON)
+            converted.icon = SPAWN_ICON;
+        out.push(converted);
+    }
+    return out;
+}
+
 const REPEATABLE = new Set<string>([ShortcutId.SEPARATOR, ShortcutId.SPACER]);
 
 /** Drops repeated ids (separators and spacers may repeat); `seen` is shared across lists. */
@@ -317,7 +367,7 @@ const BARE_MODIFIER = /^(Shift|Control|Alt|Super|Meta|Hyper|ISO_Level\d_Shift|Ca
 
 // ------------------------------------------------------------------------------------------
 
-const CLICK_ACTION: Readonly<Record<string, 'Menu' | 'None'>> = {ArcMenu: 'Menu', ContextMenu: 'None', None: 'None'};
+const CLICK_ACTION: Readonly<Record<string, 'Menu' | 'ContextMenu' | 'None'>> = {ArcMenu: 'Menu', ContextMenu: 'ContextMenu', None: 'None'};
 
 /** Maps an ArcMenu `menu-button-icon` value to Spawn's format; null if unsupported. */
 export function convertButtonIcon(value: string): string | null {
@@ -415,6 +465,15 @@ export function planMigration(snapshot: ArcMenuSnapshot, spawnDefaults?: Partial
         }
     }
 
+    // Panel button context menu.
+    if (isSet('context-menu-items')) {
+        const v = values['context-menu-items'];
+        if (!isEntryList(v))
+            skip('context-menu-items', 'unexpected value format');
+        else
+            add('context-menu-items', 'context-menu-items', dedupeEntries(convertContextMenuEntries(v, 'context-menu-items', plan.warnings), 'context-menu-items', plan.warnings));
+    }
+
     // Button click actions.
     for (const side of ['left', 'right', 'middle'] as const) {
         const from = `menu-button-${side}-click-action`;
@@ -426,8 +485,6 @@ export function planMigration(snapshot: ArcMenuSnapshot, spawnDefaults?: Partial
             skip(from, 'unexpected value format');
             continue;
         }
-        if (v === 'ContextMenu')
-            plan.warnings.push(`${from}: the button context menu is not part of v1; set to None`);
         add(from as SettingKey, from, mapped);
     }
 
@@ -447,11 +504,15 @@ export function planMigration(snapshot: ArcMenuSnapshot, spawnDefaults?: Partial
         }
     }
 
-    // Layout.
+    // Layout: Spawn has one layout, but the pinned view follows how ArcMenu's layout shows its
+    // items (list or grid). The key is derived from menu-layout even when it equals the default.
     if (isSet('menu-layout')) {
         const v = values['menu-layout'];
-        if (v === 'arcmenu') {
-            skip('menu-layout', "ArcMenu's 'arcmenu' layout is Spawn's only layout");
+        const display = typeof v === 'string' ? PINNED_DISPLAY[v] : undefined;
+        if (display) {
+            add('pinned-apps-display', 'menu-layout', display);
+            if (v !== 'arcmenu')
+                plan.warnings.push(`menu-layout '${v}' is not available; Spawn uses its own 'spawn' layout (pinned apps shown as a ${display.toLowerCase()})`);
         } else {
             skip('menu-layout', 'Spawn has a single layout');
             plan.warnings.push(`menu-layout '${String(v)}' is not available; Spawn uses its own 'spawn' layout`);

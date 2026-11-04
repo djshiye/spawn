@@ -57,7 +57,7 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
         icon_name: 'view-list-symbolic',
     });
 
-    const viewKeys: SettingKey[] = ['default-menu-view', 'all-apps-button-action', 'max-frequent-apps'];
+    const viewKeys: SettingKey[] = ['default-menu-view', 'pinned-apps-display', 'all-apps-button-action', 'max-frequent-apps'];
     page.add(group(ctx, 'Start view', [
         enumRow(ctx, 'default-menu-view', 'Default view', [
             ['Pinned_Apps', 'Pinned apps'],
@@ -66,6 +66,10 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
             ['All_Programs', 'All apps'],
             ['Pinned_And_Frequent_Apps', 'Pinned and frequent apps'],
         ]),
+        enumRow(ctx, 'pinned-apps-display', 'Pinned apps view', [
+            ['List', 'List'],
+            ['Grid', 'Grid'],
+        ], 'Pinned apps and folders as rows (like ArcMenu) or as an icon grid'),
         enumRow(ctx, 'all-apps-button-action', '"All Apps" button shows', [
             ['Categories_List', 'Categories'],
             ['All_Programs', 'All apps in one list'],

@@ -13,7 +13,7 @@ echo "-- all apps view"
 python3 "$root/tools/dev/ux-measure.py" "$dev/ux/allapps.json" --check; check "all apps view meets the UX targets" $?
 ui_call ShowView default >/dev/null; sleep 0.4
 echo "-- keyboard focus ring on every focusable kind"
-for cls in spawn-tile spawn-user-card spawn-shortcut-row spawn-power-button spawn-nav-button; do
+for cls in $ITEM spawn-user-card spawn-shortcut-row spawn-power-button spawn-nav-button; do
     focus_class "$cls" 0
     dump_ui "$dev/ux/focus-$cls.json"
     python3 - "$dev/ux/focus-$cls.json" "$cls" <<'PY'

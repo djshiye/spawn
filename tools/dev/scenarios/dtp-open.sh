@@ -12,7 +12,7 @@ else
     expect_state "menu open on the DtP button" open true
     expect_state "arrow side is BOTTOM (St.Side.BOTTOM = 2)" side 2
     mkdir -p "$shots/final" "$dev/ux"
-    screenshot final/dtp-bottom
+    screenshot final/dtp-bottom-list
     dump_ui "$dev/ux/dtp.json"
     python3 "$root/tools/dev/ux-measure.py" "$dev/ux/dtp.json" --check; check "DtP bottom popup meets the UX targets" $?
     python3 - "$dev/ux/dtp.json" <<'PY'
@@ -34,4 +34,8 @@ PY
     expect_state "Top puts it on top even under a bottom panel" layout.searchTop true
     screenshot final/dtp-bottom-search-top
     dconf write /org/gnome/shell/extensions/spawn/search-entry-location "'Bottom'"
+    set_display Grid
+    close_menu; open_menu 1.5
+    screenshot final/dtp-bottom-grid
+    set_display List
 fi

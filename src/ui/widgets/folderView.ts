@@ -1,7 +1,7 @@
 // FolderView: the contents of one pinned folder, shown in place of the pinned grid. Header with a
-// back button and the folder name (click to rename inline), then the apps as a tile grid.
-// Tiles are draggable (reorder inside the folder via ui/dnd.ts) and can be dropped onto the
-// header to take them out of the folder. Rebuilt from PinnedStore whenever it changes.
+// back button and the folder name (click to rename inline), then the apps as a tile grid or, in
+// the list display (`metrics().list`), as full-width rows. Tiles / rows are draggable (reorder inside the folder via ui/dnd.ts) and can
+// be dropped onto the header to take them out of the folder. Rebuilt from PinnedStore whenever it changes.
 //
 // Public API:
 //   new FolderView(scope: Scope, services: Services, host: FolderViewHost)
@@ -9,12 +9,12 @@
 //   view.show(uuid: string): boolean  false when the folder is gone (nothing is shown, the host went back)
 //   view.refresh(): void              re-sync with the store (also called on store changes)
 //   view.uuid: string | null
-//   view.tiles(): St.Widget[]         app tiles in order (keyboard nav)
+//   view.tiles(): St.Widget[]         app tiles / rows in order (keyboard nav)
 //   view.headerButtons(): St.Widget[] back + name buttons
 //   view.startRename(): void
 //   view.scroll: St.ScrollView
 //   view.destroy()
-//   FolderViewHost: TileHost & {back(), metrics?(): {columns, tileWidth, iconSize, multiLine?},
+//   FolderViewHost: TileHost & {back(), metrics?(): {columns, tileWidth, iconSize, multiLine?, list?, rowIconSize?},
 //                               openMissingContext?(tile, id)}
 //
 // Apps of the folder whose .desktop file is gone are shown as dimmed tiles (context menu: Unpin)
@@ -30,13 +30,24 @@ import type {Scope} from '../../core/scope.js';
 import type {Services} from '../../core/services.js';
 import {acceptDrops, enableDrag} from '../dnd.js';
 import {applyScrollSettings, displayName, lookupApp} from '../util.js';
+import {ActionRow, AppRow} from './appRow.js';
 import {ActionTile, AppTile, type TileHost} from './appTile.js';
 import {makeItemButton, wireItem} from './interact.js';
 import {TileGrid} from './tileGrid.js';
 
+export interface FolderMetrics {
+    columns: number;
+    tileWidth: number;
+    iconSize: number;
+    multiLine?: boolean;
+    /** List display: rows (of `rowIconSize`) instead of a grid of tiles. */
+    list?: boolean;
+    rowIconSize?: number;
+}
+
 export type FolderViewHost = TileHost & {
     back(): void;
-    metrics?(): {columns: number; tileWidth: number; iconSize: number; multiLine?: boolean};
+    metrics?(): FolderMetrics;
     /** Context menu (Unpin) of a ghost tile: a pinned app that is no longer installed. */
     openMissingContext?(tile: St.Widget, id: string): void;
 };
@@ -155,48 +166,53 @@ export class FolderView {
 
         for (const t of this._tiles)
             t.destroy();
-        const metrics = this._host.metrics?.() ?? {columns: 4, tileWidth: 96, iconSize: 48};
+        const metrics: FolderMetrics = this._host.metrics?.() ?? {columns: 4, tileWidth: 96, iconSize: 48};
+        const list = Boolean(metrics.list);
         const tiles: St.Widget[] = [];
         const settings = this._services.settings;
         for (const entry of store.folderApps(uuid, true)) {
             const app = lookupApp(this._services, entry.id);
             if (!app) {
-                tiles.push(this._ghostTile(entry.id));
+                tiles.push(this._ghostTile(entry.id, metrics));
                 continue;
             }
-            const tile = new AppTile(app, this._host, {
-                folderUuid: uuid,
-                iconSize: metrics.iconSize,
-                multiLine: metrics.multiLine,
-                name: displayName(app, settings),
-            });
-            enableDrag(this._tileScope, tile.actor, {
+            const name = displayName(app, settings);
+            const actor = list
+                ? new AppRow(app, this._host, {
+                    folderUuid: uuid, iconSize: metrics.rowIconSize, name, pinned: true,
+                }).actor
+                : new AppTile(app, this._host, {
+                    folderUuid: uuid, iconSize: metrics.iconSize, multiLine: metrics.multiLine, name,
+                }).actor;
+            enableDrag(this._tileScope, actor, {
                 id: entry.id,
                 folderUuid: uuid,
                 onDragBegin: () => this._setDragging(true),
                 onDragEnd: () => this._setDragging(false),
             });
-            acceptDrops(this._tileScope, tile.actor, store, {kind: 'app', id: entry.id, folderUuid: uuid});
-            tiles.push(tile.actor);
+            acceptDrops(this._tileScope, actor, store, {kind: 'app', id: entry.id, folderUuid: uuid}, {vertical: list});
+            tiles.push(actor);
         }
         this._tiles = tiles;
-        this._grid.setTiles(tiles, metrics.columns, metrics.tileWidth);
+        this._grid.setTiles(tiles, list ? 1 : metrics.columns, list ? -1 : metrics.tileWidth);
         acceptDrops(this._tileScope, this._grid.actor, store, {kind: 'grid', index: () => -1, folderUuid: uuid});
     }
 
-    private _ghostTile(id: string): St.Widget {
+    private _ghostTile(id: string, metrics: FolderMetrics): St.Widget {
         const name = id.replace(/\.desktop$/, '');
-        const metrics = this._host.metrics?.();
-        const open = () => this._host.openMissingContext?.(tile.actor, id);
-        const tile = new ActionTile(name, 'application-x-executable', open, undefined, {
-            iconSize: metrics?.iconSize,
-            multiLine: metrics?.multiLine,
-            context: open,
-        });
-        tile.actor.add_style_class_name('spawn-tile-missing');
-        tile.actor.opacity = 130;
-        this._host.tooltips?.attach(tile.actor, null, () => _('%s (not installed)').format(name));
-        return tile.actor;
+        const open = () => this._host.openMissingContext?.(ghost, id);
+        const view = metrics.list
+            ? new ActionRow(name, 'application-x-executable', open, undefined, {
+                iconSize: metrics.rowIconSize, context: open,
+            })
+            : new ActionTile(name, 'application-x-executable', open, undefined, {
+                iconSize: metrics.iconSize, multiLine: metrics.multiLine, context: open,
+            });
+        const ghost = view.actor;
+        ghost.add_style_class_name('spawn-tile-missing');
+        ghost.opacity = 130;
+        this._host.tooltips?.attach(ghost, null, () => _('%s (not installed)').format(name));
+        return ghost;
     }
 
     startRename(): void {

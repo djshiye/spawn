@@ -116,7 +116,8 @@ export default class SpawnExtension extends Extension {
                 createButton: () => new MenuButton({
                     settings,
                     iconDir: info.iconDir,
-                    popup: popup ?? {toggle: () => {}},
+                    popup: popup ?? {isOpen: false, toggle: () => {}, open: () => {}, close: () => {}},
+                    openPreferences: () => this.openPreferences(),
                 }),
             });
             attacher.start();

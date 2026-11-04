@@ -1,6 +1,7 @@
-# Drag and drop on the pinned grid (virtual pointer): app onto app = new folder, reorder, app into folder.
+# Drag and drop on the pinned GRID (virtual pointer; ui-list.sh does the list): app onto app = new folder, reorder, app into folder.
 # Targets come from the live actor tree (center/rect), not from pixels.
 left_edge() { python3 -c 'import json,sys; x,y,w,h=json.loads(sys.argv[1]); print(round(x+8), round(y+h/2))' "$(rect "$1" "${2:-0}")"; }
+set_display Grid
 open_menu 1.5
 before="$(pinned_ids)"
 echo "pinned before: $before"

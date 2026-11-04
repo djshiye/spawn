@@ -25,7 +25,7 @@
 //   popup.side: St.Side                the arrow side of the current attachment
 //   popup.menuActor / popup.layoutActor   dev hooks: the PopupMenu actor / the layout root (or null)
 //   popup.resetLayout() / popup.layoutBuilt   dev / benchmark: drop the built layout; is it built
-//   popup.search(q) / popup.showView(id) / popup.openFolderByIndex(i) / popup.debugState()
+//   popup.search(q) / popup.showView(id) / popup.showAllApps() / popup.openFolderByIndex(i) / popup.debugState()
 //                                      thin forwards to the layout (dev hooks, MenuController.search)
 
 import Clutter from 'gi://Clutter';
@@ -75,6 +75,11 @@ export class SpawnPopup {
 
     showView(id: string): void {
         this._layout?.showView(id);
+    }
+
+    /** Switch an open popup to the all-apps view (what the Spawn_ShowAllApplications shortcut does). */
+    showAllApps(): void {
+        this._layout?.showAllApps();
     }
 
     openFolderByIndex(index: number): void {

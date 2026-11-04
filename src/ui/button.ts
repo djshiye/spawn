@@ -1,8 +1,9 @@
 // MenuButton: the panel button. One instance per attached panel (see panel/attacher.ts).
 //
 // Responsibility: show the configured icon/text, translate clicks into popup actions.
-// It does NOT own a PopupMenu (the shared SpawnPopup does); the click handling is a
+// It does NOT own the Spawn PopupMenu (the shared SpawnPopup does); the click handling is a
 // Clutter.ClickGesture because PanelMenu.Button only wires its own gesture when it owns a menu.
+// It does own the context menu (ui/buttonMenu.ts, built per open): opening one closes the other.
 //
 // Public API:
 //   new MenuButton(deps: MenuButtonDeps)
@@ -13,13 +14,15 @@
 //                                      every read from live geometry (a panel can move)
 //   button.arrowSide: St.Side          matching BoxPointer arrow side for the popup (panel at the
 //                                      top -> St.Side.TOP, i.e. the popup opens below it)
-//   MenuButtonDeps: {settings, iconDir, popup: {toggle(anchor)}}
+//   button.contextMenu: ButtonMenu     the right-click menu (open / close / isOpen)
+//   MenuButtonDeps: {settings, iconDir, popup: SpawnPopup-like, openPreferences()}
 //
 // Keyboard: Return / Enter / Space (press arms, release fires) activate the left-click action, so the button works after Ctrl+Alt+Tab to the top bar.
+// Menu key / Shift+F10 open the context menu (when any click action is ContextMenu), focus returns here on Escape.
 // Icon: a configured icon that is missing, unreadable or not a decodable image, or a themed name the
 // icon theme does not have, falls back to 'start-here-symbolic' (never an empty / broken button).
 //
-// Click mapping uses menu-button-{left,middle,right}-click-action ('Menu' | 'None'); the mouse
+// Click mapping uses menu-button-{left,middle,right}-click-action ('Menu' | 'ContextMenu' | 'None'); the mouse
 // button is read from the gesture so middle click works like any other. A hover tooltip (the
 // shell's `dash-label` look; button text or "Applications") follows `show-tooltips` and is
 // hidden while the menu is open. Everything is re-read by refresh(), which the attacher calls on
@@ -40,11 +43,16 @@ import {error} from '../core/log.js';
 import {Scope} from '../core/scope.js';
 import type {MenuButtonClickAction, SpawnSettings} from '../core/settings.js';
 import {type PanelSide, panelSide} from '../panel/validate.js';
+import {ButtonMenu, type PopupControl} from './buttonMenu.js';
 
 export interface MenuButtonDeps {
     settings: SpawnSettings;
     iconDir: string;
-    popup: {toggle(anchor: St.Widget): void};
+    popup: PopupControl & {
+        toggle(anchor: St.Widget): void;
+        onOpenStateChanged?(scope: Scope, cb: (open: boolean, anchor: St.Widget | null) => void): void;
+    };
+    openPreferences(): void;
 }
 
 const TOOLTIP_DELAY_MS = 500;
@@ -71,6 +79,12 @@ function isActivationKey(symbol: number): boolean {
     return symbol === Clutter.KEY_Return || symbol === Clutter.KEY_KP_Enter || symbol === Clutter.KEY_space;
 }
 
+function isContextMenuKey(event: Clutter.Event): boolean {
+    const symbol = event.get_key_symbol();
+    return symbol === Clutter.KEY_Menu ||
+        (symbol === Clutter.KEY_F10 && (event.get_state() & Clutter.ModifierType.SHIFT_MASK) !== 0);
+}
+
 export class MenuButton extends PanelMenu.Button {
     static {
         GObject.registerClass(this);
@@ -84,6 +98,7 @@ export class MenuButton extends PanelMenu.Button {
     private _tooltip: St.Label | null = null;
     private _cancelTooltip: (() => void) | null = null;
     private _activationArmed = false;
+    private _contextMenu: ButtonMenu;
 
     constructor(deps: MenuButtonDeps) {
         super(0.5, 'Spawn', true);
@@ -106,6 +121,18 @@ export class MenuButton extends PanelMenu.Button {
         gesture.connect('recognize', () => this._onClick(gesture.get_button()));
         this.add_action(gesture);
 
+        this._contextMenu = new ButtonMenu(this._scope, this, {
+            settings: deps.settings,
+            iconDir: deps.iconDir,
+            popup: deps.popup,
+            openPreferences: deps.openPreferences,
+        });
+        // Spawn's popup opened (button click, Super, D-Bus): the context menu makes room for it.
+        deps.popup.onOpenStateChanged?.(this._scope, open => {
+            if (open)
+                this._contextMenu.close();
+        });
+
         this._scope.connect(this, 'key-focus-out', () => {
             this._activationArmed = false;
         });
@@ -116,6 +143,10 @@ export class MenuButton extends PanelMenu.Button {
         });
 
         this.refresh();
+    }
+
+    get contextMenu(): ButtonMenu {
+        return this._contextMenu;
     }
 
     get side(): PanelSide {
@@ -158,6 +189,12 @@ export class MenuButton extends PanelMenu.Button {
     // release of a Return pressed elsewhere (inside the menu, whose close hands the key focus back
     // here, or in the Ctrl+Alt+Tab switcher) never re-triggers the button.
     override vfunc_key_press_event(event: Clutter.Event): boolean {
+        if (isContextMenuKey(event)) {
+            this._activationArmed = false;
+            if (this._hasContextMenuAction())
+                this._openContextMenu(true);
+            return Clutter.EVENT_STOP;
+        }
         if (isActivationKey(event.get_key_symbol())) {
             this._activationArmed = true;
             return Clutter.EVENT_STOP;
@@ -174,7 +211,8 @@ export class MenuButton extends PanelMenu.Button {
                 this._onClick(1);
             return Clutter.EVENT_STOP;
         }
-        return super.vfunc_key_release_event(event);
+        // St.Widget has no key_release_event vfunc to chain up to.
+        return Clutter.EVENT_PROPAGATE;
     }
 
     /** The panel actor containing this button (falls back to the button itself). */
@@ -242,11 +280,29 @@ export class MenuButton extends PanelMenu.Button {
                 return;
             const action: MenuButtonClickAction = this._deps.settings.get(key);
             this._hideTooltip();
-            if (action === 'Menu')
+            if (action === 'Menu') {
+                this._contextMenu.close();
                 this._deps.popup.toggle(this);
+            } else if (action === 'ContextMenu') {
+                this._openContextMenu(false, true);
+            }
         } catch (e) {
             error('MenuButton click failed', e);
         }
+    }
+
+    private _hasContextMenuAction(): boolean {
+        const s = this._deps.settings;
+        return [s.get('menu-button-left-click-action'), s.get('menu-button-middle-click-action'), s.get('menu-button-right-click-action')]
+            .includes('ContextMenu');
+    }
+
+    private _openContextMenu(fromKeyboard: boolean, toggle = false): void {
+        this._hideTooltip();
+        if (toggle && this._contextMenu.isOpen)
+            this._contextMenu.close();
+        else
+            this._contextMenu.open(fromKeyboard);
     }
 
     // ---- tooltip ----

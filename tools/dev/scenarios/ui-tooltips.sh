@@ -2,7 +2,7 @@
 open_menu 1.5
 ui_call OpenFolder 1 >/dev/null; sleep 0.8
 ui_call Move 300 300 >/dev/null; sleep 0.5
-move_class spawn-tile 0 1.5
+move_class $ITEM 0 1.5
 echo "folder tile tooltip: $(state_get layout.tooltip)"
 screenshot ui-tooltip-folder
 key Escape 0.6

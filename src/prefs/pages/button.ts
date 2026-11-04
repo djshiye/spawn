@@ -1,4 +1,4 @@
-// Preferences page "Button": icon, size, padding, label and click actions of the panel button.
+// Preferences page "Button": icon, size, padding, label, click actions and context menu items of the panel button.
 //
 // Public API:
 //   createButtonPage(ctx: PrefsContext): Adw.PreferencesPage
@@ -9,9 +9,10 @@ import Adw from 'gi://Adw';
 import type {SettingKey} from '../../core/settings.js';
 import type {PrefsContext} from '../context.js';
 import {createIconRow} from '../iconPicker.js';
+import {createEntryList} from '../lists.js';
 import {enumRow, entryRow, group, type Option, spinRow, watch} from '../widgets.js';
 
-const CLICK: readonly Option[] = [['Menu', 'Open the menu'], ['None', 'Do nothing']];
+const CLICK: readonly Option[] = [['Menu', 'Open the menu'], ['ContextMenu', 'Open the context menu'], ['None', 'Do nothing']];
 
 export function createButtonPage(ctx: PrefsContext): Adw.PreferencesPage {
     const page = new Adw.PreferencesPage({
@@ -54,5 +55,13 @@ export function createButtonPage(ctx: PrefsContext): Adw.PreferencesPage {
         enumRow(ctx, 'menu-button-middle-click-action', 'Middle click', CLICK),
         enumRow(ctx, 'menu-button-right-click-action', 'Right click', CLICK),
     ], {reset: clickKeys}));
+
+    page.add(createEntryList(ctx, {
+        title: 'Context menu',
+        description: 'Shown by a click set to "Open the context menu" (right click by default), or with the Menu key on the focused button.',
+        kind: 'context',
+        source: {get: () => ctx.settings.get('context-menu-items'), set: v => ctx.settings.set('context-menu-items', v), keys: ['context-menu-items']},
+        reset: true,
+    }));
     return page;
 }

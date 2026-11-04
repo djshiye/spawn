@@ -19,8 +19,8 @@ a default still reaches imported setups.
 `menu-button-icon` is a bundled file name from `data/icons/`, an absolute path, or a
 themed icon name.
 
-Enum differences from ArcMenu: `menu-button-*-click-action` is `Menu|None` (ArcMenu:
-`ArcMenu|ContextMenu|None`; the button context menu is not in v1).
+Enum differences from ArcMenu: `menu-button-*-click-action` is `Menu|None|ContextMenu` (ArcMenu:
+`ArcMenu|ContextMenu|None`; `ArcMenu` maps to `Menu`).
 
 
 ## General
@@ -52,9 +52,10 @@ Enum differences from ArcMenu: `menu-button-*-click-action` is `Menu|None` (ArcM
 | `menu-button-icon` | s | `'icon-apps-symbolic.svg'` | `menu-button-icon`  (ArcMenu resource URI rewritten to bundled file name) |
 | `menu-button-icon-size` | i | `20` | `menu-button-icon-size` |
 | `menu-button-padding` | i | `-1` | `menu-button-padding` |
-| `menu-button-left-click-action` | enum menu-button-click-action | `'Menu'` | `menu-button-left-click-action`  (ArcMenu -> Menu, ContextMenu -> None) |
-| `menu-button-right-click-action` | enum menu-button-click-action | `'None'` | `menu-button-right-click-action`  (ArcMenu -> Menu, ContextMenu -> None) |
-| `menu-button-middle-click-action` | enum menu-button-click-action | `'Menu'` | `menu-button-middle-click-action`  (ArcMenu -> Menu, ContextMenu -> None) |
+| `context-menu-items` | aa{ss} | Extensions, Spawn Settings, Panel Extension Settings, separator, Power Options, Activities Overview, Show Desktop | `context-menu-items` (ArcMenu_* -> Spawn_*; ArcMenu_Settings* -> `Spawn_Settings`; icon `ArcMenu_ArcMenuIcon` -> `Spawn_SpawnIcon`) |
+| `menu-button-left-click-action` | enum menu-button-click-action | `'Menu'` | `menu-button-left-click-action`  (ArcMenu -> Menu, ContextMenu -> ContextMenu, None -> None) |
+| `menu-button-right-click-action` | enum menu-button-click-action | `'ContextMenu'` | `menu-button-right-click-action`  (ArcMenu -> Menu, ContextMenu -> ContextMenu, None -> None) |
+| `menu-button-middle-click-action` | enum menu-button-click-action | `'Menu'` | `menu-button-middle-click-action`  (ArcMenu -> Menu, ContextMenu -> ContextMenu, None -> None) |
 
 ## Menu
 
@@ -62,6 +63,7 @@ Enum differences from ArcMenu: `menu-button-*-click-action` is `Menu|None` (ArcM
 |---|---|---|---|
 | `default-menu-view` | enum default-menu-view | `'Pinned_Apps'` | `default-menu-view` |
 | `all-apps-button-action` | enum all-apps-button-action | `'Categories_List'` | `all-apps-button-action` |
+| `pinned-apps-display` | enum pinned-apps-display | `'List'` | derived from `menu-layout`: the layouts whose constructor passes `DisplayType.LIST` (arcmenu, brisk, budgie, gnome-menu, mint, whisker, plasma, tognee, windows, zest, runner) give `'List'`, the grid ones (11, az, enterprise, insider, pop, redmond, sleek, unity, chromebook, elementary, raven) `'Grid'`; unknown layouts keep the default. Pinned apps and folders (and folder contents) as rows or as an icon grid |
 | `max-frequent-apps` | i | `8` | `arcmenu-layout-max-frequent-apps` |
 | `menu-height` | i | `600` | `menu-height`  (clamped to 360..1600) |
 | `menu-width-adjustment` | i | `0` | `menu-width-adjustment`  (clamped to -350..800) |
@@ -156,8 +158,8 @@ Enum differences from ArcMenu: `menu-button-*-click-action` is `Menu|None` (ArcM
 The bundled ArcMenu schema is from ArcMenu release 74 (`BUNDLED_ARCMENU_VERSION`); the Import page warns when the
 installed ArcMenu is newer, because keys added since then are not read.
 
-Other layouts' keys (`*-layout-*`, `raven-*`, `runner-*`, `default-menu-view-<layout>`, ...), `menu-layout`,
-`force-menu-location`, `menu-position-alignment`, `menu-arrow-rise`, `context-menu-items`, `menu-themes`,
+Other layouts' keys (`*-layout-*`, `raven-*`, `runner-*`, `default-menu-view-<layout>`, ...), `menu-layout` (only read to derive `pinned-apps-display`),
+`force-menu-location`, `menu-position-alignment`, `menu-arrow-rise`, `menu-themes`,
 `extra-categories*`, `recently-installed-apps`, `show-recently-installed-apps`, update-notifier keys,
 `settings-width/height`, `prefs-visible-page`, `hide-overview-*`, `enable-horizontal-flip`, `dash-to-panel-standalone`, `pop-*`,
 `runner-hotkey*`, `hotkey-open-primary-monitor`, `activate-on-hover`, `show-category-sub-menus`,

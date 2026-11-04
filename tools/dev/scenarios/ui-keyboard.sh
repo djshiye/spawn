@@ -1,4 +1,5 @@
-# Keyboard: Down from the search entry into the pinned grid, arrows, Tab cycle, type-to-search, Escape.
+# Keyboard on the pinned GRID (ui-list.sh does the list): Down from the search entry into the pinned grid, arrows, Tab cycle, type-to-search, Escape.
+set_display Grid
 open_menu 1.5
 expect "focus starts in the search entry" "$(state_get layout.focus | cut -c1-12)" "Clutter_Text"
 key Down

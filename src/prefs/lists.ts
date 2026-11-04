@@ -7,8 +7,9 @@
 //                                 Rows are rebuilt on every change, keyboard focus is put back on the
 //                                 button that was used. An app can be pinned only once (top level or
 //                                 in exactly one folder); damaged folder ids show a removable row.
-//   describeEntry(entry)          {title, subtitle?, icon: Gio.Icon | string}
-//   kinds: 'pinned' | 'folder' | 'directory' | 'application'
+//   describeEntry(entry, ctx?)    {title, subtitle?, icon: Gio.Icon | string}  (ctx resolves 'Spawn_SpawnIcon')
+//   kinds: 'pinned' | 'folder' | 'directory' | 'application' | 'context' (button context menu: apps,
+//          built-in Spawn items, separators)
 
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
@@ -16,13 +17,14 @@ import GioUnix from 'gi://GioUnix?version=2.0';
 import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk?version=4.0';
 
-import {ShortcutId} from '../core/constants.js';
+import {ContextMenuId, ShortcutId, SPAWN_ICON} from '../core/constants.js';
 import {isValidFolderId} from '../core/folderId.js';
+import {resolveButtonIcon} from '../core/icons.js';
 import type {Entry, FolderSettings, SettingKey} from '../core/settings.js';
 import type {PrefsContext} from './context.js';
 import {connectDisposable, label, onWindowClose, resetWithUndo, toast} from './widgets.js';
 
-export type ListKind = 'pinned' | 'folder' | 'directory' | 'application';
+export type ListKind = 'pinned' | 'folder' | 'directory' | 'application' | 'context';
 
 export interface EntrySource {
     get(): Entry[];
@@ -69,20 +71,57 @@ const ACTIONS: readonly Builtin[] = [
     {id: ShortcutId.SHOW_DESKTOP, title: 'Show Desktop', icon: 'user-desktop-symbolic'},
 ];
 
+/** Built-in items only the button context menu knows (ids in core/constants.ts ContextMenuId). */
+const CONTEXT_ACTIONS: readonly Builtin[] = [
+    {id: ContextMenuId.SETTINGS, title: 'Spawn Settings', icon: SPAWN_ICON},
+    {id: ContextMenuId.PANEL_EXTENSION_SETTINGS, title: 'Panel Extension Settings', icon: 'application-x-addon-symbolic'},
+    {id: ShortcutId.SHOW_DESKTOP, title: 'Show Desktop', icon: 'computer-symbolic'},
+    {id: ShortcutId.ACTIVITIES_OVERVIEW, title: 'Activities Overview', icon: 'view-fullscreen-symbolic'},
+    {id: ShortcutId.SHOW_ALL_APPS, title: 'Show All Applications', icon: 'view-app-grid-symbolic'},
+    {id: ShortcutId.RUN_COMMAND, title: 'Run Command', icon: 'system-run-symbolic'},
+    {id: ShortcutId.SOFTWARE, title: 'Software', icon: 'org.gnome.Software-symbolic'},
+];
+
+const CONTEXT_POWER: readonly Builtin[] = [
+    {id: ShortcutId.POWER_OPTIONS, title: 'Power Options', icon: 'system-shutdown-symbolic'},
+    {id: ShortcutId.LOCK, title: 'Lock', icon: 'system-lock-screen-symbolic'},
+    {id: ShortcutId.LOG_OUT, title: 'Log Out', icon: 'system-log-out-symbolic'},
+    {id: ShortcutId.SWITCH_USER, title: 'Switch User', icon: 'system-switch-user-symbolic'},
+    {id: ShortcutId.SUSPEND, title: 'Suspend', icon: 'media-playback-pause-symbolic'},
+    {id: ShortcutId.HYBRID_SLEEP, title: 'Hybrid Sleep', icon: 'weather-clear-night-symbolic'},
+    {id: ShortcutId.HIBERNATE, title: 'Hibernate', icon: 'document-save-symbolic'},
+    {id: ShortcutId.RESTART, title: 'Restart', icon: 'view-refresh-symbolic'},
+    {id: ShortcutId.POWER_OFF, title: 'Power Off', icon: 'system-shutdown-symbolic'},
+];
+
 const BUILTINS = new Map<string, Builtin>([
     ...DIRECTORIES,
     ...ACTIONS,
+    ...CONTEXT_ACTIONS,
+    ...CONTEXT_POWER,
     {id: ShortcutId.SEPARATOR, title: 'Separator', icon: 'list-remove-symbolic'},
     {id: ShortcutId.SPACER, title: 'Spacer', icon: 'list-remove-symbolic'},
     {id: ShortcutId.POWER_OPTIONS, title: 'Power Options', icon: 'system-shutdown-symbolic'},
 ].map((b): [string, Builtin] => [b.id, b]));
 
-export function describeEntry(entry: Entry): {title: string; subtitle?: string; icon: Gio.Icon | string} {
+/** 'Spawn_SpawnIcon': the panel button's own icon (`menu-button-icon`), like the context menu shows it. */
+function spawnIcon(ctx: PrefsContext | undefined): Gio.Icon | string {
+    if (!ctx)
+        return 'start-here-symbolic';
+    const resolved = resolveButtonIcon(ctx.settings.get('menu-button-icon'), `${ctx.extensionDir}/data/icons`);
+    if (resolved.kind === 'file')
+        return Gio.FileIcon.new(Gio.File.new_for_path(resolved.path));
+    return resolved.name.trim() === '' ? 'start-here-symbolic' : resolved.name;
+}
+
+export function describeEntry(entry: Entry, ctx?: PrefsContext): {title: string; subtitle?: string; icon: Gio.Icon | string} {
     if (entry.isFolder === 'true')
         return {title: entry.name || 'Folder', subtitle: 'Folder', icon: 'folder-symbolic'};
     const builtin = BUILTINS.get(entry.id);
-    if (builtin)
-        return {title: entry.name || builtin.title, subtitle: builtin.id === ShortcutId.SEPARATOR ? undefined : 'Built-in', icon: builtin.icon};
+    if (builtin) {
+        const icon = builtin.icon === SPAWN_ICON || entry.icon === SPAWN_ICON ? spawnIcon(ctx) : builtin.icon;
+        return {title: entry.name || builtin.title, subtitle: builtin.id === ShortcutId.SEPARATOR ? undefined : 'Built-in', icon};
+    }
     if (entry.id.endsWith('.desktop')) {
         const info = GioUnix.DesktopAppInfo.new(entry.id);
         if (info)
@@ -234,6 +273,12 @@ function menuModel(kind: ListKind): Gio.Menu {
         menu.append('Command…', 'list.command');
         menu.append('Separator', `list.builtin('${ShortcutId.SEPARATOR}')`);
     }
+    if (kind === 'context') {
+        addBuiltins('Spawn and shell', CONTEXT_ACTIONS);
+        addBuiltins('Places', DIRECTORIES);
+        addBuiltins('Power', CONTEXT_POWER);
+        menu.append('Separator', `list.builtin('${ShortcutId.SEPARATOR}')`);
+    }
     return menu;
 }
 
@@ -316,7 +361,7 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
             const damaged = entry.isFolder === 'true' && !isValidFolderId(entry.id);
             const d = damaged ?
                 {title: entry.name || 'Folder', subtitle: 'Damaged folder entry, remove it', icon: 'dialog-warning-symbolic'} :
-                describeEntry(entry);
+                describeEntry(entry, ctx);
             const row = new Adw.ActionRow({title: GLib.markup_escape_text(d.title, -1)});
             if (d.subtitle)
                 row.set_subtitle(GLib.markup_escape_text(d.subtitle, -1));
@@ -404,6 +449,8 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
             add({id, name: 'Separator', icon: 'list-remove-symbolic'});
         else if (kind === 'directory')
             add({id, name: b.title, icon: id});
+        else if (kind === 'context')
+            add({id, name: b.title, icon: b.icon});
         else
             add({id, name: b.title});
     }, true);

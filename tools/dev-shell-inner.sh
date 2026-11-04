@@ -46,8 +46,36 @@ cleanup() {
         grep -E 'spawn|JS ERROR|Extension|TypeError' "$log" || echo "(no matching lines)"
         echo "---- end of log (full log: $log) ----"
     fi
+    reap_sandbox
 }
 trap cleanup EXIT
+
+# Kill every process left in THIS sandbox (gvfs daemons such as wsdd, portals, dconf-service...
+# outlive dbus-run-session and keep our stdout open). A process belongs to the sandbox only when its
+# environment has exactly our XDG_RUNTIME_DIR (already checked to be inside $dev); this script and
+# its parent are skipped. Never matches anything of the real session.
+reap_sandbox() {
+    local want="XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" pid i left
+    case "$XDG_RUNTIME_DIR" in "$dev"/*) ;; *) return 0 ;; esac
+    sandbox_pids() {
+        for pid in $(ls /proc | grep -E '^[0-9]+$'); do
+            [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || [ "$pid" = "$BASHPID" ] && continue
+            [ -r "/proc/$pid/environ" ] || continue
+            { tr '\0' '\n' <"/proc/$pid/environ" | grep -qxF "$want" && echo "$pid"; } 2>/dev/null
+        done
+    }
+    left="$(sandbox_pids)"
+    [ -n "$left" ] || return 0
+    # shellcheck disable=SC2086
+    kill $left 2>/dev/null
+    for i in 1 2 3 4 5 6; do
+        sleep 0.5
+        left="$(sandbox_pids)"
+        [ -n "$left" ] || return 0
+    done
+    # shellcheck disable=SC2086
+    kill -9 $left 2>/dev/null
+}
 
 ext_state() {
     # Prints the "State:" line of `gnome-extensions info`.
@@ -184,6 +212,22 @@ import ast, sys
 print(" ".join(e["id"] for e in ast.literal_eval(sys.stdin.read().strip())))'
 }
 
+# Pinned view display under test (pinned-apps-display): the seed leaves the default, List. Scenarios
+# that exercise a specific display call `set_display List|Grid`; reset_seed re-applies it, and
+# ITEM / FOLDER name the style class of a pinned app / folder entry in that display.
+PINNED_DISPLAY=List
+ITEM=spawn-pinned-row
+FOLDER=spawn-folder-row
+pin_vars() {
+    if [ "$PINNED_DISPLAY" = Grid ]; then ITEM=spawn-tile; FOLDER=spawn-folder-tile; else ITEM=spawn-pinned-row; FOLDER=spawn-folder-row; fi
+}
+set_display() { # List|Grid
+    PINNED_DISPLAY="$1"
+    pin_vars
+    dconf write /org/gnome/shell/extensions/spawn/pinned-apps-display "'$1'"
+    sleep 1
+}
+
 reset_seed() { # restore the seeded settings between scenarios of one session (dev-mode stays on)
     local k="/org/gnome/shell/extensions/spawn/" e i
     dev_call Close >/dev/null
@@ -195,6 +239,7 @@ reset_seed() { # restore the seeded settings between scenarios of one session (d
         esac
     done
     dconf load "$k" <"$root/tools/dev/seed.ini"
+    [ "$PINNED_DISPLAY" = Grid ] && dconf write "${k}pinned-apps-display" "'Grid'"
     for i in $(seq 20); do # the Ui interface must still be there
         ui_call State >/dev/null 2>&1 && break
         sleep 0.5
@@ -487,10 +532,22 @@ ui)
         name="$(basename "$f" .sh)"
         echo
         echo "======== $name"
+        PINNED_DISPLAY=List; pin_vars
         reset_seed
         # shellcheck disable=SC1090
         source "$f"
     done
+    # The scenarios that are not tied to one display run again with the grid (ui-dnd / ui-keyboard
+    # are grid-only, ui-list list-only: they cover their own display).
+    for name in ui-context ui-folder ui-tooltips ui-views ui-fixes; do
+        echo
+        echo "======== $name (Grid)"
+        PINNED_DISPLAY=Grid; pin_vars
+        reset_seed
+        # shellcheck disable=SC1090
+        source "$root/tools/dev/scenarios/$name.sh"
+    done
+    PINNED_DISPLAY=List; pin_vars
     ;;
 *)
     f="$root/tools/dev/scenarios/$scenario.sh"

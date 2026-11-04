@@ -17,6 +17,8 @@
 #     ui-<name>    a single ui scenario
 #     dtp-open     with --with-dtp, seeded: open the menu on Dash to Panel's bottom panel; the
 #                  popup must open upward (arrow side BOTTOM); screenshot
+#     button-menu  seeded: the panel button context menu (right click / Menu key / Shift+F10, items, Power Options,
+#                  Show Desktop toggle, mutual exclusion with the Spawn popup; with --with-dtp also Panel Extension Settings)
 #     shots        seeded: the review screenshots into .dev/shots/final/
 #     bench        seeded: in-shell benchmark (Dev.Benchmark) -> table, raw JSON in .dev/bench.json
 #     all          smoke, lifecycle, hotkeys, theme, dtp-toggle (with DtP), dtp-open (with DtP),
@@ -56,7 +58,7 @@ case "$scenario" in
         fi
         ;;
 esac
-case "$scenario" in ui | ui-* | dtp-open | shots | bench) seed=1 ;; esac
+case "$scenario" in ui | ui-* | dtp-open | shots | bench | button-menu) seed=1 ;; esac
 
 if [ "$scenario" = "all" ]; then
     # Each scenario runs in its own fresh isolated shell (this script, recursively).

@@ -8,13 +8,15 @@
 //
 // Value rules the mapping must implement (see docs/SETTINGS.md):
 //   * ArcMenu_* shortcut ids -> Spawn_* (core/constants.ts ARCMENU_ID_PREFIX/SPAWN_ID_PREFIX);
-//     ArcMenu-only items (ArcMenu_Settings, ArcMenu_PanelExtensionSettings, ArcMenu_ArcMenuIcon
-//     entries) are dropped with a warning.
+//     ArcMenu_Settings (and its sub-page ids) -> Spawn_Settings, icon ArcMenu_ArcMenuIcon ->
+//     Spawn_SpawnIcon, ArcMenu_PanelExtensionSettings -> Spawn_PanelExtensionSettings
+//     (context-menu-items); unknown ArcMenu_* ids are dropped with a warning.
 //   * hide-activities-button = !show-activities-button
 //   * super-key-toggle = arcmenu-hotkey-overlay-key-enabled && 'Super_L' in arcmenu-hotkey;
-//     menu-hotkey = the other accelerators of arcmenu-hotkey
+//     spawn-hotkey = the other accelerators of arcmenu-hotkey
 //   * menu-button-icon resource URI -> bundled file name (core/icons.ts)
-//   * menu-button-*-click-action: ContextMenu -> None, ArcMenu -> Menu
+//   * menu-button-*-click-action: ArcMenu -> Menu, ContextMenu -> ContextMenu, None -> None
+//   * menu-layout -> pinned-apps-display (List for list-based layouts, Grid for grid ones)
 //   * pinned folders: {id: uuid, isFolder: 'true', name} + contents from
 //     pinned-apps-folders/<uuid>/pinned-apps, copied to our folders/<uuid>/ (same uuid)
 //

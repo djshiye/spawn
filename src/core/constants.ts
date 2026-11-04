@@ -50,6 +50,18 @@ export const ShortcutId = {
     SWITCH_USER: 'Spawn_SwitchUser',
 } as const;
 
+/**
+ * Ids only the panel button context menu (`context-menu-items`) understands. Deliberately NOT part
+ * of ShortcutId: the right-pane shortcut lists reject them (migration drops them there).
+ */
+export const ContextMenuId = {
+    SETTINGS: 'Spawn_Settings',
+    PANEL_EXTENSION_SETTINGS: 'Spawn_PanelExtensionSettings',
+} as const;
+
+/** Icon value of a context-menu entry that stands for the configured panel button icon. */
+export const SPAWN_ICON = 'Spawn_SpawnIcon';
+
 /** Prefix ArcMenu uses for the same built-in ids (rewritten by migrate/arcmenu.ts). */
 export const ARCMENU_ID_PREFIX = 'ArcMenu_';
 export const SPAWN_ID_PREFIX = 'Spawn_';

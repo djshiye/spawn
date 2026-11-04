@@ -65,8 +65,52 @@ test('every user-set key is mapped or skipped with a reason', () => {
 
 test('skipped keys of the fixture', () => {
     assertEquals(plan.skipped.map(s => s.key).sort(), [
-        'context-menu-items', 'menu-layout', 'prefs-visible-page', 'recently-installed-apps', 'update-notifier-project-version',
+        'prefs-visible-page', 'recently-installed-apps', 'update-notifier-project-version',
     ]);
+});
+
+test('context-menu-items: the user list maps to exactly the same ten items in order', () => {
+    const items = item('context-menu-items').value;
+    assertSame(items, [
+        {id: 'org.gnome.Nautilus.desktop'},
+        {id: 'Spawn_Separator', name: 'Separator', icon: 'list-remove-symbolic'},
+        {id: 'com.mattjakeman.ExtensionManager.desktop'},
+        {id: 'Spawn_Settings', name: 'Spawn Settings', icon: 'Spawn_SpawnIcon'},
+        {id: 'Spawn_PanelExtensionSettings', name: 'Panel Extension Settings', icon: 'application-x-addon-symbolic'},
+        {id: 'Spawn_Separator', name: 'Separator', icon: 'list-remove-symbolic'},
+        {id: 'org.gnome.Settings.desktop'},
+        {id: 'Spawn_Separator', name: 'Separator', icon: 'list-remove-symbolic'},
+        {id: 'Spawn_ShowDesktop', name: 'Show Desktop', icon: 'computer-symbolic'},
+        {id: 'Spawn_PowerOptions', name: 'Power Options', icon: 'system-shutdown-symbolic'},
+    ]);
+    assert(!plan.warnings.some(w => w.includes('context-menu-items')), 'unexpected context-menu-items warning');
+});
+
+test('context-menu-items: ArcMenu settings pages collapse to Spawn_Settings with a warning; other ids follow the shortcut rules', () => {
+    const p = planMigration(snap({'context-menu-items': [
+        {id: 'ArcMenu_SettingsAbout', name: 'About', icon: 'ArcMenu_ArcMenuIcon'},
+        {id: 'ArcMenu_SettingsTheme', name: 'Theme'},
+        {id: 'ArcMenu_Settings', name: 'My ArcMenu', icon: 'preferences-system-symbolic'},
+        {id: 'ArcMenu_ActivitiesOverview', name: 'Overview', icon: 'view-fullscreen-symbolic'},
+        {id: 'ArcMenu_Spacer'},
+        {id: 'ArcMenu_NoSuchThing', name: 'x'},
+        {id: 'ArcMenu_PowerOff'},
+        {id: 'gnome-extensions prefs arcmenu@arcmenu.com', name: 'y'},
+    ]}));
+    const value = p.items.find(i => i.key === 'context-menu-items').value;
+    assertEquals(value.map(e => e.id), ['Spawn_Settings', 'Spawn_ActivitiesOverview', 'Spawn_Spacer', 'Spawn_PowerOff']);
+    assertEquals(value[0], {id: 'Spawn_Settings', name: 'Spawn Settings', icon: 'Spawn_SpawnIcon'});
+    assertEquals(p.warnings.filter(w => w.includes('settings page')).length, 2);
+    assert(p.warnings.some(w => w.includes('more than once')), 'duplicate Spawn_Settings not reported');
+    assert(p.warnings.some(w => w.includes("'x'")), 'unknown item not reported');
+    assert(!JSON.stringify(value).includes('ArcMenu_'), 'ArcMenu_ id left in the plan');
+});
+
+test('context-menu-items: a custom Settings name and icon are kept; a malformed value is skipped', () => {
+    let p = planMigration(snap({'context-menu-items': [{id: 'ArcMenu_Settings', name: 'My ArcMenu', icon: 'preferences-system-symbolic'}]}));
+    assertEquals(p.items.find(i => i.key === 'context-menu-items').value, [{id: 'Spawn_Settings', name: 'My ArcMenu', icon: 'preferences-system-symbolic'}]);
+    p = planMigration(snap({'context-menu-items': 'nope'}));
+    assertEquals(p.skipped, [{key: 'context-menu-items', reason: 'unexpected value format'}]);
 });
 
 test('no duplicate target keys', () => {
@@ -137,8 +181,23 @@ test('show-activities-button is inverted', () => {
 
 test('other layouts fall back to spawn with a warning', () => {
     const p = planMigration(snap({'menu-layout': 'gnome-menu'}));
-    assertEquals(p.skipped, [{key: 'menu-layout', reason: 'Spawn has a single layout'}]);
+    assertEquals(p.skipped, []);
     assert(p.warnings.some(w => w.includes('gnome-menu') && w.includes('spawn')));
+    const unknown = planMigration(snap({'menu-layout': 'gnome-overview'}));
+    assertEquals(unknown.skipped, [{key: 'menu-layout', reason: 'Spawn has a single layout'}]);
+    assert(!unknown.items.some(i => i.key === 'pinned-apps-display'), 'a layout without pinned items must keep the default');
+});
+
+test('pinned-apps-display follows how the ArcMenu layout shows its items', () => {
+    const display = layout => planMigration(snap({'menu-layout': layout})).items.find(i => i.key === 'pinned-apps-display')?.value;
+    // The user fixture runs the 'arcmenu' layout: a list.
+    assertEquals(item('pinned-apps-display').value, 'List');
+    assertEquals(item('pinned-apps-display').from, 'menu-layout');
+    for (const l of ['arcmenu', 'brisk', 'budgie', 'gnome-menu', 'mint', 'whisker', 'plasma', 'tognee', 'windows', 'zest', 'runner'])
+        assertEquals(display(l), 'List', l);
+    for (const l of ['11', 'az', 'enterprise', 'insider', 'pop', 'redmond', 'sleek', 'unity', 'chromebook', 'elementary'])
+        assertEquals(display(l), 'Grid', l);
+    assertEquals(display('no-such-layout'), undefined);
 });
 
 test('hotkeys: Super_L + overlay enabled -> super-key-toggle; others -> spawn-hotkey', () => {
@@ -155,15 +214,15 @@ test('hotkeys: Super_L + overlay enabled -> super-key-toggle; others -> spawn-ho
     assertEquals(p.items.find(i => i.key === 'super-key-toggle').value, false);
 });
 
-test('click actions: ArcMenu -> Menu, ContextMenu -> None (with warning)', () => {
+test('click actions: ArcMenu -> Menu, ContextMenu -> ContextMenu, None -> None', () => {
     const p = planMigration(snap({
         'menu-button-left-click-action': 'ArcMenu',
         'menu-button-right-click-action': 'ContextMenu',
         'menu-button-middle-click-action': 'None',
     }));
     const v = k => p.items.find(i => i.key === k).value;
-    assertEquals([v('menu-button-left-click-action'), v('menu-button-right-click-action'), v('menu-button-middle-click-action')], ['Menu', 'None', 'None']);
-    assert(p.warnings.some(w => w.includes('right-click')));
+    assertEquals([v('menu-button-left-click-action'), v('menu-button-right-click-action'), v('menu-button-middle-click-action')], ['Menu', 'ContextMenu', 'None']);
+    assert(!p.warnings.some(w => w.includes('click-action')), 'ContextMenu is supported, no warning expected');
 });
 
 test('renamed keys', () => {
@@ -240,6 +299,7 @@ test('round trip: write fixture to ArcMenu schema, read snapshot, plan, apply', 
     assertEquals(settings.get('menu-button-icon-size'), 30);
     assertEquals(settings.get('search-entry-border-radius'), [true, 25]);
     assertEquals(settings.get('pinned-apps').length, 6);
+    assertEquals(settings.get('pinned-apps-display'), 'List');
     assertEquals(settings.get('directory-shortcuts')[0].id, 'Spawn_Home');
     for (const f of plan.folders) {
         const folder = settings.folder(f.uuid);

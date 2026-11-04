@@ -8,7 +8,7 @@ echo "pick under the context menu: $n"
 key Escape 0.6
 expect_state "Escape closes only the context menu" open true
 echo "-- right click on the folder tile"
-click_class spawn-folder-tile 0 3
+click_class $FOLDER 0 3
 screenshot ui-context-folder
 key Escape 0.6
 expect_state "popup still open" open true
