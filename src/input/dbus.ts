@@ -9,14 +9,19 @@
 //   Screenshot(s path)            Shell.Screenshot of the whole stage, written in-process;
 //                                 the call returns after the file is complete
 //   AttachmentStatus() -> s       JSON: {attachments: [{key, kind, monitorIndex, attached,
-//                                 fallback}], pending, pendingForMs}
+//                                 fallback, side}], pending, pendingForMs}
+//   HotkeyStatus() -> s           JSON of Hotkeys.status() (overlay-key handler ids, toggles, ...)
+//   Benchmark(s sections) -> s    JSON timings measured inside the shell (src/dev/benchmark.ts);
+//                                 async, may take several seconds
+//   EmitOverlayKey()              emits 'overlay-key' on global.display, like pressing Super alone
 //
 // Every handler checks that the service is alive and never throws into GDBus.
 //
 // Public API:
 //   new DBusService(scope, settings, controller: MenuController)
 //   service.start(): void
-//   MenuController: {toggle(), open(), close(), search(query), attachmentStatus(): string}
+//   MenuController: {toggle(), open(), close(), search(query), attachmentStatus(): string,
+//                    hotkeyStatus?(): string, emitOverlayKey?(): void}
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -33,6 +38,9 @@ export interface MenuController {
     close(): void;
     search(query: string): void;
     attachmentStatus(): string;
+    hotkeyStatus?(): string;
+    emitOverlayKey?(): void;
+    benchmark?(sections: string): Promise<string>;
 }
 
 const MAIN_IFACE = `
@@ -50,6 +58,9 @@ const DEV_IFACE = `
     <method name="Search"><arg type="s" direction="in" name="query"/></method>
     <method name="Screenshot"><arg type="s" direction="in" name="path"/></method>
     <method name="AttachmentStatus"><arg type="s" direction="out" name="json"/></method>
+    <method name="HotkeyStatus"><arg type="s" direction="out" name="json"/></method>
+    <method name="EmitOverlayKey"/>
+    <method name="Benchmark"><arg type="s" direction="in" name="sections"/><arg type="s" direction="out" name="json"/></method>
   </interface>
 </node>`;
 
@@ -183,6 +194,28 @@ export class DBusService {
             },
             AttachmentStatusAsync: (_params: unknown[], invocation: Invocation) => {
                 this._call(invocation, () => new GLib.Variant('(s)', [this._controller.attachmentStatus()]));
+            },
+            HotkeyStatusAsync: (_params: unknown[], invocation: Invocation) => {
+                this._call(invocation, () => new GLib.Variant('(s)', [this._controller.hotkeyStatus?.() ?? '{}']));
+            },
+            EmitOverlayKeyAsync: (_params: unknown[], invocation: Invocation) => {
+                this._call(invocation, () => this._controller.emitOverlayKey?.());
+            },
+            BenchmarkAsync: ([sections]: [string], invocation: Invocation) => {
+                const run = this._controller.benchmark;
+                if (!run) {
+                    this._call(invocation, () => {
+                        throw new Error('benchmark is not available');
+                    });
+                    return;
+                }
+                run.call(this._controller, sections).then(json => {
+                    this._call(invocation, () => new GLib.Variant('(s)', [json]));
+                }).catch(e => {
+                    error('benchmark failed', e);
+                    if (!this._disposed)
+                        invocation.return_dbus_error('org.freedesktop.DBus.Error.Failed', e instanceof Error ? e.message : String(e));
+                });
             },
             ScreenshotAsync: ([path]: [string], invocation: Invocation) => {
                 this._screenshot(path).then(() => {

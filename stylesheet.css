@@ -1,6 +1,22 @@
 /* Spawn Menu base styles. Inherits the shell theme (popup-menu-content etc.) and uses the
- * GNOME accent colour; the theme module layers optional custom colours on top at runtime
- * from $XDG_RUNTIME_DIR/spawn-menu/theme.css. Keep this file minimal and structural. */
+ * GNOME accent colour; the theme module (src/theme) layers the accent and optional custom colours
+ * on top at runtime from $XDG_RUNTIME_DIR/spawn-menu/<token>/theme.css. This file is structural:
+ * spacing, radii, sizes and neutral hover tints. The accent is used ONLY for focus / selection.
+ *
+ * Selectors the theme module re-colours (keep these class names and pseudo classes):
+ *   .spawn-menu-tile, .spawn-menu-row, .spawn-menu-shortcut-row, .spawn-menu-folder-tile
+ *       :focus                    keyboard focus (accent tint)
+ *       :selected                 first search result / default pick (accent)
+ *       :checked                  active category (accent)
+ *       :active                   pressed
+ *   .spawn-menu-search-box:focus  accent border;  .spawn-menu-search-box radius comes from settings
+ *   .spawn-menu-drop-target       drag & drop "drop onto" feedback
+ *   .spawn-menu-separator         horizontal rule;   .spawn-menu-accent  accent text
+ * Local-only classes: .spawn-menu-drop-before / -after (reorder insertion mark, accent edge),
+ *   .spawn-menu-vseparator, .spawn-menu-folder-plate, .spawn-menu-power-button, .spawn-menu-nav-button.
+ * Structure: .spawn-menu-popup (boxpointer) > .popup-menu-content > .spawn-menu-layout >
+ *   .spawn-menu-left-pane | .spawn-menu-vseparator | .spawn-menu-right-pane
+ */
 
 .spawn-menu-button {
     -natural-hpadding: 8px;
@@ -15,59 +31,376 @@
     font-weight: bold;
 }
 
-.spawn-menu-popup {
-    min-width: 0;
+
+/* ---- popup shell ---- */
+
+.spawn-menu-popup .popup-menu-content {
+    padding: 6px;
 }
 
 .spawn-menu-layout {
-    spacing: 8px;
-    padding: 6px;
+    spacing: 0;
 }
 
-.spawn-menu-placeholder-label {
-    padding: 24px 48px;
-    font-size: 14pt;
-}
+/* ---- left pane ---- */
 
-.spawn-menu-tile {
-    border-radius: 12px;
-    padding: 8px;
-}
-
-.spawn-menu-tile:hover,
-.spawn-menu-tile:focus {
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
-.spawn-menu-row {
-    border-radius: 8px;
-    padding: 6px 10px;
-}
-
-.spawn-menu-folder-tile {
-    border-radius: 14px;
-}
-
-.spawn-menu-folder-view,
-.spawn-menu-category-list,
-.spawn-menu-result-list {
-    spacing: 4px;
-}
-
-.spawn-menu-shortcut-row {
-    border-radius: 8px;
-    padding: 6px 10px;
-}
-
-.spawn-menu-power-bar {
+.spawn-menu-left-pane {
+    padding: 6px 6px 0 6px;
     spacing: 6px;
 }
 
-.spawn-menu-user-card {
-    spacing: 10px;
-    padding: 6px;
+.spawn-menu-stack {
+    spacing: 0;
 }
 
 .spawn-menu-search-box {
-    border-radius: 18px;
+    margin: 2px 4px 6px 4px;
+    min-height: 34px;
+}
+
+.spawn-menu-search-top {
+    margin-bottom: 6px;
+}
+
+.spawn-menu-search-icon {
+    icon-size: 16px;
+    color: rgba(255, 255, 255, 0.55);
+    padding: 0 4px;
+}
+
+.spawn-menu-nav {
+    spacing: 6px;
+    padding: 2px 4px 4px 4px;
+}
+
+.spawn-menu-nav-button {
+    border-radius: 10px;
+    padding: 5px 12px;
+    color: rgba(255, 255, 255, 0.85);
+    transition-duration: 120ms;
+}
+
+.spawn-menu-nav-button:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.spawn-menu-nav-button:active {
+    background-color: rgba(255, 255, 255, 0.14);
+}
+
+/* ---- right pane ---- */
+
+.spawn-menu-right-pane {
+    margin: 2px 0 2px 4px;
+    padding: 8px 6px 6px 6px;
+    spacing: 4px;
+    border-radius: 14px;
+    background-color: rgba(255, 255, 255, 0.04);
+}
+
+.spawn-menu-vseparator {
+    width: 1px;
+    margin: 8px 6px;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.spawn-menu-user-card {
+    border-radius: 10px;
+    padding: 6px 8px;
+    transition-duration: 120ms;
+}
+
+.spawn-menu-user-card-box {
+    spacing: 10px;
+}
+
+.spawn-menu-avatar-box .user-icon.spawn-menu-avatar-square,
+.spawn-menu-avatar-square.user-icon {
+    border-radius: 10px;
+}
+
+.spawn-menu-user-name {
+    font-weight: bold;
+}
+
+.spawn-menu-shortcuts-box {
+    spacing: 1px;
+    padding: 2px 0;
+}
+
+.spawn-menu-shortcut-row {
+    border-radius: 10px;
+    padding: 6px 10px;
+    transition-duration: 120ms;
+}
+
+.spawn-menu-shortcut-icon {
+    icon-size: 16px;
+}
+
+.spawn-menu-shortcut-label {
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.spawn-menu-power-bar {
+    spacing: 4px;
+    padding: 4px 2px 0 2px;
+    border-top-width: 1px;
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.spawn-menu-power-button {
+    border-radius: 10px;
+    padding: 7px 10px;
+    transition-duration: 120ms;
+}
+
+.spawn-menu-power-button:hover,
+.spawn-menu-power-button:focus {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.spawn-menu-power-button:active {
+    background-color: rgba(255, 255, 255, 0.18);
+}
+
+/* ---- horizontal separators / section titles ---- */
+
+.spawn-menu-separator {
+    height: 1px;
+    margin: 6px 8px;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.spawn-menu-section-title {
+    font-size: 0.85em;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.5);
+    padding: 8px 10px 2px 10px;
+}
+
+.spawn-menu-empty-label {
+    color: rgba(255, 255, 255, 0.5);
+    padding: 24px;
+}
+
+/* ---- pinned grid ---- */
+
+.spawn-menu-pinned-box {
+    padding: 0;
+}
+
+.spawn-menu-tile-grid {
+    padding: 2px 0;
+    spacing: 4px;
+}
+
+.spawn-menu-tile-row {
+    spacing: 0;
+}
+
+.spawn-menu-tile {
+    border-radius: 14px;
+    padding: 10px 4px 8px 4px;
+    margin: 2px 0;
+    transition-duration: 120ms;
+}
+
+.spawn-menu-tile:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.spawn-menu-tile:active {
+    background-color: rgba(255, 255, 255, 0.14);
+}
+
+.spawn-menu-tile:dragging {
+    opacity: 90;
+}
+
+.spawn-menu-tile-box {
+    spacing: 6px;
+}
+
+.spawn-menu-tile-label {
+    font-size: 0.92em;
+    color: rgba(255, 255, 255, 0.92);
+    text-align: center;
+    padding: 0 2px;
+}
+
+.spawn-menu-folder-plate {
+    border-radius: 12px;
+    padding: 5px;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.spawn-menu-folder-plate-row {
+    spacing: 3px;
+}
+
+.spawn-menu-folder-tile:hover .spawn-menu-folder-plate {
+    background-color: rgba(255, 255, 255, 0.16);
+}
+
+/* drag & drop feedback: "onto" uses .spawn-menu-drop-target (theme module); reorder marks an edge */
+
+.spawn-menu-drop-before {
+    box-shadow: inset 3px 0 0 st-transparentize(-st-accent-color, 0);
+}
+
+.spawn-menu-drop-after {
+    box-shadow: inset -3px 0 0 st-transparentize(-st-accent-color, 0);
+}
+
+/* ---- folder view ---- */
+
+.spawn-menu-folder-view {
+    spacing: 4px;
+}
+
+.spawn-menu-folder-header {
+    min-height: 38px;
+    spacing: 4px;
+    padding: 0 0 4px 0;
+    border-radius: 12px;
+}
+
+.spawn-menu-folder-header:drag {
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+.spawn-menu-folder-back {
+    padding: 6px 10px;
+    border-radius: 10px;
+}
+
+.spawn-menu-folder-name {
+    padding: 6px 10px;
+    border-radius: 10px;
+}
+
+.spawn-menu-folder-title {
+    font-size: 1.1em;
+    font-weight: bold;
+}
+
+.spawn-menu-folder-edit-icon {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.spawn-menu-folder-hint {
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.9em;
+    padding-left: 8px;
+}
+
+.spawn-menu-folder-rename {
+    margin: 2px 4px;
+    min-height: 30px;
+}
+
+/* ---- rows (lists, results, categories) ---- */
+
+.spawn-menu-row {
+    border-radius: 10px;
+    padding: 5px 10px;
+    transition-duration: 120ms;
+}
+
+.spawn-menu-row:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.spawn-menu-row:active {
+    background-color: rgba(255, 255, 255, 0.14);
+}
+
+.spawn-menu-row-box {
+    spacing: 10px;
+}
+
+.spawn-menu-row-label {
+    color: rgba(255, 255, 255, 0.95);
+}
+
+.spawn-menu-row-description {
+    font-size: 0.85em;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.spawn-menu-list,
+.spawn-menu-result-list {
+    spacing: 1px;
+    padding-right: 4px;
+}
+
+.spawn-menu-result-section {
+    spacing: 1px;
+}
+
+/* ---- all apps ---- */
+
+.spawn-menu-category-list {
+    spacing: 0;
+}
+
+.spawn-menu-category-column {
+    min-width: 138px;
+    max-width: 138px;
+}
+
+.spawn-menu-category-column-box {
+    spacing: 1px;
+    padding-right: 4px;
+}
+
+.spawn-menu-category-row {
+    padding: 6px 8px;
+}
+
+.spawn-menu-category-row .spawn-menu-row-box {
+    spacing: 8px;
+}
+
+/* the first search result is a soft accent tint too: Return activates it */
+.spawn-menu-layout .spawn-menu-result-row:selected {
+    background-color: st-transparentize(-st-accent-color, 0.6);
+    color: white;
+}
+
+/* the active category is a quiet accent tint (the theme module's solid :checked is for toggles) */
+.spawn-menu-category-column .spawn-menu-category-row:checked {
+    background-color: st-transparentize(-st-accent-color, 0.7);
+    color: white;
+}
+
+.spawn-menu-category-icon {
+    icon-size: 16px;
+}
+
+.spawn-menu-category-apps-box {
+    spacing: 1px;
+    padding-left: 4px;
+}
+
+.spawn-menu-category-list .spawn-menu-vseparator {
+    margin: 4px 2px;
+}
+
+/* ---- tooltip ---- */
+
+.spawn-menu-tooltip {
+    max-width: 320px;
+}
+
+/* ---- context menu ---- */
+
+.spawn-menu-context-menu {
+    min-width: 12em;
+}
+
+.spawn-menu-context-menu .popup-menu-content {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }

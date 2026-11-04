@@ -3,8 +3,8 @@
 //
 // Responsibility: own the PopupMenu + PopupMenuManager (outside click / Escape handling,
 // modal grab) for the current anchor, host the SpawnLayout, report open/close.
-// NOTE for the UI owner: the arrow side is hard-coded to St.Side.TOP; pick it from the target
-// panel's position (e.g. BOTTOM for a Dash to Panel bottom panel).
+// The arrow side comes from the anchor (`MenuButton.arrowSide`, default TOP). Escape is offered to
+// the layout first (clear search / leave a sub-view); only an unconsumed Escape closes the menu.
 // Re-anchoring recreates the PopupMenu shell for the new anchor and re-parents the (already
 // built, expensive) layout actor into it; the layout itself is built once.
 //
@@ -17,7 +17,11 @@
 //   popup.toggle(anchor): void         close if open on this anchor, otherwise open there
 //   popup.onOpenStateChanged(scope, cb(open: boolean, anchor: St.Widget | null))
 //   popup.prebuild(): void             optional: build the layout on idle (no UI shown)
+//   popup.resetLayout() / popup.layoutBuilt   dev / benchmark: drop the built layout; is it built
+//   popup.search(q) / popup.showView(id) / popup.openFolderByIndex(i) / popup.debugState()
+//                                      thin forwards to the layout (dev hooks, MenuController.search)
 
+import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 
 import {PopupAnimation} from 'resource:///org/gnome/shell/ui/boxpointer.js';
@@ -28,7 +32,9 @@ import type {Services} from '../core/services.js';
 import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import {isActorAlive} from '../panel/validate.js';
+import {installUiDevHooks} from './devHooks.js';
 import {SpawnLayout} from './layout.js';
+import {ownedScope} from './util.js';
 
 type OpenListener = (open: boolean, anchor: St.Widget | null) => void;
 
@@ -37,8 +43,9 @@ export class SpawnPopup {
     private readonly _services: Services;
     private readonly _listeners = new Set<OpenListener>();
 
-    private _anchorScope: Scope | null = null;
+    private _anchorOwned: {scope: Scope; release(): void} | null = null;
     private _anchor: St.Widget | null = null;
+    private _side: St.Side = St.Side.TOP;
     private _menu: PopupMenu.PopupMenu | null = null;
     private _layout: SpawnLayout | null = null;
     private _layoutScope: Scope | null = null;
@@ -48,6 +55,44 @@ export class SpawnPopup {
         this._scope = scope;
         this._services = services;
         scope.add(() => this._teardown(), 'SpawnPopup');
+        try {
+            installUiDevHooks(scope.child('ui dev hooks'), services.settings, this);
+        } catch (e) {
+            error('ui dev hooks failed', e);
+        }
+    }
+
+    search(query: string): void {
+        this._ensureLayout().search(query);
+    }
+
+    showView(id: string): void {
+        this._layout?.showView(id);
+    }
+
+    openFolderByIndex(index: number): void {
+        this._layout?.openFolderByIndex(index);
+    }
+
+    /** Dev / benchmark only: drop the built layout (and the anchor) so the next open() rebuilds it. */
+    resetLayout(): void {
+        this._release();
+        this._layoutScope?.dispose();
+        this._layoutScope = null;
+        this._layout = null;
+    }
+
+    get layoutBuilt(): boolean {
+        return this._layout !== null;
+    }
+
+    debugState(): Record<string, unknown> {
+        return {
+            open: this._open,
+            anchor: this._anchor ? this._anchor.constructor.name : null,
+            side: this._side,
+            layout: this._layout?.debugState() ?? null,
+        };
     }
 
     get isOpen(): boolean {
@@ -75,7 +120,7 @@ export class SpawnPopup {
         try {
             if (!isActorAlive(anchor))
                 return;
-            if (this._anchor !== anchor)
+            if (this._anchor !== anchor || this._side !== this._sideOf(anchor))
                 this._attach(anchor);
             this._menu?.open(PopupAnimation.FULL);
         } catch (e) {
@@ -106,17 +151,35 @@ export class SpawnPopup {
         return this._layout;
     }
 
+    private _sideOf(anchor: St.Widget): St.Side {
+        const side = (anchor as unknown as {arrowSide?: St.Side}).arrowSide;
+        return typeof side === 'number' ? side : St.Side.TOP;
+    }
+
     private _attach(anchor: St.Widget): void {
         this._release();
+        const side = this._sideOf(anchor);
 
         const layout = this._ensureLayout();
-        const anchorScope = this._scope.child('anchor');
-        const menu = new PopupMenu.PopupMenu(anchor, 0.5, St.Side.TOP);
+        const anchorOwned = ownedScope(this._scope, 'anchor');
+        const anchorScope = anchorOwned.scope;
+        const menu = new PopupMenu.PopupMenu(anchor, 0.5, side);
         const manager = new PopupMenu.PopupMenuManager(anchor);
 
         Main.uiGroup.add_child(menu.actor);
         menu.actor.hide();
         menu.actor.add_style_class_name('spawn-menu-popup');
+
+        // Offer Escape to the layout before the manager's own (capture-phase) handler closes the
+        // menu. Added before the manager adds its controller, so it runs first.
+        const keys = new Clutter.KeyController();
+        keys.connect('key-press', () => {
+            const [, sym] = keys.get_key();
+            if (sym === Clutter.KEY_Escape && this._layout?.handleKey({get_key_symbol: () => sym}))
+                return Clutter.EVENT_STOP;
+            return Clutter.EVENT_PROPAGATE;
+        });
+        menu.actor.add_action_full('spawn-menu-escape', Clutter.EventPhase.CAPTURE, keys);
         manager.addMenu(menu);
 
         layout.actor.get_parent()?.remove_child(layout.actor);
@@ -134,19 +197,20 @@ export class SpawnPopup {
             menu.destroy();
         }, 'popup menu');
 
-        this._anchorScope = anchorScope;
+        this._anchorOwned = anchorOwned;
         this._anchor = anchor;
+        this._side = side;
         this._menu = menu;
     }
 
     private _release(): void {
         const wasOpen = this._open;
         const anchor = this._anchor;
-        const scope = this._anchorScope;
-        this._anchorScope = null;
+        const owned = this._anchorOwned;
+        this._anchorOwned = null;
         this._anchor = null;
         this._menu = null;
-        scope?.dispose();
+        owned?.release();
         if (wasOpen)
             this._onOpenState(false, anchor);
     }

@@ -30,7 +30,7 @@ export function debug(...args: unknown[]): void {
 
 export function error(message: string, err?: unknown): void {
     if (err === undefined)
-        console.error(PREFIX, message);
+        console.error(PREFIX, 'ERROR:', message);
     else
-        console.error(PREFIX, `${message}: ${describe(err)}`);
+        console.error(PREFIX, 'ERROR:', `${message}: ${describe(err)}`);
 }

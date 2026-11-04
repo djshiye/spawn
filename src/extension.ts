@@ -18,6 +18,9 @@ import {error, log} from './core/log.js';
 import {Scope} from './core/scope.js';
 import {type ExtensionInfo, Services} from './core/services.js';
 import {SCHEMA_ID, SpawnSettings} from './core/settings.js';
+import GLib from 'gi://GLib';
+
+import {runBenchmark} from './dev/benchmark.js';
 import {DBusService, type MenuController} from './input/dbus.js';
 import {Hotkeys} from './input/hotkeys.js';
 import {ButtonAttacher} from './panel/attacher.js';
@@ -28,11 +31,16 @@ import {SpawnPopup} from './ui/menu.js';
 
 export default class SpawnMenuExtension extends Extension {
     private _root: Scope | null = null;
+    /** enable() timing, kept for the dev benchmark (Dev.Benchmark). */
+    private _enableMs = 0;
+    private _startMs: Record<string, number> = {};
 
     override enable(): void {
+        const t0 = GLib.get_monotonic_time();
         try {
             this._disposeRoot();
             this._enable();
+            this._enableMs = (GLib.get_monotonic_time() - t0) / 1000;
         } catch (e) {
             error('enable failed; staying idle', e);
             this._disposeRoot();
@@ -67,18 +75,22 @@ export default class SpawnMenuExtension extends Extension {
     /** Runs one subsystem's start in its own child scope; a failure disposes only that scope. */
     private _start<T>(root: Scope, name: string, fn: (scope: Scope) => T): T | null {
         const scope = root.child(name);
+        const t0 = GLib.get_monotonic_time();
         try {
             return fn(scope);
         } catch (e) {
             error(`subsystem '${name}' failed to start`, e);
             scope.dispose();
             return null;
+        } finally {
+            this._startMs[name] = Math.round((GLib.get_monotonic_time() - t0)) / 1000;
         }
     }
 
     private _enable(): void {
         const root = new Scope('spawn-menu');
         this._root = root;
+        this._startMs = {};
 
         const settings = this._loadSettings();
         const info: ExtensionInfo = {
@@ -121,7 +133,20 @@ export default class SpawnMenuExtension extends Extension {
                     popup.open(anchor);
             },
             close: () => popup?.close(),
-            search: () => {},
+            search: query => popup?.search(query),
+            benchmark: sections => {
+                if (!popup)
+                    return Promise.reject(new Error('popup unavailable'));
+                const bench = root.child('benchmark');
+                const result = runBenchmark({
+                    scope: bench,
+                    services,
+                    popup,
+                    anchor: () => attacher?.buttons()[0] ?? null,
+                    enable: {totalMs: this._enableMs, subsystems: this._startMs},
+                }, sections);
+                return result.then(r => JSON.stringify(r)).finally(() => bench.dispose());
+            },
             attachmentStatus: () => JSON.stringify(attacher?.status() ?? {attachments: [], pending: false, pendingForMs: 0}),
         };
 
@@ -130,7 +155,14 @@ export default class SpawnMenuExtension extends Extension {
         });
 
         this._start(root, 'hotkeys', scope => {
-            new Hotkeys(scope, settings, () => controller.toggle()).start();
+            const hotkeys = new Hotkeys(scope, settings, () => controller.toggle());
+            hotkeys.start();
+            controller.hotkeyStatus = () => JSON.stringify(hotkeys.status());
+            controller.emitOverlayKey = () => global.display.emit('overlay-key');
+            scope.add(() => {
+                delete controller.hotkeyStatus;
+                delete controller.emitOverlayKey;
+            }, 'hotkey dev hooks');
         });
 
         if (popup) {

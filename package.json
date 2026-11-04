@@ -11,6 +11,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "test": "tools/test.sh",
+    "dev:all": "tools/dev-shell.sh all",
+    "dev:bench": "tools/dev-shell.sh bench",
     "dev:smoke": "tools/dev-shell.sh smoke",
     "dev:dtp-toggle": "tools/dev-shell.sh dtp-toggle --with-dtp"
   },

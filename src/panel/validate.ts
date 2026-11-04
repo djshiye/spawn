@@ -7,6 +7,8 @@
 //   validatePanel(panel)             {ok: true} | {ok: false, reason}
 //   targetKey(kind, monitorIndex)    stable identity string for a target, e.g. "dtp:0"
 //   resolveTargets(snapshot)         -> Resolution {targets, pending, reason}
+//   panelSide(panelRect, monitorRect) -> 'top' | 'bottom' | 'left' | 'right'
+//   samePanel(a, b)                  identity of the underlying panel object (re-keying)
 //
 // The snapshot is built FRESH by PanelTargets on every call; nothing here caches.
 
@@ -221,4 +223,32 @@ export function panelSlot(position: PositionSetting, offset: number, childCounts
     default:
         return {box: 'left', index: Math.min(off, childCounts.left)};
     }
+}
+
+// ---- Which screen edge is a panel on? (pure) ----
+
+export type PanelSide = 'top' | 'bottom' | 'left' | 'right';
+
+export interface Rect {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+/**
+ * Edge of the monitor that `panel` hugs. A wider-than-tall panel is horizontal (top when its
+ * centre is in the upper half of the monitor), otherwise vertical (left when in the left half).
+ */
+export function panelSide(panel: Rect, monitor: Rect): PanelSide {
+    const cx = panel.x + panel.width / 2;
+    const cy = panel.y + panel.height / 2;
+    if (panel.width >= panel.height)
+        return cy < monitor.y + monitor.height / 2 ? 'top' : 'bottom';
+    return cx < monitor.x + monitor.width / 2 ? 'left' : 'right';
+}
+
+/** True when both targets wrap the very same underlying panel object. */
+export function samePanel(a: {panel: unknown} | null | undefined, b: {panel: unknown} | null | undefined): boolean {
+    return Boolean(a && b && a.panel && a.panel === b.panel);
 }

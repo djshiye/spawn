@@ -1,4 +1,4 @@
-// ArcMenu -> Spawn Menu migration. STUB: signatures are final, bodies are inert.
+// ArcMenu -> Spawn Menu migration: Gio.Settings I/O around the pure mapping in migrate/mapping.ts.
 //
 // Responsibility: read ArcMenu's settings through the BUNDLED compiled schema
 // (data/migration/arcmenu/gschemas.compiled, so it works even when ArcMenu is uninstalled),
@@ -19,11 +19,12 @@
 //     pinned-apps-folders/<uuid>/pinned-apps, copied to our folders/<uuid>/ (same uuid)
 //
 // Public API:
-//   ArcMenuSnapshot            plain-object view of ArcMenu's settings: {values: Record<string, unknown>
-//                              (effective values, defaults included, recursively unpacked),
-//                              folders: Record<uuid, Entry[]>}
-//   planMigration(snapshot): MigrationPlan                                  PURE
-//   MigrationPlan: {items: MigrationItem[], folders: FolderPlan[], warnings: string[]}
+//   ArcMenuSnapshot            plain-object view of ArcMenu's settings: {values (ONLY the keys the user
+//                              changed, recursively unpacked), defaults (every key's schema default),
+//                              folders: Record<uuid, Entry[]>}                      [defaults is new]
+//   planMigration(snapshot, spawnDefaults?): MigrationPlan                  PURE
+//   MigrationPlan: {items, folders, skipped: {key, reason}[], warnings}     [skipped is new]
+//   describeItem(item), describeValue(value)                                [new]
 //   MigrationItem: {key: SettingKey, from: string, value: unknown, differsFromDefault: boolean}
 //   FolderPlan: {uuid, name, pinnedApps: Entry[]}
 //   readArcMenuSnapshot(extensionDir: string): ArcMenuSnapshot | null       Gio I/O; null if the
@@ -33,54 +34,120 @@
 //   disableArcMenu(): Promise<boolean>   explicit user action: org.gnome.Shell.Extensions
 //                              DisableExtension('arcmenu@arcmenu.com'); never edits other dconf keys
 
-import type {Entry, SettingKey, SpawnSettings} from '../core/settings.js';
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 
-export const ARCMENU_UUID = 'arcmenu@arcmenu.com';
+import type {Entry, SpawnSettings} from '../core/settings.js';
+import {ARCMENU_UUID, type ArcMenuSnapshot, type MigrationPlan} from './mapping.js';
 
-export interface ArcMenuSnapshot {
-    values: Record<string, unknown>;
-    folders: Record<string, Entry[]>;
+export {
+    ARCMENU_UUID,
+    type ArcMenuSnapshot,
+    describeItem,
+    describeValue,
+    describePlan,
+    type FolderPlan,
+    type MigrationItem,
+    type MigrationPlan,
+    planMigration,
+    type SkippedItem,
+} from './mapping.js';
+
+const ARCMENU_SCHEMA_ID = 'org.gnome.shell.extensions.arcmenu';
+const ARCMENU_FOLDER_SCHEMA_ID = 'org.gnome.shell.extensions.arcmenu.pinned-apps-folders';
+const ARCMENU_PATH = '/org/gnome/shell/extensions/arcmenu/';
+
+/** Reads the live ArcMenu settings (user-changed keys only) through the bundled schema. */
+export function readArcMenuSnapshot(extensionDir: string): ArcMenuSnapshot | null {
+    try {
+        const source = Gio.SettingsSchemaSource.new_from_directory(`${extensionDir}/data/migration/arcmenu`, null, false);
+        const schema = source.lookup(ARCMENU_SCHEMA_ID, false);
+        const folderSchema = source.lookup(ARCMENU_FOLDER_SCHEMA_ID, false);
+        if (!schema || !folderSchema)
+            return null;
+        const settings = Gio.Settings.new_full(schema, null, ARCMENU_PATH);
+        const values: Record<string, unknown> = {};
+        const defaults: Record<string, unknown> = {};
+        for (const key of schema.list_keys()) {
+            defaults[key] = schema.get_key(key).get_default_value().recursiveUnpack();
+            const user = settings.get_user_value(key);
+            if (user !== null)
+                values[key] = user.recursiveUnpack();
+        }
+        const folders: Record<string, Entry[]> = {};
+        const pinned = values['pinned-apps'];
+        if (Array.isArray(pinned)) {
+            for (const entry of pinned as Entry[]) {
+                if (entry?.isFolder !== 'true')
+                    continue;
+                const folder = Gio.Settings.new_full(folderSchema, null, `${ARCMENU_PATH}pinned-apps-folders/${entry.id}/`);
+                const user = folder.get_user_value('pinned-apps');
+                if (user !== null)
+                    folders[entry.id] = user.recursiveUnpack() as Entry[];
+            }
+        }
+        return {values, defaults, folders};
+    } catch (e) {
+        logError(e as Error, '[spawn-menu] reading the ArcMenu settings failed');
+        return null;
+    }
 }
 
-export interface MigrationItem {
-    key: SettingKey;
-    from: string;
-    value: unknown;
-    differsFromDefault: boolean;
+/** Writes the plan into our schema: folders first, then one delay()/apply() batch. */
+export function applyMigration(plan: MigrationPlan, settings: SpawnSettings): void {
+    const replacesPinned = plan.items.some(i => i.key === 'pinned-apps');
+    if (replacesPinned) {
+        // Folders of the previous pinned list that the import does not bring back are cleaned up.
+        const keep = new Set(plan.folders.map(f => f.uuid));
+        for (const entry of settings.get('pinned-apps')) {
+            if (entry.isFolder === 'true' && !keep.has(entry.id))
+                settings.deleteFolder(entry.id);
+        }
+    }
+    for (const pf of plan.folders) {
+        const folder = settings.folder(pf.uuid);
+        folder.raw.delay();
+        folder.name = pf.name;
+        folder.pinnedApps = pf.pinnedApps;
+        folder.raw.apply();
+    }
+    settings.raw.delay();
+    try {
+        for (const item of plan.items)
+            settings.set(item.key, item.value as never);
+        settings.set('migration-done', true);
+    } finally {
+        settings.raw.apply();
+    }
 }
 
-export interface FolderPlan {
-    uuid: string;
-    name: string;
-    pinnedApps: Entry[];
-}
-
-export interface MigrationPlan {
-    items: MigrationItem[];
-    folders: FolderPlan[];
-    warnings: string[];
-}
-
-export function planMigration(_snapshot: ArcMenuSnapshot): MigrationPlan {
-    // TODO(migration owner)
-    return {items: [], folders: [], warnings: []};
-}
-
-export function readArcMenuSnapshot(_extensionDir: string): ArcMenuSnapshot | null {
-    // TODO(migration owner)
-    return null;
-}
-
-export function applyMigration(_plan: MigrationPlan, _settings: SpawnSettings): void {
-    // TODO(migration owner)
-}
-
-export function describePlan(_plan: MigrationPlan): string[] {
-    // TODO(migration owner)
-    return [];
-}
-
+/** Explicit user action: ask the shell to disable ArcMenu. Resolves false if that failed. */
 export function disableArcMenu(): Promise<boolean> {
-    // TODO(migration owner)
-    return Promise.resolve(false);
+    return new Promise(resolve => {
+        try {
+            Gio.DBus.session.call(
+                'org.gnome.Shell',
+                '/org/gnome/Shell',
+                'org.gnome.Shell.Extensions',
+                'DisableExtension',
+                new GLib.Variant('(s)', [ARCMENU_UUID]),
+                new GLib.VariantType('(b)'),
+                Gio.DBusCallFlags.NONE,
+                5000,
+                null,
+                (conn, res) => {
+                    try {
+                        const reply = conn?.call_finish(res);
+                        resolve(reply?.deepUnpack<[boolean]>()[0] ?? false);
+                    } catch (e) {
+                        logError(e as Error, '[spawn-menu] DisableExtension failed');
+                        resolve(false);
+                    }
+                },
+            );
+        } catch (e) {
+            logError(e as Error, '[spawn-menu] DisableExtension failed');
+            resolve(false);
+        }
+    });
 }

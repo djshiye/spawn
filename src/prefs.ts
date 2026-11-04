@@ -40,9 +40,21 @@ export default class SpawnMenuPreferences extends ExtensionPreferences {
             settings: new SpawnSettings(this.getSettings(), schemaSource),
             extensionDir: this.path,
             window,
+            metadata: this.metadata as unknown as Record<string, unknown>,
         };
-        window.set_default_size(720, 640);
-        for (const create of PAGES)
-            window.add(create(ctx));
+        window.set_default_size(960, 760);
+        const pages = PAGES.map(create => create(ctx));
+        for (const page of pages)
+            window.add(page);
+
+        // Remember the last visible page (`prefs-visible-page` indexes PAGES).
+        const initial = pages[Math.min(Math.max(ctx.settings.get('prefs-visible-page'), 0), pages.length - 1)];
+        if (initial)
+            window.set_visible_page(initial);
+        window.connect('notify::visible-page', () => {
+            const index = pages.findIndex(page => page === window.get_visible_page());
+            if (index >= 0 && index !== ctx.settings.get('prefs-visible-page'))
+                ctx.settings.set('prefs-visible-page', index);
+        });
     }
 }

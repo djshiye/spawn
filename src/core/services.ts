@@ -17,6 +17,7 @@ import {PinnedStore} from '../model/pinned.js';
 import {SearchEngine} from '../search/engine.js';
 import {AppsProvider} from '../search/providers/apps.js';
 import {RecentFilesProvider} from '../search/providers/recentFiles.js';
+import {ShellProviders} from '../search/providers/shellProviders.js';
 import {WindowsProvider} from '../search/providers/windows.js';
 import type {Scope} from './scope.js';
 import type {SpawnSettings} from './settings.js';
@@ -61,6 +62,8 @@ export class Services {
             engine.addProvider(new AppsProvider(this.appIndex));
             engine.addProvider(new WindowsProvider(this.settings));
             engine.addProvider(new RecentFilesProvider(scope, this.settings));
+            const shell = new ShellProviders(scope, this.settings);
+            engine.addProviderSource(() => shell.list());
             this._search = engine;
         }
         return this._search;

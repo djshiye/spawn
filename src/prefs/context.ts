@@ -2,7 +2,8 @@
 // Main, no global): only gi:// and the prefs resource modules may be imported from prefs/.
 //
 // Public API:
-//   PrefsContext: {settings: SpawnSettings, extensionDir: string, window: Adw.PreferencesWindow}
+//   PrefsContext: {settings: SpawnSettings, extensionDir: string, window: Adw.PreferencesWindow,
+//                  metadata: Record<string, unknown>}     (metadata is new: metadata.json fields)
 
 import type Adw from 'gi://Adw';
 
@@ -12,4 +13,5 @@ export interface PrefsContext {
     settings: SpawnSettings;
     extensionDir: string;
     window: Adw.PreferencesWindow;
+    metadata: Record<string, unknown>;
 }

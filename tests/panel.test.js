@@ -1,5 +1,5 @@
 import {
-    ExtState, GIVE_UP_MS, isActorAlive, nextBackoffMs, panelSlot, resolveTargets, validatePanel,
+    ExtState, GIVE_UP_MS, isActorAlive, nextBackoffMs, panelSide, panelSlot, resolveTargets, samePanel, validatePanel,
 } from '../build/panel/validate.js';
 import {assert, assertEquals, run, test} from './harness.js';
 
@@ -98,6 +98,25 @@ test('panelSlot', () => {
     assertEquals(panelSlot('Right', 0, c), {box: 'right', index: 5});
     assertEquals(panelSlot('Right', 2, c), {box: 'right', index: 3});
     assertEquals(panelSlot('Right', 99, c), {box: 'right', index: 0});
+});
+
+test('panelSide: top/bottom/left/right from the monitor geometry', () => {
+    const mon = {x: 0, y: 0, width: 1600, height: 900};
+    assertEquals(panelSide({x: 0, y: 0, width: 1600, height: 32}, mon), 'top');
+    assertEquals(panelSide({x: 0, y: 868, width: 1600, height: 32}, mon), 'bottom');
+    assertEquals(panelSide({x: 0, y: 0, width: 48, height: 900}, mon), 'left');
+    assertEquals(panelSide({x: 1552, y: 0, width: 48, height: 900}, mon), 'right');
+    // second monitor to the right, panel at its bottom
+    const mon2 = {x: 1600, y: 0, width: 1920, height: 1080};
+    assertEquals(panelSide({x: 1600, y: 1040, width: 1920, height: 40}, mon2), 'bottom');
+});
+
+test('samePanel is identity of the underlying panel object', () => {
+    const p = panel();
+    assert(samePanel({panel: p}, {panel: p}));
+    assert(!samePanel({panel: p}, {panel: panel()}));
+    assert(!samePanel(null, {panel: p}));
+    assert(!samePanel({panel: null}, {panel: null}));
 });
 
 run();

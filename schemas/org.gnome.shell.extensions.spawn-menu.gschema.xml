@@ -54,7 +54,8 @@
     </key>
     <key name="pinned-apps" type="aa{ss}">
       <default>[]</default>
-      <summary>Pinned apps inside the folder, items are {'id': 'x.desktop'}</summary>
+      <summary>Apps in the folder</summary>
+      <description>Pinned apps inside the folder, items are {'id': 'x.desktop'}</description>
     </key>
   </schema>
 
@@ -66,19 +67,23 @@
     </key>
     <key name="multi-monitor" type="b">
       <default>false</default>
-      <summary>Show a menu button on every monitor panel (Dash to Panel / App Icons Taskbar)</summary>
+      <summary>Show a button on every monitor</summary>
+      <description>Show a menu button on every monitor panel (Dash to Panel / App Icons Taskbar)</description>
     </key>
     <key name="hide-activities-button" type="b">
       <default>false</default>
-      <summary>Hide the Activities button in the top panel (previous visibility is restored)</summary>
+      <summary>Hide the Activities button</summary>
+      <description>Hide the Activities button in the top panel (previous visibility is restored)</description>
     </key>
     <key name="activate-on-launch" type="b">
       <default>false</default>
-      <summary>Activate an existing window instead of opening a new one when launching an app</summary>
+      <summary>Switch to an open window when launching</summary>
+      <description>Activate an existing window instead of opening a new one when launching an app</description>
     </key>
     <key name="keep-open-on-ctrl-click" type="b">
       <default>true</default>
-      <summary>Keep the menu open when activating an item with Ctrl held</summary>
+      <summary>Keep the menu open on Ctrl+click</summary>
+      <description>Keep the menu open when activating an item with Ctrl held</description>
     </key>
     <key name="show-tooltips" type="b">
       <default>true</default>
@@ -86,11 +91,13 @@
     </key>
     <key name="super-key-toggle" type="b">
       <default>true</default>
-      <summary>Super key toggles the menu (intercepted in memory only; mutter overlay-key is never written)</summary>
+      <summary>Super key opens the menu</summary>
+      <description>Super key toggles the menu (intercepted in memory only; mutter overlay-key is never written)</description>
     </key>
     <key name="menu-hotkey" type="as">
       <default>[]</default>
-      <summary>Custom accelerator(s) that toggle the menu, e.g. ["&lt;Super>space"]; empty = off</summary>
+      <summary>Menu keyboard shortcut</summary>
+      <description>Custom accelerator(s) that toggle the menu, e.g. ["&lt;Super>space"]; empty = off</description>
     </key>
     <key name="position-in-panel" enum="org.gnome.shell.extensions.spawn-menu.menu-position">
       <default>'Left'</default>
@@ -98,7 +105,8 @@
     </key>
     <key name="menu-button-position-offset" type="i">
       <default>0</default>
-      <summary>Number of panel items to skip from the chosen edge</summary>
+      <summary>Button position offset</summary>
+      <description>Number of panel items to skip from the chosen edge</description>
     </key>
     <key name="menu-button-appearance" enum="org.gnome.shell.extensions.spawn-menu.menu-button-appearance">
       <default>'Icon'</default>
@@ -110,7 +118,8 @@
     </key>
     <key name="menu-button-icon" type="s">
       <default>'icon-apps-symbolic.svg'</default>
-      <summary>Button icon: bundled file name (data/icons), absolute path, or icon name</summary>
+      <summary>Button icon</summary>
+      <description>Button icon: bundled file name (data/icons), absolute path, or icon name</description>
     </key>
     <key name="menu-button-icon-size" type="i">
       <default>20</default>
@@ -118,7 +127,8 @@
     </key>
     <key name="menu-button-padding" type="i">
       <default>-1</default>
-      <summary>Button horizontal padding in px (-1 = theme default)</summary>
+      <summary>Button horizontal padding</summary>
+      <description>Button horizontal padding in px (-1 = theme default)</description>
     </key>
     <key name="menu-button-left-click-action" enum="org.gnome.shell.extensions.spawn-menu.menu-button-click-action">
       <default>'Menu'</default>
@@ -210,7 +220,8 @@
     </key>
     <key name="icon-size-grid" type="a{si}">
       <default>{'width': -1, 'height': -1, 'size': -1}</default>
-      <summary>Icon size of pinned-app grid tiles (keys width/height/size, -1 = default)</summary>
+      <summary>Pinned grid icon size</summary>
+      <description>Icon size of pinned-app grid tiles (keys width/height/size, -1 = default)</description>
     </key>
     <key name="icon-style-categories" enum="org.gnome.shell.extensions.spawn-menu.menu-item-icon-style">
       <default>'Symbolic'</default>
@@ -230,7 +241,8 @@
           {'id': 'org.gnome.Nautilus.desktop'},
           {'id': 'org.gnome.Ptyxis.desktop'}
         ]</default>
-      <summary>Pinned apps and folders; folder entries are {id: &lt;uuid>, name, isFolder: "true"} with contents in folders/&lt;uuid>/</summary>
+      <summary>Pinned apps and folders</summary>
+      <description>Pinned apps and folders; folder entries are {id: &lt;uuid>, name, isFolder: "true"} with contents in folders/&lt;uuid>/</description>
     </key>
     <key name="directory-shortcuts" type="aa{ss}">
       <default>[
@@ -241,7 +253,8 @@
           {'id': 'SpawnMenu_Pictures', 'name': 'Pictures', 'icon': 'SpawnMenu_Pictures'},
           {'id': 'SpawnMenu_Videos', 'name': 'Videos', 'icon': 'SpawnMenu_Videos'}
         ]</default>
-      <summary>Directory shortcuts in the right pane (SpawnMenu_* ids or custom {id: path, name, icon})</summary>
+      <summary>Directory shortcuts</summary>
+      <description>Directory shortcuts in the right pane (SpawnMenu_* ids or custom {id: path, name, icon})</description>
     </key>
     <key name="application-shortcuts" type="aa{ss}">
       <default>[
@@ -251,11 +264,13 @@
           {'id': 'org.gnome.Ptyxis.desktop'},
           {'id': 'SpawnMenu_ActivitiesOverview', 'name': 'Activities Overview', 'icon': 'view-fullscreen-symbolic'}
         ]</default>
-      <summary>Application shortcuts in the right pane (SpawnMenu_* ids, .desktop ids, separators)</summary>
+      <summary>Application shortcuts</summary>
+      <description>Application shortcuts in the right pane (SpawnMenu_* ids, .desktop ids, separators)</description>
     </key>
     <key name="power-options" type="a(ib)">
       <default>[(0, true), (1, true), (2, true), (3, true), (4, false), (5, false), (6, false), (7, false)]</default>
-      <summary>Power buttons: (id, enabled); ids 0 LogOut 1 Lock 2 Restart 3 PowerOff 4 Suspend 5 HybridSleep 6 Hibernate 7 SwitchUser</summary>
+      <summary>Power buttons</summary>
+      <description>Power buttons: (id, enabled); ids 0 LogOut 1 Lock 2 Restart 3 PowerOff 4 Suspend 5 HybridSleep 6 Hibernate 7 SwitchUser</description>
     </key>
     <key name="power-display-style" enum="org.gnome.shell.extensions.spawn-menu.power-display-style">
       <default>'Default'</default>
@@ -291,7 +306,8 @@
     </key>
     <key name="search-provider-shell" type="b">
       <default>false</default>
-      <summary>Include GNOME Shell search providers (e.g. Calculator, Characters)</summary>
+      <summary>Include GNOME Shell search providers</summary>
+      <description>Include GNOME Shell search providers (e.g. Calculator, Characters)</description>
     </key>
     <key name="show-hidden-recent-files" type="b">
       <default>false</default>
@@ -307,11 +323,13 @@
     </key>
     <key name="search-entry-border-radius" type="(bi)">
       <default>(true, 25)</default>
-      <summary>Search entry border radius: (enabled, px)</summary>
+      <summary>Search entry border radius</summary>
+      <description>Search entry border radius: (enabled, px)</description>
     </key>
     <key name="override-menu-theme" type="b">
       <default>false</default>
-      <summary>Use the custom colours below instead of the shell theme and GNOME accent</summary>
+      <summary>Use custom menu colours</summary>
+      <description>Use the custom colours below instead of the shell theme and GNOME accent</description>
     </key>
     <key name="menu-background-color" type="s">
       <default>"rgba(48,48,49,0.98)"</default>
@@ -359,39 +377,48 @@
     </key>
     <key name="menu-button-fg-color" type="(bs)">
       <default>(false, "rgb(242,242,242)")</default>
-      <summary>Panel button foreground: (enabled, colour)</summary>
+      <summary>Panel button foreground colour</summary>
+      <description>Panel button foreground: (enabled, colour)</description>
     </key>
     <key name="menu-button-bg-color" type="(bs)">
       <default>(false, "rgba(242,242,242,0.2)")</default>
-      <summary>Panel button background: (enabled, colour)</summary>
+      <summary>Panel button background colour</summary>
+      <description>Panel button background: (enabled, colour)</description>
     </key>
     <key name="menu-button-border-radius" type="(bi)">
       <default>(false, 20)</default>
-      <summary>Panel button border radius: (enabled, px)</summary>
+      <summary>Panel button border radius</summary>
+      <description>Panel button border radius: (enabled, px)</description>
     </key>
     <key name="menu-button-border-width" type="(bi)">
       <default>(false, 3)</default>
-      <summary>Panel button border width: (enabled, px)</summary>
+      <summary>Panel button border width</summary>
+      <description>Panel button border width: (enabled, px)</description>
     </key>
     <key name="menu-button-border-color" type="(bs)">
       <default>(false, "transparent")</default>
-      <summary>Panel button border colour: (enabled, colour)</summary>
+      <summary>Panel button border colour</summary>
+      <description>Panel button border colour: (enabled, colour)</description>
     </key>
     <key name="menu-button-hover-bg-color" type="(bs)">
       <default>(false, "rgba(242,242,242,0.15)")</default>
-      <summary>Panel button hover background: (enabled, colour)</summary>
+      <summary>Panel button hover background colour</summary>
+      <description>Panel button hover background: (enabled, colour)</description>
     </key>
     <key name="menu-button-hover-fg-color" type="(bs)">
       <default>(false, "rgb(242,242,242)")</default>
-      <summary>Panel button hover foreground: (enabled, colour)</summary>
+      <summary>Panel button hover foreground colour</summary>
+      <description>Panel button hover foreground: (enabled, colour)</description>
     </key>
     <key name="menu-button-active-bg-color" type="(bs)">
       <default>(false, "rgba(242,242,242,0.2)")</default>
-      <summary>Panel button active background: (enabled, colour)</summary>
+      <summary>Panel button active background colour</summary>
+      <description>Panel button active background: (enabled, colour)</description>
     </key>
     <key name="menu-button-active-fg-color" type="(bs)">
       <default>(false, "rgb(242,242,242)")</default>
-      <summary>Panel button active foreground: (enabled, colour)</summary>
+      <summary>Panel button active foreground colour</summary>
+      <description>Panel button active foreground: (enabled, colour)</description>
     </key>
     <key name="prefs-visible-page" type="i">
       <default>0</default>
@@ -399,7 +426,8 @@
     </key>
     <key name="migration-done" type="b">
       <default>false</default>
-      <summary>ArcMenu import has been performed (prefs shows a notice instead of the prompt)</summary>
+      <summary>ArcMenu settings imported</summary>
+      <description>ArcMenu import has been performed (prefs shows a notice instead of the prompt)</description>
     </key>
   </schema>
 </schemalist>

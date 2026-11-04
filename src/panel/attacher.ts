@@ -9,14 +9,21 @@
 //     a panel extension is active but has no valid panel yet. After GIVE_UP_MS (10 s) it falls
 //     back to Main.panel.
 //   * Every removal is guarded (`?.`, try/catch); one failing removal never blocks the rest.
-//   * Hiding the Activities button remembers the PREVIOUS visibility and restores exactly that.
+//   * Hiding the Activities button remembers the PREVIOUS visibility and restores exactly that
+//     (on setting off, on dispose, and for panels that went away).
+//   * RE-KEYING: when a target's key changes but the underlying panel object is the same (e.g.
+//     Dash to Panel's primary wrapper `.panel === Main.panel`, so 'main' becomes 'dtp:0'), the
+//     existing attachment is moved to the new key instead of destroying and recreating the
+//     button, so an open popup anchored to it survives.
 //
 // Public API:
 //   new ButtonAttacher(scope, deps: AttacherDeps)
 //   attacher.start(): void              attach now, subscribe to changes; idempotent
 //   attacher.reconcile(): void          re-evaluate targets (safe to call any time)
 //   attacher.buttons(): MenuButton[]    live buttons (first one is used as popup default anchor)
-//   attacher.status(): AttachmentStatus Dev/diagnostics snapshot
+//   attacher.status(): AttachmentStatus Dev/diagnostics snapshot; every AttachmentInfo carries
+//                                       `side` ('top'|'bottom'|'left'|'right'), the screen edge of
+//                                       that attachment's panel (see also MenuButton.side/arrowSide)
 //   AttacherDeps: {settings, targets, createButton: () => MenuButton}
 
 import GLib from 'gi://GLib';
@@ -37,7 +44,9 @@ import {
     type PanelLike,
     type PanelTarget,
     nextBackoffMs,
+    type PanelSide,
     panelSlot,
+    samePanel,
     targetKey,
     validatePanel,
 } from './validate.js';
@@ -54,6 +63,8 @@ export interface AttachmentInfo {
     monitorIndex: number;
     attached: boolean;
     fallback: boolean;
+    /** Screen edge the panel is on; the menu uses it to pick the BoxPointer arrow side. */
+    side: PanelSide;
 }
 
 export interface AttachmentStatus {
@@ -87,6 +98,10 @@ class ActivitiesHider {
         if (!hide) {
             this.restore();
             return;
+        }
+        for (const [actor] of this._saved) {
+            if (!isActorAlive(actor))
+                this._saved.delete(actor);
         }
         for (const panel of panels) {
             try {
@@ -171,6 +186,7 @@ export class ButtonAttacher {
                 monitorIndex: a.target.monitorIndex,
                 attached: this._isHealthy(a),
                 fallback: a.fallback,
+                side: this._sideOf(a),
             })),
             pending: this._pendingSince !== null,
             pendingForMs: this._pendingSince === null ? 0 : this._now() - this._pendingSince,
@@ -234,9 +250,30 @@ export class ButtonAttacher {
         // 1. Remove attachments that are unhealthy, stale (panel object replaced), or no
         //    longer wanted. When nothing is desired yet we keep what still works.
         if (desired.length > 0) {
+            const keep = new Set<Attachment>();
+            const claimed = new Set<string>();
             for (const a of [...this._attachments.values()]) {
                 const want = desired.find(t => t.key === a.target.key);
-                if (!want || want.panel !== a.target.panel || !this._isHealthy(a))
+                if (want && samePanel(want, a.target) && this._isHealthy(a)) {
+                    a.target = want;
+                    a.fallback = fallback;
+                    keep.add(a);
+                    claimed.add(want.key);
+                }
+            }
+            // Same panel object under a different key: move the attachment, keep the button.
+            for (const a of [...this._attachments.values()]) {
+                if (keep.has(a) || !this._isHealthy(a))
+                    continue;
+                const want = desired.find(t => !claimed.has(t.key) && samePanel(t, a.target));
+                if (!want)
+                    continue;
+                this._rekey(a, want, fallback);
+                keep.add(a);
+                claimed.add(want.key);
+            }
+            for (const a of [...this._attachments.values()]) {
+                if (!keep.has(a))
                     this._remove(a);
             }
         } else {
@@ -301,8 +338,8 @@ export class ButtonAttacher {
             if (attachment.removing)
                 return;
             attachment.removing = true;
-            if (this._attachments.get(target.key) === attachment)
-                this._attachments.delete(target.key);
+            if (this._attachments.get(attachment.target.key) === attachment)
+                this._attachments.delete(attachment.target.key);
             attachment.scope.dispose();
             if (!this._disposed)
                 this._deps.targets.notifyChanged();
@@ -310,6 +347,24 @@ export class ButtonAttacher {
 
         this._attachments.set(target.key, attachment);
         log(`attached to ${target.key}${fallback ? ' (fallback)' : ''}`);
+    }
+
+    private _rekey(a: Attachment, target: PanelTarget, fallback: boolean): void {
+        const old = a.target.key;
+        if (this._attachments.get(old) === a)
+            this._attachments.delete(old);
+        a.target = target;
+        a.fallback = fallback;
+        this._attachments.set(target.key, a);
+        log(`re-keyed attachment ${old} -> ${target.key} (same panel, button kept)`);
+    }
+
+    private _sideOf(a: Attachment): PanelSide {
+        try {
+            return a.button.side;
+        } catch {
+            return 'top';
+        }
     }
 
     private _remove(a: Attachment): void {

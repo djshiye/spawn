@@ -49,7 +49,8 @@ your area before writing code.
   folders, shows a preview of what will be imported, and offers to disable ArcMenu.
 - Dev hook (only when `dev-mode` key is true): D-Bus
   `io.github.djshiye.SpawnMenu.Dev` with `Open()`, `Close()`, `Search(s)`,
-  `Screenshot(s path)` (uses Shell.Screenshot in-process) for headless testing.
+  `Screenshot(s path)` (uses Shell.Screenshot in-process), `Benchmark(s sections)` (in-shell timings, see README)
+  for headless testing; plus a `.Ui` interface (src/ui/devHooks.ts) to drive the menu.
 
 Out of scope for v1 (later): the other 22 ArcMenu layouts, standalone runner,
 extra categories links, intellihide integration beyond showing the panel.
