@@ -39,7 +39,8 @@ export interface Entry {
 }
 
 export type MenuPosition = 'Left' | 'Center' | 'Right';
-export type MenuButtonClickAction = 'Menu' | 'None';
+export type MenuButtonClickAction = 'Menu' | 'None' | 'ContextMenu';
+export type PinnedAppsDisplay = 'List' | 'Grid';
 export type MenuButtonAppearance = 'Icon' | 'Text' | 'Icon_Text' | 'Text_Icon' | 'None';
 export type AvatarStyle = 'Round' | 'Square';
 export type DefaultMenuView = 'Pinned_Apps' | 'Categories_List' | 'Frequent_Apps' | 'All_Programs' | 'Pinned_And_Frequent_Apps';
@@ -93,6 +94,8 @@ export interface SettingsMap {
     'pinned-apps': Entry[];
     'directory-shortcuts': Entry[];
     'application-shortcuts': Entry[];
+    'context-menu-items': Entry[];
+    'pinned-apps-display': PinnedAppsDisplay;
     'power-options': Array<[number, boolean]>;
     'power-display-style': PowerDisplayStyle;
     'search-hidden': boolean;

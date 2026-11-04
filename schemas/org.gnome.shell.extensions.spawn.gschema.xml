@@ -10,6 +10,11 @@
   <enum id="org.gnome.shell.extensions.spawn.menu-button-click-action">
     <value value="0" nick="Menu"/>
     <value value="1" nick="None"/>
+    <value value="2" nick="ContextMenu"/>
+  </enum>
+  <enum id="org.gnome.shell.extensions.spawn.pinned-apps-display">
+    <value value="0" nick="List"/>
+    <value value="1" nick="Grid"/>
   </enum>
   <enum id="org.gnome.shell.extensions.spawn.menu-button-appearance">
     <value value="0" nick="Icon"/>
@@ -135,12 +140,30 @@
       <summary>Left click action</summary>
     </key>
     <key name="menu-button-right-click-action" enum="org.gnome.shell.extensions.spawn.menu-button-click-action">
-      <default>'None'</default>
+      <default>'ContextMenu'</default>
       <summary>Right click action</summary>
     </key>
     <key name="menu-button-middle-click-action" enum="org.gnome.shell.extensions.spawn.menu-button-click-action">
       <default>'Menu'</default>
       <summary>Middle click action</summary>
+    </key>
+    <key name="pinned-apps-display" enum="org.gnome.shell.extensions.spawn.pinned-apps-display">
+      <default>'List'</default>
+      <summary>Pinned apps view</summary>
+      <description>Show pinned apps and folders as a list (ArcMenu style) or as an icon grid</description>
+    </key>
+    <key name="context-menu-items" type="aa{ss}">
+      <default>[
+          {'id': 'org.gnome.Extensions.desktop'},
+          {'id': 'Spawn_Settings', 'name': 'Spawn Settings', 'icon': 'Spawn_SpawnIcon'},
+          {'id': 'Spawn_PanelExtensionSettings', 'name': 'Panel Extension Settings', 'icon': 'application-x-addon-symbolic'},
+          {'id': 'Spawn_Separator', 'name': 'Separator', 'icon': 'list-remove-symbolic'},
+          {'id': 'Spawn_PowerOptions', 'name': 'Power Options', 'icon': 'system-shutdown-symbolic'},
+          {'id': 'Spawn_ActivitiesOverview', 'name': 'Activities Overview', 'icon': 'view-fullscreen-symbolic'},
+          {'id': 'Spawn_ShowDesktop', 'name': 'Show Desktop', 'icon': 'computer-symbolic'}
+        ]</default>
+      <summary>Panel button context menu</summary>
+      <description>Items of the menu shown on the panel button's context-menu click (apps, Spawn_* actions, separators)</description>
     </key>
     <key name="default-menu-view" enum="org.gnome.shell.extensions.spawn.default-menu-view">
       <default>'Pinned_Apps'</default>
