@@ -1,0 +1,73 @@
+/* Spawn Menu base styles. Inherits the shell theme (popup-menu-content etc.) and uses the
+ * GNOME accent colour; the theme module layers optional custom colours on top at runtime
+ * from $XDG_RUNTIME_DIR/spawn-menu/theme.css. Keep this file minimal and structural. */
+
+.spawn-menu-button {
+    -natural-hpadding: 8px;
+    -minimum-hpadding: 6px;
+}
+
+.spawn-menu-button-box {
+    spacing: 6px;
+}
+
+.spawn-menu-button-label {
+    font-weight: bold;
+}
+
+.spawn-menu-popup {
+    min-width: 0;
+}
+
+.spawn-menu-layout {
+    spacing: 8px;
+    padding: 6px;
+}
+
+.spawn-menu-placeholder-label {
+    padding: 24px 48px;
+    font-size: 14pt;
+}
+
+.spawn-menu-tile {
+    border-radius: 12px;
+    padding: 8px;
+}
+
+.spawn-menu-tile:hover,
+.spawn-menu-tile:focus {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.spawn-menu-row {
+    border-radius: 8px;
+    padding: 6px 10px;
+}
+
+.spawn-menu-folder-tile {
+    border-radius: 14px;
+}
+
+.spawn-menu-folder-view,
+.spawn-menu-category-list,
+.spawn-menu-result-list {
+    spacing: 4px;
+}
+
+.spawn-menu-shortcut-row {
+    border-radius: 8px;
+    padding: 6px 10px;
+}
+
+.spawn-menu-power-bar {
+    spacing: 6px;
+}
+
+.spawn-menu-user-card {
+    spacing: 10px;
+    padding: 6px;
+}
+
+.spawn-menu-search-box {
+    border-radius: 18px;
+}

@@ -1,0 +1,25 @@
+{
+  "name": "spawn-menu",
+  "version": "1.0.0",
+  "description": "Spawn Menu: GNOME Shell application menu (ArcMenu replacement)",
+  "private": true,
+  "license": "GPL-2.0-or-later",
+  "type": "module",
+  "scripts": {
+    "build": "tools/build.sh",
+    "compile": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "tools/test.sh",
+    "dev:smoke": "tools/dev-shell.sh smoke",
+    "dev:dtp-toggle": "tools/dev-shell.sh dtp-toggle --with-dtp"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@girs/gnome-shell": "51.0.1",
+    "@girs/gjs": "^5.6.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}
