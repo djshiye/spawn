@@ -1,8 +1,8 @@
 # ArcMenu "arcmenu" layout: reimplementation reference
 
-Source root: /tmp/claude-1000/-home-dino-Coding/d2878a56-801c-42b2-bf19-83145b8a82f0/scratchpad/src/ArcMenu/src/
-Settings: /tmp/claude-1000/-home-dino-Coding/d2878a56-801c-42b2-bf19-83145b8a82f0/scratchpad/arcmenu-settings.ini
-Schema: /tmp/claude-1000/-home-dino-Coding/d2878a56-801c-42b2-bf19-83145b8a82f0/scratchpad/src/ArcMenu/schemas/org.gnome.shell.extensions.arcmenu.gschema.xml
+Source root: ArcMenu (https://gitlab.com/arcmenu/ArcMenu, master)/src/
+Settings: docs/research/user-arcmenu-settings.ini
+Schema: ArcMenu (https://gitlab.com/arcmenu/ArcMenu, master)/schemas/org.gnome.shell.extensions.arcmenu.gschema.xml
 
 Abbreviations: `L/` = `menulayouts/`. Paths below are relative to the source root unless absolute. Everything marked **[unverified]** was not read in full.
 

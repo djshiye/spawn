@@ -1,9 +1,9 @@
 # ArcMenu GSettings schema map
 
 Sources:
-- Schema: `/tmp/claude-1000/-home-dino-Coding/d2878a56-801c-42b2-bf19-83145b8a82f0/scratchpad/src/ArcMenu/schemas/org.gnome.shell.extensions.arcmenu.gschema.xml` (`L###` in tables = line in this file)
-- Dump: `/tmp/claude-1000/-home-dino-Coding/d2878a56-801c-42b2-bf19-83145b8a82f0/scratchpad/arcmenu-settings.ini`
-- USED refs point to `/tmp/claude-1000/-home-dino-Coding/d2878a56-801c-42b2-bf19-83145b8a82f0/scratchpad/src/ArcMenu/src/...` (abbreviated below as `src/...`)
+- Schema: `ArcMenu (https://gitlab.com/arcmenu/ArcMenu, master)/schemas/org.gnome.shell.extensions.arcmenu.gschema.xml` (`L###` in tables = line in this file)
+- Dump: `docs/research/user-arcmenu-settings.ini`
+- USED refs point to `ArcMenu (https://gitlab.com/arcmenu/ArcMenu, master)/src/...` (abbreviated below as `src/...`)
 
 Total keys: **149** = 148 in the main schema + 1 in the relocatable child schema (`pinned-apps-folders`, `pinned-apps`).
 

@@ -1,6 +1,6 @@
 # ArcMenu: theming and preferences (analysis)
 
-Source root: `/tmp/claude-1000/-home-dino-Coding/d2878a56-801c-42b2-bf19-83145b8a82f0/scratchpad/src/ArcMenu`
+Source root: `ArcMenu (https://gitlab.com/arcmenu/ArcMenu, master)`
 Paths below are relative to that root. Verification status is marked where it matters.
 
 ## 1. Theming

@@ -1,6 +1,6 @@
 # ArcMenu search system: analysis
 
-Source root: `/tmp/claude-1000/-home-dino-Coding/d2878a56-801c-42b2-bf19-83145b8a82f0/scratchpad/src/ArcMenu/src/`
+Source root: `ArcMenu (https://gitlab.com/arcmenu/ArcMenu, master)/src/`
 Abbreviated below as `src/`. GNOME Shell source is NOT present locally (`/usr/share/gnome-shell` has no JS), so all GNOME-internal claims are inferred from ArcMenu's usage, not checked against GNOME.
 
 ## 1. Architecture
