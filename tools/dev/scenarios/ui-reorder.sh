@@ -123,3 +123,29 @@ expect "Tarky order" "$(folder_ids $T)" "SPT - Launcher.desktop SPT - Server.des
 close_menu
 PINNED_DISPLAY=List; pin_vars
 reset_seed
+
+echo "== Duplicate id in pinned-apps (hand-edited): the menu shows it once, Ctrl+arrows move the focused row"
+# The tile index (one tile per distinct entry) must not be used as an index into the raw list: with
+# [S S C H I G T] the focused row C is tile 1 but raw entry 2.
+python3 - <<'PY'
+import ast, subprocess
+k = "/org/gnome/shell/extensions/spawn/pinned-apps"
+entries = ast.literal_eval(subprocess.check_output(["dconf", "read", k], text=True).strip())
+entries.insert(1, dict(entries[0]))
+subprocess.check_call(["dconf", "write", k, repr(entries)])
+PY
+sleep 1
+expect "duplicate seeded" "$(pinned_ids)" "$S $S $C $H $I $G $T"
+open_menu 1.5
+expect "the duplicate is drawn once" "$(count $ITEM)" 6
+key Down; key Down
+expect_state "focus on C (row 1)" layout.focusIndex 1
+step "Ctrl+Up moves C, not the hidden second S" Ctrl+Up "$C $S $S $H $I $G $T" 0
+step "Ctrl+Down" Ctrl+Down "$S $C $S $H $I $G $T" 1
+step "Ctrl+End" Ctrl+End "$S $S $H $I $G $T $C" 5
+focus_class $ITEM 0
+expect_state "focus on the first row" layout.focusIndex 0
+step "Ctrl+Down moves S past its own repeat: S ends up after H" Ctrl+Down "$H $S $S $I $G $T $C" 1
+step "Ctrl+Up back to the top" Ctrl+Up "$S $H $S $I $G $T $C" 0
+close_menu
+reset_seed

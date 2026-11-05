@@ -42,7 +42,11 @@ export interface PanelLike {
 /** Dash to Panel / App Icons Taskbar per-monitor wrapper. `.panel` is the St panel. */
 export interface PanelWrapperLike {
     panel?: PanelLike | null;
-    monitor?: {index?: number} | null;
+    /** The panel's box in the layout (what intellihide translates / hides). */
+    panelBox?: unknown;
+    /** Dash to Panel's intellihide controller (see panel/intellihide.ts). */
+    intellihide?: unknown;
+    monitor?: {index?: number; inFullscreen?: boolean} | null;
     isPrimary?: boolean;
     isStandalone?: boolean;
 }
