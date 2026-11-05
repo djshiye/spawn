@@ -20,4 +20,10 @@ test('themed icon name', () => {
     assertEquals(resolveButtonIcon('start-here-symbolic', dir), {kind: 'name', name: 'start-here-symbolic'});
 });
 
+test('system theme names the picker stores stay themed names', () => {
+    // plain, dotted (app ids) and symbolic names are what the System source of the icon picker stores
+    for (const name of ['start-here', 'org.gnome.Settings', 'org.gnome.Settings-symbolic', 'view-app-grid-symbolic'])
+        assertEquals(resolveButtonIcon(name, dir), {kind: 'name', name});
+});
+
 run();
