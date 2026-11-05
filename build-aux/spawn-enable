@@ -1,0 +1,32 @@
+#!/usr/bin/gjs -m
+// spawn-enable: turn the Spawn extension on for the current user, before the next login.
+//
+// `gnome-extensions enable` asks the RUNNING shell, which only learns about a system-wide extension
+// when it starts, so right after `dnf install` it answers "does not exist". This adds the UUID to the
+// org.gnome.shell `enabled-extensions` list instead (keeping every other entry, never duplicating) and
+// takes it off `disabled-extensions`. The shell loads it at the next login; if it already knows the
+// extension (an upgrade) it enables it at once.
+//
+//   spawn-enable             enable
+//   spawn-enable --remove    take Spawn off the enabled list again
+import Gio from 'gi://Gio';
+import {programArgs} from 'system';
+
+const UUID = 'spawn@djshiye.github.io';
+const remove = programArgs.includes('--remove');
+
+const settings = new Gio.Settings({schema_id: 'org.gnome.shell'});
+const enabled = settings.get_strv('enabled-extensions');
+const disabled = settings.get_strv('disabled-extensions');
+
+if (remove) {
+    settings.set_strv('enabled-extensions', enabled.filter(u => u !== UUID));
+    print(`${UUID} removed from enabled-extensions.`);
+} else {
+    if (!enabled.includes(UUID))
+        settings.set_strv('enabled-extensions', [...enabled, UUID]);
+    if (disabled.includes(UUID))
+        settings.set_strv('disabled-extensions', disabled.filter(u => u !== UUID));
+    print(`${UUID} will be enabled. Log out and back in to start it.`);
+}
+Gio.Settings.sync();

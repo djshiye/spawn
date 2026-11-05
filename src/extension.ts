@@ -74,13 +74,15 @@ export default class SpawnExtension extends Extension {
     }
 
     private _loadSettings(): SpawnSettings {
-        const schemaDir = this.dir.get_child('schemas').get_path();
-        if (!schemaDir)
-            throw new Error('schemas directory missing');
-        const source = Gio.SettingsSchemaSource.new_from_directory(schemaDir, Gio.SettingsSchemaSource.get_default(), false);
-        const schema = source.lookup(SCHEMA_ID, true);
-        if (!schema)
-            throw new Error(`schema ${SCHEMA_ID} not found in ${schemaDir}`);
+        // Installed from a zip the schema sits in <extension dir>/schemas; installed from the RPM it is
+        // in the system schema directory (no schemas/ here), like Extension.getSettings() does it.
+        const schemaDir = this.dir.get_child('schemas');
+        const source = schemaDir.query_exists(null)
+            ? Gio.SettingsSchemaSource.new_from_directory(schemaDir.get_path() ?? '', Gio.SettingsSchemaSource.get_default(), false)
+            : Gio.SettingsSchemaSource.get_default();
+        const schema = source?.lookup(SCHEMA_ID, true);
+        if (!source || !schema)
+            throw new Error(`schema ${SCHEMA_ID} not found`);
         return new SpawnSettings(Gio.Settings.new_full(schema, null, null), source);
     }
 

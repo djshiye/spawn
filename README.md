@@ -33,6 +33,27 @@ npm run build       # tools/build.sh -> build/ and dist/spawn@djshiye.github.io.
 
 ## Install
 
+### Fedora (DNF repository)
+
+**After the first publish** (the repository does not exist until `tools/publish.sh --push` has been run once and GitHub
+Pages is enabled, see `docs/RELEASING.md`), one line installs and enables Spawn on Fedora 43, 44 or 45; then log out and back in:
+
+```sh
+sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.github.io/spawn/spawn.repo && sudo dnf install -y gnome-shell-extension-spawn && spawn-enable
+```
+
+- Update: `sudo dnf upgrade` (log out and in to load the new code).
+- Uninstall: `spawn-enable --remove; sudo dnf remove gnome-shell-extension-spawn` (and `sudo rm /etc/yum.repos.d/spawn.repo` to forget the repository).
+
+`spawn-enable` (installed by the package) adds the extension to GNOME's enabled list without asking the running shell:
+`gnome-extensions enable` only works for extensions the shell already knows, and it learns about a newly installed
+system-wide extension at the next login.
+The extension currently declares GNOME Shell 51 only (Fedora 45); on Fedora 43 and 44 the package installs but the shell lists
+the extension as incompatible until `shell-version` is widened. Packages are unsigned (`gpgcheck=0`).
+The extension lands in `/usr/share/gnome-shell/extensions/` and its schema in `/usr/share/glib-2.0/schemas/`.
+
+### From a checkout
+
 ```sh
 tools/install.sh                 # copies build/ to ~/.local/share/gnome-shell/extensions/<uuid>
 tools/install.sh /some/data/dir  # or into <dir>/gnome-shell/extensions/<uuid>
@@ -40,6 +61,10 @@ gnome-extensions enable spawn@djshiye.github.io
 ```
 
 Log out and in (Wayland) if the shell does not pick up a new extension.
+
+### Releasing
+
+`docs/RELEASING.md`: version bump and the DNF repository (`tools/publish.sh`).
 
 ## Develop without touching your session
 
@@ -102,4 +127,5 @@ Preferences can be screenshotted the same way with `tools/dev-prefs.sh [--apply-
 ## Layout
 
 See `docs/SPEC.md` (spec and module ownership), `docs/SETTINGS.md` (every setting and the
-ArcMenu key it migrates from) and `docs/research/` (notes on ArcMenu's internals).
+ArcMenu key it migrates from), `docs/RELEASING.md` (packaging and publishing the DNF repository)
+and `docs/research/` (notes on ArcMenu's internals).
