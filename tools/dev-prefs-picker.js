@@ -63,13 +63,13 @@ app.connect('activate', () => {
     });
 });
 
-// Names (tooltips) of the realised grid cells that carry the "current icon" mark (the `card` class).
+// Names (tooltips) of the realised grid cells that carry the "current icon" mark (the `spawn-current-icon` class).
 function markedCells(picker) {
     sleep(300); // let the grid lay out and bind its visible cells
     const found = [];
     const walk = widget => {
         for (let child = widget.get_first_child(); child; child = child.get_next_sibling()) {
-            if (child.has_css_class('card'))
+            if (child.has_css_class('spawn-current-icon'))
                 found.push(child.get_tooltip_text());
             walk(child);
         }

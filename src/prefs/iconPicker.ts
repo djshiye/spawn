@@ -26,7 +26,8 @@ type Style = 'all' | 'symbolic' | 'colour';
 const SOURCES: readonly Source[] = ['all', 'spawn', 'distro', 'system'];
 const STYLES: readonly Style[] = ['all', 'symbolic', 'colour'];
 const SEARCH_DELAY_MS = 150;
-const CURRENT_CLASS = 'card'; // marks the cell of the current icon (Adwaita card look)
+const CURRENT_CLASS = 'spawn-current-icon'; // marks the cell of the current icon (accent ring, see CURRENT_CSS)
+const CURRENT_CSS = 'box.spawn-current-icon { background-color: alpha(@accent_bg_color, 0.15); box-shadow: inset 0 0 0 2px @accent_bg_color; border-radius: 10px; }';
 
 /** What openIconPicker returns: the live widgets, so the dev-prefs test can drive the dialog like a user. */
 export interface IconPicker {
@@ -167,10 +168,13 @@ export function openIconPicker(ctx: PrefsContext): IconPicker {
         });
     };
 
+    const currentCss = new Gtk.CssProvider();
+    currentCss.load_from_string(CURRENT_CSS);
     const factory = new Gtk.SignalListItemFactory();
     factory.connect('setup', (_f: Gtk.SignalListItemFactory, obj: GObject.Object) => {
         const item = obj as Gtk.ListItem;
         const cell = new Gtk.Box({halign: Gtk.Align.CENTER});
+        cell.get_style_context().add_provider(currentCss, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
         cell.append(new Gtk.Image({pixel_size: 32, margin_top: 10, margin_bottom: 10, margin_start: 10, margin_end: 10}));
         item.set_child(cell);
     });
