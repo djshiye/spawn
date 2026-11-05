@@ -48,7 +48,7 @@ import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
 import type {SearchHandle} from '../search/engine.js';
-import {closeMenu, openMenu} from './menuParams.js';
+import {closeMenu, openMenu, silenceSourceKeys} from './menuParams.js';
 import {
     applyScrollSettings, applyTone, displayName, iconSizeFor, launchApp, lookupApp, scrollIntoView,
 } from './util.js';
@@ -190,9 +190,9 @@ export class SpawnRunner {
             const cursor = Main.layoutManager.dummyCursor;
             const menu = new PopupMenu.PopupMenu(cursor, 0.5, St.Side.TOP);
             const manager = new PopupMenu.PopupMenuManager(cursor);
-            // The shell's PopupMenu adds a key controller to its source actor (Return / Space opens it);
-            // the dummy cursor is shared, so keep it quiet. destroy() removes it from the cursor itself.
-            (menu as unknown as {_keyController?: Clutter.ActorMeta})._keyController?.set_enabled(false);
+            // The shell's PopupMenu handles keys on its source actor (Return / Space opens it);
+            // the dummy cursor is shared, so keep it quiet.
+            silenceSourceKeys(menu);
 
             Main.uiGroup.add_child(menu.actor);
             menu.actor.hide();

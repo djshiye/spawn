@@ -28,6 +28,7 @@ import {PowerType} from '../../core/constants.js';
 import {error} from '../../core/log.js';
 import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
+import {closeMenu, openMenu} from '../menuParams.js';
 import {iconSizeFor} from '../util.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
 import {isDestructive, isPowerAvailable, type LogindInfo, POWER_INFO, POWER_RANK, powerSignalNames, probeLogind, runPowerAction, systemActions} from './powerActions.js';
@@ -195,7 +196,10 @@ export class PowerBar {
                     continue;
                 menu.addAction(info.name, () => runPowerAction(type, this._host, this._scope), info.icon as never);
             }
-            menu.toggle();
+            if (menu.isOpen)
+                closeMenu(menu);
+            else
+                openMenu(menu);
         }});
     }
 

@@ -213,6 +213,7 @@ export function enableDrag(scope: Scope, tile: St.Widget, payload: DragPayload):
         highlighted = null;
     };
 
+    // The 49 typings declare these two signal callbacks as returning `boolean | undefined`, hence `undefined`.
     draggable.connect('drag-begin', () => {
         try {
             if (!dead)
@@ -224,6 +225,7 @@ export function enableDrag(scope: Scope, tile: St.Widget, payload: DragPayload):
         } catch (e) {
             error('drag-begin failed', e);
         }
+        return undefined;
     });
     draggable.connect('drag-end', () => {
         try {
@@ -234,6 +236,7 @@ export function enableDrag(scope: Scope, tile: St.Widget, payload: DragPayload):
         } catch (e) {
             error('drag-end failed', e);
         }
+        return undefined;
     });
     scope.add(() => {
         dead = true;

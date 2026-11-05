@@ -24,6 +24,7 @@ import St from 'gi://St';
 import {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
 import type {SpawnSettings} from '../core/settings.js';
+import {appInfoOf} from '../model/appInfo.js';
 
 export function lookupApp(services: Services, id: string): Shell.App | null {
     try {
@@ -46,7 +47,7 @@ export function displayName(app: Shell.App, settings: SpawnSettings): string {
     if (!settings.get('apps-show-generic-names'))
         return name;
     try {
-        return app.get_app_info()?.get_generic_name() || name;
+        return appInfoOf(app)?.get_generic_name() || name;
     } catch {
         return name;
     }

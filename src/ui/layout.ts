@@ -383,6 +383,7 @@ export class SpawnLayout implements ShortcutHost {
             error('layout warm-up failed', e);
         }
         try {
+            this._folderView?.commitRename();
             this._dismissUndo();
             this._context.close();
             this._search.setSilently('');

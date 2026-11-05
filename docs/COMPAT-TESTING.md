@@ -1,7 +1,6 @@
 # Testing on other GNOME Shell releases
 
-Spawn targets GNOME Shell 51 (`metadata.json`), the host's release. Two tools check it against the
-neighbours: a container run of the real headless harness, and a static typecheck.
+Spawn declares GNOME Shell 49, 50 and 51 (`metadata.json`); 51 is the host's release. Two tools check it on all three: a container run of the real headless harness, and a static typecheck.
 
 | Fedora | GNOME Shell | libadwaita |
 | ------ | ----------- | ---------- |
@@ -59,6 +58,18 @@ npm run typecheck:compat50
 releases' ambient `gi://` declarations cannot share one program), `tsconfig.compat-<release>.json` points
 `src/env.d.ts`' imports there, and `tools/compat/<release>/ambient.d.ts` loads the `gi://` declarations
 the 4.x typings do not load by themselves. The script fails if any file of the main 51 tree ends up in
-the program. The result lists API differences (renamed or missing members); it is expected to fail until
-`src/` carries the compatibility shims. A few errors are typing quirks of the 49 packages (for example
-`Shell.App.get_app_info(): never`), not runtime differences.
+the program. Both pass; a failure lists an API difference (a renamed or missing member). The 49 packages
+have typing quirks that are not runtime differences (for example `Shell.App.get_app_info(): never`);
+`src/model/appInfo.ts` and the `drag-begin` callbacks in `src/ui/dnd.ts` cast around them.
+
+## Differences between the releases that Spawn handles
+
+- `St.ButtonMask` is `ONE / TWO / THREE` on 49 and 50, `PRIMARY / MIDDLE / SECONDARY` on 51 (`ui/widgets/interact.ts`).
+- `Clutter.KeyController` does not exist on 49 (Clutter 17; 50 has it, though its shell still handles keys on `captured-event`): the
+  popup's Escape routing falls back to a `captured-event` handler when it is missing (`ui/menu.ts`).
+- `PopupMenu.open() / close()` take a `BoxPointer.PopupAnimation` number on 49 and 50, a params object on 51; the
+  keyboard-triggered first-item focus (`_maybeStartKeynav`) is done by 51's `open()` and emulated by
+  `ui/menuParams.ts` elsewhere. The source-actor key handling of the shell's `PopupMenu` is a `key-press-event`
+  handler on 49 and 50, a `Clutter.KeyController` on 51 (`silenceSourceKeys`).
+- Destroying the folder rename entry while a popup is being mapped aborts the shell on every release (a
+  `Clutter:ERROR` unrealize assertion); the entry's `key-focus-out` therefore finishes on an idle (`ui/widgets/folderView.ts`).

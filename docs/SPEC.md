@@ -1,6 +1,6 @@
 # Spawn — v1 specification
 
-A GNOME Shell 51 application menu, rebuilt from the ground up to replace ArcMenu
+A GNOME Shell application menu (49, 50 and 51), rebuilt from the ground up to replace ArcMenu
 (GPL-2.0-or-later; Spawn is a derivative work under the same licence and credits
 ArcMenu). Research on ArcMenu's internals lives in `docs/research/`; read the file for
 your area before writing code.
@@ -102,7 +102,7 @@ extra categories links, intellihide integration beyond showing the panel.
 ## Tech
 - TypeScript (strict) compiled by `tsc` to ES modules for GJS; types from
   `@girs/gnome-shell@51` and `@girs/*`. No bundler; one output file per module.
-- UUID `spawn@djshiye.github.io`, `shell-version: ["51"]`,
+- UUID `spawn@djshiye.github.io`, `shell-version: ["49", "50", "51"]`,
   settings schema `org.gnome.shell.extensions.spawn`
   (path `/org/gnome/shell/extensions/spawn/`), relocatable folder schema
   `org.gnome.shell.extensions.spawn.folder` at `…/folders/<uuid>/`.

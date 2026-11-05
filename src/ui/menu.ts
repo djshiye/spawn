@@ -48,10 +48,15 @@ import {isActorAlive} from '../panel/validate.js';
 import type {FakePlace} from '../model/places.js';
 import {installUiDevHooks} from './devHooks.js';
 import {SpawnLayout} from './layout.js';
-import {closeMenu, openMenu} from './menuParams.js';
+import {closeMenu, openMenu, silenceSourceKeys} from './menuParams.js';
 import {applyTone, ownedScope} from './util.js';
 
 type OpenListener = (open: boolean, anchor: St.Widget | null) => void;
+
+interface KeyControllerLike {
+    connect(signal: 'key-press', cb: () => boolean): number;
+    get_key(): [boolean, number, number];
+}
 
 export class SpawnPopup {
     private readonly _scope: Scope;
@@ -211,10 +216,9 @@ export class SpawnPopup {
         const anchorScope = anchorOwned.scope;
         const menu = new PopupMenu.PopupMenu(anchor, 0.5, side);
         const manager = new PopupMenu.PopupMenuManager(anchor);
-        // The shell's PopupMenu adds its own key controller to the anchor (Return / Space / arrow
-        // toggles the menu), which would bypass the click-action settings (button.ts handles those
-        // keys). Disabled rather than removed: destroy() removes it from the anchor itself.
-        (menu as unknown as {_keyController?: Clutter.ActorMeta})._keyController?.set_enabled(false);
+        // The shell's PopupMenu handles Return / Space / arrow on the anchor (toggles the menu), which would
+        // bypass the click-action settings (button.ts handles those keys).
+        silenceSourceKeys(menu);
 
         Main.uiGroup.add_child(menu.actor);
         menu.actor.hide();
@@ -223,15 +227,24 @@ export class SpawnPopup {
             menu.actor.add_style_class_name('spawn-popup-above');
 
         // Offer Escape to the layout before the manager's own (capture-phase) handler closes the
-        // menu. Added before the manager adds its controller, so it runs first.
-        const keys = new Clutter.KeyController();
-        keys.connect('key-press', () => {
-            const [, sym] = keys.get_key();
-            if (sym === Clutter.KEY_Escape && this._layout?.handleKey({get_key_symbol: () => sym}))
-                return Clutter.EVENT_STOP;
-            return Clutter.EVENT_PROPAGATE;
-        });
-        menu.actor.add_action_full('spawn-escape', Clutter.EventPhase.CAPTURE, keys);
+        // menu. Added before the manager adds its handler, so it runs first.
+        const escape = (): boolean => this._layout?.handleKey({get_key_symbol: () => Clutter.KEY_Escape}) ?? false;
+        // Typed by hand: the 49 typings (and 50's) lack Clutter.KeyController.
+        const KeyController = (Clutter as unknown as {KeyController?: new () => KeyControllerLike}).KeyController;
+        if (KeyController) {
+            const keys = new KeyController();
+            keys.connect('key-press', () => {
+                const [, sym] = keys.get_key();
+                return sym === Clutter.KEY_Escape && escape() ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
+            });
+            menu.actor.add_action_full('spawn-escape', Clutter.EventPhase.CAPTURE, keys as unknown as Clutter.Action);
+        } else {
+            // GNOME 49 (Clutter 17) has no Clutter.KeyController (50 does, but its shell still listens for keys on
+            // `captured-event`, like 49); this handler is connected first.
+            menu.actor.connect('captured-event', (_actor: Clutter.Actor, event: Clutter.Event) =>
+                event.type() === Clutter.EventType.KEY_PRESS && event.get_key_symbol() === Clutter.KEY_Escape && escape()
+                    ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE);
+        }
         manager.addMenu(menu);
 
         this._align(menu, anchor, side);

@@ -82,7 +82,5 @@ spawn-enable --remove; sudo dnf remove gnome-shell-extension-spawn
 
 ## Open items
 
-1. `shell-version` is `["51"]` while the RPM says `gnome-shell >= 49`: on Fedora 43 (GNOME 49) and 44 (GNOME 50) the package installs but the
-   shell lists the extension as incompatible. Widen `shell-version` after testing on those shells, or raise `%global min_shell` to 51.
-2. The RPM ships the developer test code (`ui/devHooks.js`, `dev/benchmark.js`, the `Dev` D-Bus interface); all of it is inert unless the
+1. The RPM ships the developer test code (`ui/devHooks.js`, `dev/benchmark.js`, the `Dev` D-Bus interface); all of it is inert unless the
    `dev-mode` setting (default `false`) is turned on.

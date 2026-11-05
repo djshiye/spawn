@@ -1,6 +1,6 @@
 # Spawn
 
-A fast, resilient application menu for GNOME Shell 51. It replaces
+A fast, resilient application menu for GNOME Shell 49, 50 and 51. It replaces
 [ArcMenu](https://gitlab.com/arcmenu/ArcMenu) with a smaller, stricter codebase:
 
 - survives Dash to Panel / App Icons Taskbar restarts (panel targets are re-resolved on every
@@ -48,8 +48,7 @@ sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.gith
 `spawn-enable` (installed by the package) adds the extension to GNOME's enabled list without asking the running shell:
 `gnome-extensions enable` only works for extensions the shell already knows, and it learns about a newly installed
 system-wide extension at the next login.
-The extension currently declares GNOME Shell 51 only (Fedora 45); on Fedora 43 and 44 the package installs but the shell lists
-the extension as incompatible until `shell-version` is widened. Packages are unsigned (`gpgcheck=0`).
+The extension declares GNOME Shell 49, 50 and 51 (Fedora 43, 44 and 45). Packages are unsigned (`gpgcheck=0`).
 The extension lands in `/usr/share/gnome-shell/extensions/` and its schema in `/usr/share/glib-2.0/schemas/`.
 
 ### From a checkout

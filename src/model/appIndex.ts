@@ -38,6 +38,7 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 import {debounce} from '../core/debounce.js';
 import {warn} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
+import {appInfoOf, newShellApp} from './appInfo.js';
 import {appKeys, descriptionKey} from './appKeys.js';
 
 export interface AppCategory {
@@ -157,7 +158,7 @@ export class AppIndex {
         }
         const out: Shell.App[] = [];
         for (const app of used) {
-            if (!app?.get_app_info()?.should_show())
+            if (!appInfoOf(app)?.should_show())
                 continue;
             out.push(app);
             if (limit > 0 && out.length >= limit)
@@ -177,7 +178,7 @@ export class AppIndex {
         } catch (e) {
             warn(`AppIndex: cannot read the GNOME favourites: ${e}`);
         }
-        return ids.map(id => this.get(id)).filter((a): a is Shell.App => a !== null && Boolean(a.get_app_info()?.should_show()));
+        return ids.map(id => this.get(id)).filter((a): a is Shell.App => a !== null && Boolean(appInfoOf(a)?.should_show()));
     }
 
     /** Usage as 0..1 (most used app 1, linearly down; 0 = unknown). Empty when usage tracking is off. */
@@ -224,7 +225,7 @@ export class AppIndex {
     private _lookupLive(id: string): Shell.App | null {
         try {
             const app = this._appSystem?.lookup_app(id) ?? null;
-            return app?.get_app_info()?.should_show() ? app : null;
+            return appInfoOf(app)?.should_show() ? app : null;
         } catch {
             return null;
         }
@@ -250,12 +251,12 @@ export class AppIndex {
         let app = this._appSystem?.lookup_app(id) ?? null;
         if (!app && entry) {
             try {
-                app = new Shell.App({app_info: entry.get_app_info()});
+                app = newShellApp(entry.get_app_info());
             } catch {
                 app = null;
             }
         }
-        return app?.get_app_info()?.should_show() ? app : null;
+        return appInfoOf(app)?.should_show() ? app : null;
     }
 
     private _rebuild(): void {
@@ -362,7 +363,7 @@ export class AppIndex {
     }
 
     private _entryFor(app: Shell.App): AppSearchEntry {
-        const info = app.get_app_info();
+        const info = appInfoOf(app);
         const id = app.get_id() ?? '';
         const name = app.get_name() ?? '';
         let keywords: string[] = [];

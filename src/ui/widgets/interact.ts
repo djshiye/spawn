@@ -29,13 +29,20 @@ export interface ItemHandlers {
     context?(): void;
 }
 
+/**
+ * Left | middle | right. St.ButtonMask names these PRIMARY / MIDDLE / SECONDARY on GNOME 51 but
+ * ONE / TWO / THREE on 49 and 50 (where PRIMARY is undefined, which would make the mask 0 and the
+ * button ignore every click); the values are the same on all of them.
+ */
+const ALL_BUTTONS = (1 | 2 | 4) as St.ButtonMask;
+
 export function makeItemButton(styleClass: string): St.Button {
     return new St.Button({
         style_class: styleClass,
         can_focus: true,
         reactive: true,
         track_hover: true,
-        button_mask: St.ButtonMask.PRIMARY | St.ButtonMask.MIDDLE | St.ButtonMask.SECONDARY,
+        button_mask: ALL_BUTTONS,
         x_expand: true,
     });
 }

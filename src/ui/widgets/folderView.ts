@@ -12,6 +12,7 @@
 //   view.tiles(): St.Widget[]         app tiles / rows in order (keyboard nav)
 //   view.headerButtons(): St.Widget[] back + name buttons
 //   view.startRename(): void
+//   view.commitRename(): void         save an inline rename in progress (menu closing)
 //   view.scroll: St.ScrollView
 //   view.destroy()
 //   FolderViewHost: TileHost & {back(), metrics?(): {columns, tileWidth, iconSize, multiLine?, list?, rowIconSize?, size?},
@@ -70,7 +71,10 @@ export class FolderView {
     private readonly _hint: St.Label;
     private readonly _grid = new TileGrid();
     private _entry: St.Entry | null = null;
-    private _finish: ((commit: boolean) => void) | null = null;
+    private _finish: ((commit: boolean, refocus?: boolean) => void) | null = null;
+    private readonly _scope: Scope;
+    /** Cancels the idle that finishes a rename after its entry lost the key focus. */
+    private _cancelFocusOut: (() => void) | null = null;
     private _uuid: string | null = null;
     private _tiles: St.Widget[] = [];
     private _tileScope: Scope;
@@ -79,6 +83,7 @@ export class FolderView {
     constructor(scope: Scope, services: Services, host: FolderViewHost) {
         this._services = services;
         this._host = host;
+        this._scope = scope;
         this._tileScope = scope.child('folder tiles');
 
         this.actor = new St.BoxLayout({
@@ -235,25 +240,37 @@ export class FolderView {
         const ct = entry.clutter_text;
         ct.max_length = MAX_NAME_LENGTH;
         let finished = false;
-        const finish = (commit: boolean) => {
+        const finish = (commit: boolean, refocus = true) => {
             if (finished)
                 return;
             finished = true;
             this._finish = null;
+            this._cancelFocusOut?.();
+            this._cancelFocusOut = null;
             const text = ct.text.trim();
             this._entry = null;
             entry.destroy();
             this._nameButton.show();
             if (commit && text && this._uuid === uuid)
                 this._services.pinned.renameFolder(uuid, text);
-            this._nameButton.grab_key_focus();
+            if (refocus)
+                this._nameButton.grab_key_focus();
         };
         this._finish = finish;
         ct.connect('activate', () => {
             finish(true);
             return Clutter.EVENT_STOP;
         });
-        ct.connect('key-focus-out', () => finish(true));
+        // Not finished synchronously: the focus also leaves while the popup is being mapped (a reopen after
+        // the menu closed mid-rename), and destroying the entry then unrealizes a mapped actor, which
+        // aborts the shell. The focus went elsewhere on purpose, so it is not taken back either.
+        ct.connect('key-focus-out', () => {
+            this._cancelFocusOut?.();
+            this._cancelFocusOut = this._scope.idle(() => {
+                this._cancelFocusOut = null;
+                finish(true, false);
+            });
+        });
         ct.connect('key-press-event', (_a: Clutter.Actor, event: Clutter.Event) => {
             if (event.get_key_symbol() === Clutter.KEY_Escape) {
                 finish(false);
@@ -270,6 +287,11 @@ export class FolderView {
         this._cancelRename();
     }
 
+    /** Save an inline rename in progress (the menu is closing); no-op otherwise. */
+    commitRename(): void {
+        this._finish?.(true, false);
+    }
+
     /** True while the rename entry is open (the layout then leaves Escape/typing to it). */
     get renaming(): boolean {
         return this._entry !== null;
@@ -279,6 +301,8 @@ export class FolderView {
         if (this._destroyed)
             return;
         this._destroyed = true;
+        this._cancelFocusOut?.();
+        this._cancelFocusOut = null;
         this._tileScope.dispose();
         this.actor.destroy();
     }
