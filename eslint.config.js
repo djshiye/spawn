@@ -13,7 +13,7 @@ const gjsGlobals = {
 };
 
 export default tseslint.config(
-    {ignores: ['build/**', 'dist/**', 'node_modules/**', '.dev/**', 'docs/**']},
+    {ignores: ['build/**', 'dist/**', 'node_modules/**', '.dev/**', 'docs/**', '.claude/**']},
     js.configs.recommended,
     {
         files: ['src/**/*.ts'],
