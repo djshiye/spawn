@@ -677,7 +677,7 @@ export class SpawnLayout implements ShortcutHost {
         this._search.actor.add_style_class_name(top ? 'spawn-search-top' : 'spawn-search-bottom');
     }
 
-    /** The enabled quick links, minus the one that is the start view itself (none at all for the category list). */
+    /** The enabled quick links, minus the start view itself and All Apps where its nav button shows (none for the category list). */
     private _linkIds(): number[] {
         const s = this._services.settings;
         const view = s.get('default-menu-view');
@@ -688,7 +688,9 @@ export class SpawnLayout implements ShortcutHost {
             skip.add(CategoryLink.PINNED);
         if (view === 'Frequent_Apps' || view === 'Pinned_And_Frequent_Apps')
             skip.add(CategoryLink.FREQUENT);
-        if (view === 'All_Programs')
+        // All_Programs is the start view itself; on the pinned-ish start views the All Apps nav button is already
+        // right under the links, so a second "All Apps" row would only duplicate it.
+        if (view === 'All_Programs' || isDefaultViewPinnedish(view))
             skip.add(CategoryLink.ALL_PROGRAMS);
         const known = new Set<number>(Object.values(CategoryLink));
         const seen = new Set<number>();

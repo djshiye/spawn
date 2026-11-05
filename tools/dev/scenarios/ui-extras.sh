@@ -117,11 +117,11 @@ screenshot ui-extras-default
 echo "== quick links at the bottom (default)"
 dconf write $K/arcmenu-extra-categories-links "$LINKS_ALL"
 sleep 1
-expect "four links: the start view's own (Pinned) is skipped" "$(count spawn-links)" 1
-expect_state "four link rows" layout.links 4
+expect "links box shown: the start view's own (Pinned) and All Apps (the nav button already offers it) are skipped" "$(count spawn-links)" 1
+expect_state "three link rows" layout.links 3
 above "the list is above the links" spawn-stack spawn-links
 above "the links are above the Back / All Apps button" spawn-links spawn-nav
-sweep_in "links over the whole left pane" spawn-links spawn-list-row spawn-left-pane 4
+sweep_in "links over the whole left pane" spawn-links spawn-list-row spawn-left-pane 3
 edge "the links" "spawn-links" spawn-left-pane both
 screenshot ui-extras-links-bottom
 
@@ -136,14 +136,14 @@ check "Tab from the pinned list reaches the first link" $reached
 key Down 0.3
 expect "Down moves to the next link" "$(state_get layout.focus)" "St_Button.spawn-list-row"
 key Return 0.9
-expect_state "Return on the second link (Favorites, Frequent, All Apps, Recent Files) opens Frequent" layout.view frequent
+expect_state "Return on the second link (Favorites, Frequent, Recent Files) opens Frequent" layout.view frequent
 expect "the links are hidden on another view" "$(count spawn-links)" 0
 key Escape 0.8
 expect_state "Escape returns to the start view" layout.view pinned
-expect_state "the links are back" layout.links 4
+expect_state "the links are back" layout.links 3
 
 echo "-- clicking each link (in a List pinned view the links are the only spawn-list-row actors)"
-for target in "favorites:0" "frequent:1" "all:2" "recent:3"; do
+for target in "favorites:0" "frequent:1" "recent:2"; do
     want="${target%%:*}"
     idx="${target##*:}"
     ui_call ShowView default >/dev/null
@@ -158,9 +158,9 @@ echo "== quick links at the top"
 dconf write $K/arcmenu-extra-categories-links-location "'Top'"
 sleep 1
 fresh_menu
-expect_state "links shown" layout.links 4
+expect_state "links shown" layout.links 3
 above "the links are above the list" spawn-links spawn-stack
-sweep_in "top links over the whole left pane" spawn-links spawn-list-row spawn-left-pane 4
+sweep_in "top links over the whole left pane" spawn-links spawn-list-row spawn-left-pane 3
 screenshot ui-extras-links-top
 dconf reset $K/arcmenu-extra-categories-links-location
 
@@ -168,7 +168,7 @@ echo "== the link of the start view is skipped; none for the category list"
 dconf write $K/default-menu-view "'Frequent_Apps'"
 sleep 1
 fresh_menu
-expect_state "Frequent start view: no Frequent link, Pinned stays" layout.links 4
+expect_state "Frequent start view: no Frequent or All Apps link, Pinned stays" layout.links 3
 dconf write $K/default-menu-view "'All_Programs'"
 sleep 1
 fresh_menu
@@ -176,7 +176,7 @@ expect_state "All_Programs start view: five minus All Apps" layout.links 4
 dconf write $K/default-menu-view "'Pinned_And_Frequent_Apps'"
 sleep 1
 fresh_menu
-expect_state "Pinned_And_Frequent_Apps: Pinned and Frequent are the start view" layout.links 3
+expect_state "Pinned_And_Frequent_Apps: Pinned and Frequent are the start view, All Apps is the nav button" layout.links 2
 dconf write $K/default-menu-view "'Categories_List'"
 sleep 1
 fresh_menu

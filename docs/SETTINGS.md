@@ -136,7 +136,8 @@ bookmarks file, Spawn only from what is actually shown, so no rule appears next 
 Rows on the start view that open another view in one click (ArcMenu's "Category Quick Links" of the arcmenu layout).
 Shown only on the start view (`default-menu-view`), never for the category list, never for the start view itself
 (Pinned for Pinned_Apps / Pinned_And_Frequent_Apps, Frequent for Frequent_Apps / Pinned_And_Frequent_Apps, All Apps
-for All_Programs), and the box is hidden when no link remains. Menu page: "Category quick links".
+for All_Programs), never All Apps on the Pinned / Frequent start views (the All Apps nav button right below already
+opens it), and the box is hidden when no link remains. Menu page: "Category quick links".
 
 | Key | Type | Default | Migrates from (ArcMenu) |
 |---|---|---|---|
