@@ -37,6 +37,19 @@ for display in List Grid; do
     delete_first_folder
     expect "banner is showing" "$(count spawn-undo-banner)" 1
     screenshot "ui-folder-undo-banner-$display"
+    # Geometry: the banner keeps the pane's 8 px inset on both sides (left edge = All Apps face, right = search box),
+    # and the Undo button draws a face (styling and focus ring come from .spawn-nav-surface).
+    # nav faces in stage order: [0] the Undo button's, [1] All Apps'
+    banner="$(rect spawn-undo-banner)"; undoface="$(rect spawn-nav-surface 0)"; navface="$(rect spawn-nav-surface 1)"
+    searchbox="$(rect spawn-search-box)"
+    check "banner starts at the All Apps face and ends with the search box ($banner, $navface, $searchbox)" "$(python3 -c '
+import json, sys
+b, n, q = (json.loads(a) for a in sys.argv[1:4])
+print(0 if b[0] == n[0] and b[0] + b[2] == q[0] + q[2] else 1)' "$banner" "$navface" "$searchbox")"
+    check "Undo draws a 32 px face at the right end of the banner ($undoface)" "$(python3 -c '
+import json, sys
+b, u = json.loads(sys.argv[1]), json.loads(sys.argv[2])
+print(0 if u[3] == 32 and u[0] > b[0] and b[0] + b[2] - 8 <= u[0] + u[2] <= b[0] + b[2] else 1)' "$banner" "$undoface")"
     check "folder uuid is gone from the pinned list" "$(pinned_ids | grep -q "$F_INTERNET" && echo 1 || echo 0)"
     check "its apps moved to the top level" "$(pinned_ids | grep -q 'slack.desktop' && echo 0 || echo 1)"
     check "its dconf path is empty" "$([ -z "$(dconf read "${K}folders/$F_INTERNET/pinned-apps")" ] && echo 0 || echo 1)"

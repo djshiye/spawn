@@ -18,7 +18,7 @@ import St from 'gi://St';
 
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-import {makeItemButton, wireItem} from './interact.js';
+import {makeFace, makeItemButton, wireItem} from './interact.js';
 
 export class UndoBanner {
     readonly actor: St.BoxLayout;
@@ -31,7 +31,8 @@ export class UndoBanner {
         this._label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         this.button = makeItemButton('spawn-nav-button spawn-undo-button');
         this.button.x_expand = false;
-        this.button.set_child(new St.Label({text: _('Undo'), y_align: Clutter.ActorAlign.CENTER}));
+        // Like every menu item: a transparent button around a visible face that draws hover/focus.
+        this.button.set_child(makeFace('spawn-nav-surface', new St.Label({text: _('Undo'), y_align: Clutter.ActorAlign.CENTER})));
         wireItem(this.button, {activate: () => onUndo()});
         this.actor.add_child(this._label);
         this.actor.add_child(this.button);

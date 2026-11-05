@@ -899,10 +899,16 @@
  * a .spawn-nav-button, so hover / focus / pressed (accent ring) come from the item rules. */
 
 .spawn-undo-banner {
+    /* the left pane has no side padding (items own it), so the banner takes the pane's 8 px as margin */
+    margin: 0 8px;
     spacing: 8px;
     padding: 4px 4px 4px 12px;
     border-radius: 8px;
     background-color: rgba(255, 255, 255, 0.08);
+}
+
+.spawn-undo-banner .spawn-undo-button {
+    padding: 0;
 }
 
 .spawn-undo-label {
