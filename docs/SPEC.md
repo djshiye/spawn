@@ -77,6 +77,11 @@ your area before writing code.
 - Option to hide the Activities button (restore its *previous* visibility).
 - Preferences (Adw): General, Button, Menu (views, sizes), Pinned & Shortcuts,
   Appearance, Import from ArcMenu, About.
+- Appearance: custom menu colours with theme presets (ArcMenu's `menu-themes` format; a preset chooser incl.
+  "Follow the desktop theme", save-current-as-preset, a manage dialog to rename / reorder / remove), the
+  menu's distance from the panel (`menu-arrow-rise`) and the panel button's colours. `menu-position-alignment`
+  places the menu under a centred button; `runner-font-size` sets the runner's font; `icon-size-categories` /
+  `icon-size-shortcuts` = 0 hide those icons, `icon-size-misc` sizes the search and Back / All Apps icons.
 - Migration: reads ArcMenu settings via a bundled copy of ArcMenu's compiled schema
   (so it works even after ArcMenu is removed), maps every v1 key and copies pinned
   folders, shows a preview of what will be imported, and offers to disable ArcMenu.

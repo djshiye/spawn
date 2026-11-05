@@ -249,14 +249,60 @@ test('runner: sizes outside the schema range are clamped with a warning', () => 
 
 test('runner: keys without an equivalent are skipped with a runner-specific reason', () => {
     const p = planMigration(snap({
-        'runner-font-size': 14, 'runner-menu-height-static': true, 'runner-searchbar-location': 'Bottom',
+        'runner-menu-height-static': true, 'runner-searchbar-location': 'Bottom',
         'runner-search-display-style': 'Grid', 'runner-show-settings-button': false,
         'runner-hotkey-overlay-key-enabled': true, 'runner-hotkey-open-primary-monitor': true,
     }));
     assertEquals(p.items.some(i => i.key.startsWith('runner-')), false);
-    assertEquals(p.skipped.length, 7);
+    assertEquals(p.skipped.length, 6);
     for (const s of p.skipped)
         assert(s.reason.length > 0 && !s.reason.includes('not part of v1'), `${s.key}: ${s.reason}`);
+});
+
+test('runner-font-size and menu-position-alignment are imported, out-of-range values clamped with a warning', () => {
+    let p = planMigration(snap({'runner-font-size': 14, 'menu-position-alignment': 80}));
+    const v = k => p.items.find(i => i.key === k).value;
+    assertEquals([v('runner-font-size'), v('menu-position-alignment')], [14, 80]);
+    assertEquals([p.skipped, p.warnings], [[], []]);
+    p = planMigration(snap({'runner-font-size': 99, 'menu-position-alignment': -5}));
+    assertEquals([v('runner-font-size'), v('menu-position-alignment')], [30, 0]);
+    assertEquals(p.warnings.length, 2);
+});
+
+test('menu-arrow-rise is imported as (enabled, px), px clamped to 0..50; a wrong format is skipped', () => {
+    let p = planMigration(snap({'menu-arrow-rise': [true, 12]}));
+    assertEquals(p.items.find(i => i.key === 'menu-arrow-rise').value, [true, 12]);
+    p = planMigration(snap({'menu-arrow-rise': [true, 80]}));
+    assertEquals(p.items.find(i => i.key === 'menu-arrow-rise').value, [true, 50]);
+    assertEquals(p.warnings.length, 1);
+    p = planMigration(snap({'menu-arrow-rise': [false, -30]}));
+    assertEquals(p.items.find(i => i.key === 'menu-arrow-rise').value, [false, 0]);
+    assertEquals(p.warnings.length, 1);
+    p = planMigration(snap({'menu-arrow-rise': 'x'}));
+    assertEquals(p.skipped, [{key: 'menu-arrow-rise', reason: 'unexpected value format'}]);
+});
+
+test('menu-themes: ArcMenu\'s presets are copied verbatim; malformed entries are dropped with a warning', () => {
+    const arc = fixture.defaults['menu-themes'];
+    assertEquals(arc.length, 4);
+    const whole = planMigration(snap({'menu-themes': arc}));
+    assertEquals(whole.items.find(i => i.key === 'menu-themes').value, arc);
+    assertEquals(whole.warnings, []);
+    const good = arc[0];
+    const p = planMigration(snap({'menu-themes': [
+        good,
+        good.slice(0, 11),                                        // too short
+        ['  ', ...good.slice(1)],                                 // empty name
+        [good[0], 'url(evil)', ...good.slice(2)],                 // unsafe colour
+        [good[0], ...good.slice(1, 4), 'wide', ...good.slice(5)], // width not a number
+        42,                                                       // not a list
+        ['Second', ...good.slice(1)],
+    ]}));
+    assertEquals(p.items.find(i => i.key === 'menu-themes').value.map(t => t[0]), ['ArcMenu Style', 'Second']);
+    assertEquals(p.warnings.length, 5);
+    assert(p.warnings.every(w => w.startsWith('menu-themes: theme #')), p.warnings.join(' | '));
+    assertEquals(p.skipped, []);
+    assertEquals(planMigration(snap({'menu-themes': 'x'})).skipped, [{key: 'menu-themes', reason: 'unexpected value format'}]);
 });
 
 test('click actions: ArcMenu -> Menu, ContextMenu -> ContextMenu, None -> None', () => {

@@ -115,6 +115,16 @@ test('withAlpha handles hex, rgb and passes through unknown formats', () => {
     assertEquals(withAlpha('red', 0.1), 'red');
 });
 
+test('menu-arrow-rise: a rule for the main popup only (not the runner), independent of the override, clamped', () => {
+    assert(!buildCss(input()).includes('-arrow-rise'), 'no rule without the setting');
+    assert(!buildCss(input({arrowRise: [false, 12]})).includes('-arrow-rise'), 'disabled');
+    const css = buildCss(input({arrowRise: [true, 12]}));
+    assert(css.includes('.spawn-menu-popup {\n    -arrow-rise: 12px;\n}'), css);
+    assert(!css.includes('.popup-menu-content'), 'override stays off');
+    assert(buildCss(input({arrowRise: [true, 400]})).includes('-arrow-rise: 50px;'));
+    assert(buildCss(input({arrowRise: [true, -400]})).includes('-arrow-rise: 0px;'));
+});
+
 test('balanced braces in the full CSS', () => {
     const base = input({override: true, searchEntryRadius: [true, 10]});
     base.buttonColors.fg = [true, '#fff'];

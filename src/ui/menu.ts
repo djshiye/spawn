@@ -9,6 +9,9 @@
 // built, expensive) layout actor into it; the layout itself is built once.
 // While the popup is open on a Dash to Panel panel with intellihide, that panel is held revealed
 // (panel/intellihide.ts); the hold is given back on close, once the pointer is off the panel.
+// The popup actor carries `spawn-popup spawn-menu-popup` (the theme's `menu-arrow-rise` targets
+// .spawn-menu-popup only; the runner shares .spawn-popup). `menu-position-alignment` moves a popup under
+// a panel button that is centred in the panel (see _align).
 // A popup that opens upward (bottom panel, arrow side BOTTOM) gets the class `spawn-popup-above`
 // (stylesheet.css moves Orchis' 14 px shadow margin from below the content to above it, so the gap
 // to the panel matches the one under a top panel). On every open the popup tells the layout which
@@ -209,7 +212,7 @@ export class SpawnPopup {
 
         Main.uiGroup.add_child(menu.actor);
         menu.actor.hide();
-        menu.actor.add_style_class_name('spawn-popup');
+        menu.actor.add_style_class_name('spawn-popup spawn-menu-popup');
         if (side === St.Side.BOTTOM)
             menu.actor.add_style_class_name('spawn-popup-above');
 
@@ -224,6 +227,9 @@ export class SpawnPopup {
         });
         menu.actor.add_action_full('spawn-escape', Clutter.EventPhase.CAPTURE, keys);
         manager.addMenu(menu);
+
+        this._align(menu, anchor, side);
+        this._services.settings.onChanged(anchorScope, ['position-in-panel', 'menu-position-alignment'], () => this._align(menu, anchor, side));
 
         layout.actor.get_parent()?.remove_child(layout.actor);
         menu.box.add_child(layout.actor);
@@ -244,6 +250,28 @@ export class SpawnPopup {
         this._anchor = anchor;
         this._side = side;
         this._menu = menu;
+    }
+
+    /**
+     * `menu-position-alignment` (0 = the menu extends to the left of the button, 100 = to the right):
+     * only for a button centred in a horizontal panel, as in ArcMenu. The boxpointer places the arrow at
+     * `arrowAlignment` of the menu's width (0.5 = centred on the button), so the menu is moved by
+     * changing that fraction; it is read again on every open and applied at once to an open popup.
+     */
+    private _align(menu: PopupMenu.PopupMenu, anchor: St.Widget, side: St.Side): void {
+        try {
+            const s = this._services.settings;
+            const horizontal = side === St.Side.TOP || side === St.Side.BOTTOM;
+            const alignment = horizontal && s.get('position-in-panel') === 'Center'
+                ? 1 - s.get('menu-position-alignment') / 100
+                : 0.5;
+            const m = menu as unknown as {_arrowAlignment: number; _boxPointer: {setPosition(source: St.Widget, alignment: number): void}};
+            m._arrowAlignment = alignment;
+            if (this._open && this._menu === menu)
+                m._boxPointer.setPosition(anchor, alignment);
+        } catch (e) {
+            error('menu alignment failed', e);
+        }
     }
 
     private _release(): void {

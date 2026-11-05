@@ -23,6 +23,7 @@
 import {ARCMENU_ID_PREFIX, ContextMenuId, ShortcutId, SPAWN_ICON, SPAWN_ID_PREFIX} from '../core/constants.js';
 import {resolveButtonIcon} from '../core/icons.js';
 import {isValidFolderId} from '../core/folderId.js';
+import {parsePresets, serializePresets} from '../theme/presets.js';
 import type {Entry, SettingKey} from '../core/settings.js';
 
 export const ARCMENU_UUID = 'arcmenu@arcmenu.com';
@@ -76,7 +77,11 @@ export const INT_RANGES: Readonly<Record<string, readonly [min: number, max: num
     'max-frequent-apps': [1, 50],
     'runner-menu-width': [300, 2000],
     'runner-menu-height': [300, 1000],
+    'menu-position-alignment': [0, 100],
+    'runner-font-size': [0, 30],
 };
+/** `menu-arrow-rise` (bi): the px part is clamped to Spawn's 0..50 (ArcMenu allows -50..50; a negative rise pulls the menu over the panel). */
+const ARROW_RISE_RANGE = [0, 50] as const;
 
 // ------------------------------------------------------------------------------------------
 // Value kinds for keys that are copied as-is (same name, same format).
@@ -179,6 +184,9 @@ const SAME_NAME: ReadonlyArray<readonly [SettingKey, Kind]> = [
     ['menu-button-hover-fg-color', 'bs'],
     ['menu-button-active-bg-color', 'bs'],
     ['menu-button-active-fg-color', 'bs'],
+    // appearance-presets
+    ['menu-position-alignment', 'i'],
+    ['runner-font-size', 'i'],
 ];
 
 function isInt(v: unknown): v is number {
@@ -226,9 +234,6 @@ const NO_LAYOUT = 'Spawn has a single layout';
 const SKIP_EXACT: Readonly<Record<string, string>> = {
     'menu-layout': 'handled separately (Spawn has a single layout)',
     'force-menu-location': 'menu placement is always anchored to the button',
-    'menu-position-alignment': 'not supported in v1',
-    'menu-arrow-rise': 'menu arrow is not used',
-    'menu-themes': 'theme presets are not part of v1',
     'extra-categories': 'extra categories are not part of v1',
     'arcmenu-extra-categories-links': 'extra categories are not part of v1',
     'arcmenu-extra-categories-links-location': 'extra categories are not part of v1',
@@ -243,7 +248,6 @@ const SKIP_EXACT: Readonly<Record<string, string>> = {
     'runner-hotkey-overlay-key-enabled': "the Super key only opens Spawn's menu; give the runner an ordinary shortcut",
     'hotkey-open-primary-monitor': 'not supported in v1',
     'runner-hotkey-open-primary-monitor': 'the runner always opens on the monitor under the pointer',
-    'runner-font-size': 'the runner uses the menu font',
     'runner-menu-height-static': 'the runner always grows with its results',
     'runner-searchbar-location': 'the runner search box is always on top',
     'runner-search-display-style': 'runner results are always a list',
@@ -469,6 +473,30 @@ export function planMigration(snapshot: ArcMenuSnapshot, spawnDefaults?: Partial
             skip('searchbar-default-bottom-location', 'unexpected value format');
     }
 
+    // appearance-presets: theme presets (same aas format, invalid entries dropped) and the arrow rise (bi, clamped).
+    if (isSet('menu-themes')) {
+        const v = values['menu-themes'];
+        if (!Array.isArray(v)) {
+            skip('menu-themes', 'unexpected value format');
+        } else {
+            const parsed = parsePresets(v);
+            plan.warnings.push(...parsed.warnings);
+            add('menu-themes', 'menu-themes', serializePresets(parsed.presets));
+        }
+    }
+    if (isSet('menu-arrow-rise')) {
+        const v = values['menu-arrow-rise'];
+        if (!validKind('bi', v))
+            skip('menu-arrow-rise', 'unexpected value format');
+        else {
+            const [on, px] = v as [boolean, number];
+            const clamped = Math.min(Math.max(px, ARROW_RISE_RANGE[0]), ARROW_RISE_RANGE[1]);
+            if (clamped !== px)
+                plan.warnings.push(`menu-arrow-rise: ${px} is outside ${ARROW_RISE_RANGE[0]}..${ARROW_RISE_RANGE[1]}; using ${clamped}`);
+            add('menu-arrow-rise', 'menu-arrow-rise', [on, clamped]);
+        }
+    }
+
     // Activities button: ArcMenu hides it by default, so migrate the effective value.
     const show = effective('show-activities-button');
     if (typeof show === 'boolean')
@@ -653,6 +681,8 @@ export function describeValue(value: unknown, key?: string): string {
             const on = (value as Array<[number, boolean]>).filter(([, enabled]) => enabled).map(([id]) => POWER_NAMES[id] ?? `#${id}`);
             return on.length ? `${on.join(', ')} (in this order)` : 'none enabled';
         }
+        if (key === 'menu-themes' && value.every(Array.isArray))
+            return `${value.length} ${value.length === 1 ? 'theme' : 'themes'}: ${(value as unknown[][]).map(t => String(t[0])).join(', ')}`;
         if (value.length && value.every(e => e !== null && typeof e === 'object' && 'id' in (e as object)))
             return `${value.length} ${value.length === 1 ? 'item' : 'items'}`;
         return JSON.stringify(value);

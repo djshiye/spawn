@@ -9,7 +9,7 @@
 #   --apply-import  run the real migration against the sandbox dconf (tools/dev-prefs-import.js), check that
 #                Reset / Undo / Import leave the settings writable (tools/dev-prefs-reset.js), and print the resulting spawn dconf dump before opening the prefs
 #   --dialogs    also screenshot the standalone dialogs (icon picker, app list, folder editor,
-#                shortcut capture, rename prompt) as dialog-<name>.png
+#                shortcut capture, rename prompt, preset manager) as dialog-<name>.png
 #   --picker-test drive the icon picker like a user (System source, search, pick) and check the dconf value
 #                (tools/dev-prefs-picker.js); fails the run on any failed check
 #   --no-arcmenu do not load docs/research/user-arcmenu-settings.ini into the sandbox dconf
@@ -184,7 +184,7 @@ done
 
 if [ "$SPAWN_DIALOGS" = 1 ]; then
     # extensionDir for these standalone runs is the private build dir (it contains data/icons).
-    for d in icons icons-system apps folder shortcut prompt; do
+    for d in icons icons-system apps folder shortcut prompt presets; do
         gjs -m "$root/tools/dev-prefs-dialog.js" "$dev/build" "$d" >>"$plog" 2>&1 &
         dpid=$!
         sleep 4

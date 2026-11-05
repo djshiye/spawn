@@ -10,6 +10,8 @@
 // SpawnLayout._onSearchText / _onSearchActivate / _onSearchKey; it is repeated here in a few lines
 // instead of being extracted, so the main layout stays untouched.
 //
+// `runner-font-size` (pt; 0 = the menu font) sets the font of the whole popup content and of the entry.
+//
 // Hosting: a PopupMenu anchored at Main.layoutManager.dummyCursor (as ArcMenu does), so the shell's
 // grab handling gives modal focus, Escape and click-outside for free. The dummy cursor is moved to
 // the wanted spot before every open. Nothing is built before the first open(): the PopupMenu, the
@@ -267,7 +269,10 @@ export class SpawnRunner {
 
         const width = Math.max(200, Math.min(s.get('runner-menu-width'), area.width - 2 * SCREEN_MARGIN));
         const height = Math.min(s.get('runner-menu-height'), area.height - 2 * SCREEN_MARGIN);
-        ui.content.style = `width: ${width}px;`;
+        // `runner-font-size` (pt, 0 = the menu font): on the content so the results and the entry inherit it
+        const font = s.get('runner-font-size');
+        ui.content.style = `width: ${width}px;${font > 0 ? ` font-size: ${font}pt;` : ''}`;
+        ui.search.actor.style = font > 0 ? `font-size: ${font}pt;` : '';
         ui.scroll.style = `max-height: ${Math.max(120, height - CHROME_HEIGHT)}px;`;
 
         const x = Math.round(area.x + area.width / 2);

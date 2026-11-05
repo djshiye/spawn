@@ -145,6 +145,10 @@ export interface SettingsMap {
     'menu-button-hover-fg-color': [boolean, string];
     'menu-button-active-bg-color': [boolean, string];
     'menu-button-active-fg-color': [boolean, string];
+    'menu-themes': string[][];
+    'menu-position-alignment': number;
+    'menu-arrow-rise': [boolean, number];
+    'runner-font-size': number;
     'prefs-visible-page': number;
     'migration-done': boolean;
 }

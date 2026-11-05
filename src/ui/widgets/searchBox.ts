@@ -4,6 +4,8 @@
 // Key handling that must happen before the text widget sees it (Down/Up/Tab to leave the entry)
 // is reported through `onNavigate`; Return through `onActivate`.
 //
+// The two icons follow `icon-size-misc` (live).
+//
 // Public API:
 //   new SearchBox(scope: Scope, settings: SpawnSettings)
 //   box.actor: St.Entry
@@ -34,18 +36,27 @@ export class SearchBox {
     private readonly _navListeners = new Set<(key: number, shift: boolean) => boolean>();
     private _silent = false;
 
-    constructor(scope: Scope, _settings: SpawnSettings) {
+    constructor(scope: Scope, settings: SpawnSettings) {
         const clearIcon = new St.Icon({icon_name: 'edit-clear-symbolic', style_class: 'spawn-search-icon'});
+        const findIcon = new St.Icon({icon_name: 'edit-find-symbolic', style_class: 'spawn-search-icon'});
         this.actor = new St.Entry({
             style_class: 'spawn-search-box',
             hint_text: _('Search apps, windows and files…'),
             can_focus: true,
             track_hover: true,
-            primary_icon: new St.Icon({icon_name: 'edit-find-symbolic', style_class: 'spawn-search-icon'}),
+            primary_icon: findIcon,
             secondary_icon: clearIcon,
             x_expand: true,
         });
         clearIcon.hide();
+        // icon-size-misc: the size of both icons (<= 0 = the stylesheet's 16 px; -1 hands the size back to the CSS)
+        const sizeIcons = (): void => {
+            const size = settings.get('icon-size-misc');
+            findIcon.icon_size = size > 0 ? size : -1;
+            clearIcon.icon_size = size > 0 ? size : -1;
+        };
+        sizeIcons();
+        settings.onChanged(scope, ['icon-size-misc'], sizeIcons);
 
         const ct = this.actor.clutter_text;
         ct.connect('text-changed', () => {
