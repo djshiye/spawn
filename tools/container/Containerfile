@@ -10,7 +10,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
         dbus-daemon dbus-tools dconf glib2 glib2-devel python3 nodejs npm \
         gjs gtk4 libadwaita adwaita-icon-theme gsettings-desktop-schemas gnome-menus accountsservice-libs \
         default-fonts-core-sans default-fonts-core-mono adwaita-fonts-all \
-        procps-ng findutils which hostname xdg-user-dirs util-linux \
+        procps-ng findutils diffutils which hostname xdg-user-dirs util-linux \
     && dnf clean all \
     && dbus-uuidgen --ensure=/etc/machine-id \
     && mkdir -p /home/dev && chmod 0777 /home/dev

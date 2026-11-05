@@ -10,6 +10,8 @@
 #
 # Environment:
 #   SPAWN_CONTAINER_REBUILD=1    rebuild the cached image spawn-dev:f<release> (otherwise it is built once and reused)
+#   SPAWN_CONTAINER_BUILD=<dir>  run this build output (a complete build/ tree, mounted read-only over /work/build)
+#                                instead of the repo's build/, e.g. a hand-patched copy for an experiment
 #   SPAWN_CONTAINER_NO_THEME=1   do not mount the host's Orchis theme / user-theme extension (the seeded runs use
 #                                them when present, exactly like the host harness does)
 #
@@ -22,9 +24,8 @@
 #     org.gnome.shell disable-extension-version-validation, so metadata.json (shell-version ["51"]) is NOT edited
 #     and Spawn / Dash to Panel / user-theme load on every release;
 #   - --with-dtp mounts the host's Dash to Panel read-only where the harness looks for it ($HOME/.local/share/...);
-#   - the seeded scenarios pin apps from the host (seed.ini); the container has none of them, so .desktop stubs
-#     (copies of the host's files when found, else generated) are put in .dev/f<release>/stub-apps and added to
-#     XDG_DATA_DIRS;
+#   - the scenarios depend on the host's installed apps (seed.ini pins them), so copies of the host's .desktop files
+#     are mounted read-only as /usr/local/share/applications (the scenarios look there too);
 #   - software rendering only (llvmpipe): no --privileged, no /dev/dri.
 set -euo pipefail
 
@@ -37,7 +38,7 @@ if [ -z "$rel" ] || [ -z "$scenario" ] || ! [[ "$rel" =~ ^[0-9]+$ ]]; then
 fi
 shift 2
 image="spawn-dev:f$rel"
-dev_rel=".dev/f$rel"
+dev_rel=".dev/f$rel${SPAWN_CONTAINER_BUILD:+-patched}"
 dev="$root/$dev_rel"
 mkdir -p "$dev"
 
@@ -48,7 +49,7 @@ if [ "${SPAWN_CONTAINER_REBUILD:-0}" = 1 ] || ! podman image exists "$image"; th
 fi
 
 # ---- build on the host (prefs builds its own copy inside the container)
-if [ "$scenario" != prefs ]; then
+if [ "$scenario" != prefs ] && [ -z "${SPAWN_CONTAINER_BUILD:-}" ]; then
     stamp="$root/build/.built"
     if [ ! -f "$stamp" ] || [ -n "$(find "$root/src" "$root/schemas" "$root/data" "$root/stylesheet.css" \
             "$root/metadata.json" "$root/tsconfig.json" -newer "$stamp" -print -quit)" ]; then
@@ -57,26 +58,27 @@ if [ "$scenario" != prefs ]; then
     fi
 fi
 
-# ---- .desktop stubs for the apps tools/dev/seed.ini pins
+# ---- the host's installed applications
+# The host harness sees the system's application dirs (its own XDG_DATA_HOME is replaced by the sandbox), and
+# seed.ini / the scenarios depend on them (pinned apps, Frequent, generic names, folders). Copy exactly those
+# .desktop files (not ~/.local/share/applications, which the host harness does not see either); earlier dirs win,
+# like in XDG_DATA_DIRS. They are only metadata, nothing launches them. TryExec lines are dropped and the Exec
+# program is replaced by /usr/bin/true, because GIO rejects an entry whose program is missing (the programs are
+# not installed in the container).
 stubs="$dev/stub-apps/applications"
+rm -rf "$dev/stub-apps"
 mkdir -p "$stubs"
-host_apps=("$HOME/.local/share/applications" /usr/share/applications /var/lib/flatpak/exports/share/applications
-    "$HOME/.local/share/flatpak/exports/share/applications")
-for id in $(grep -oE '[A-Za-z0-9._-]+\.desktop' "$root/tools/dev/seed.ini" | sort -u); do
-    [ -f "$stubs/$id" ] && continue
-    found=""
-    for d in "${host_apps[@]}"; do
-        [ -f "$d/$id" ] && { found="$d/$id"; break; }
+IFS=: read -r -a host_dirs <<<"${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+for d in "${host_dirs[@]}"; do
+    [ -d "$d/applications" ] || continue
+    for f in "$d"/applications/*.desktop; do
+        [ -f "$f" ] && [ ! -e "$stubs/$(basename "$f")" ] && sed -e '/^TryExec=/d' -e 's|^Exec=[^ ]*|Exec=/usr/bin/true|' "$f" >"$stubs/$(basename "$f")"
     done
-    if [ -n "$found" ]; then
-        cp "$found" "$stubs/$id"
-    else
-        printf '[Desktop Entry]\nType=Application\nName=%s\nExec=true\nIcon=application-x-executable\n' "${id%.desktop}" >"$stubs/$id"
-    fi
 done
 
 # ---- mounts
-mounts=(-v "$root:/work")
+mounts=(-v "$root:/work" -v "$stubs:/usr/local/share/applications:ro")
+[ -n "${SPAWN_CONTAINER_BUILD:-}" ] && mounts+=(-v "$(realpath "$SPAWN_CONTAINER_BUILD"):/work/build:ro")
 ext="$HOME/.local/share/gnome-shell/extensions"
 cext="/home/dev/.local/share/gnome-shell/extensions"
 if [ -d "$ext/dash-to-panel@jderose9.github.com" ]; then
@@ -102,5 +104,4 @@ fi
 exec podman run --rm --userns=keep-id --security-opt label=disable --shm-size=1g \
     -w /work "${mounts[@]}" \
     -e HOME=/home/dev -e SPAWN_NO_BUILD=1 -e "SPAWN_DEV_DIR=$run_dev" \
-    -e "XDG_DATA_DIRS=/work/$dev_rel/stub-apps:/usr/local/share:/usr/share" \
     "$image" tools/container/entrypoint.sh "${cmd[@]}"
