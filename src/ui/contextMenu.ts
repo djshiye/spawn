@@ -198,7 +198,7 @@ export class AppContextMenu {
             const uuid = target.uuid;
             add(_('Open'), () => this._host.openFolder?.(uuid));
             add(_('Rename'), () => this._host.renameFolder?.(uuid));
-            add(_('Delete Folder'), () => store.dissolveFolder(uuid));
+            add(_('Delete Folder'), () => (this._host.deleteFolder ? this._host.deleteFolder(uuid) : store.dissolveFolder(uuid)));
         } else {
             const id = target.id;
             add(_('Unpin from Menu'), () => store.unpin(id));

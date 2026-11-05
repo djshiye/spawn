@@ -13,6 +13,14 @@
 //   store.pin(id, index?): void
 //   store.unpin(id): void                           also removes it from a folder
 //   store.move(fromIndex, toIndex): void            reorder top level
+//   store.moveShown(fromIndex, toIndex): void       reorder top level; indices into items(true), i.e. what the
+//                                                   menu shows (ghosts included): keyboard reordering
+//   store.moveInFolder(uuid, fromIndex, toIndex): void  reorder inside a folder; indices into folderApps(uuid, true)
+//   store.captureFolder(uuid): FolderUndo | null    state dissolveFolder(uuid) is about to change
+//   store.markDissolved(undo) / store.isUnchangedSince(undo)  remember / check the list right after the dissolve
+//   store.restoreFolder(undo): boolean              put the folder back exactly (uuid, name, apps in order, slot) and
+//                                                   take the apps it released off the top level; false (nothing
+//                                                   written) when the list changed since markDissolved
 //   store.createFolder(name, ids, index?): string   returns the new uuid; ids move into it
 //   store.renameFolder(uuid, name): void
 //   store.deleteFolder(uuid): void                  contained apps are unpinned
@@ -37,13 +45,22 @@ import GioUnix from 'gi://GioUnix';
 import {Scope} from '../core/scope.js';
 import {debounce} from '../core/debounce.js';
 import {isValidFolderId} from '../core/folderId.js';
-import type {Entry, FolderSettings, SpawnSettings} from '../core/settings.js';
+import type {Entry, FolderSettings, SettingsSnapshot, SpawnSettings} from '../core/settings.js';
 import * as ops from './pinnedOps.js';
 
 export type PinnedItem =
     | {kind: 'app'; id: string; missing?: boolean}
     | {kind: 'folder'; uuid: string; name: string}
     | {kind: 'custom'; entry: Entry};
+
+/** What it takes to undo a dissolveFolder (captureFolder, markDissolved, restoreFolder). */
+export interface FolderUndo {
+    readonly uuid: string;
+    readonly name: string;
+    readonly snapshot: SettingsSnapshot;
+    /** The serialized `pinned-apps` right after the dissolve; null until markDissolved. */
+    after: string | null;
+}
 
 export interface PinnedStoreOptions {
     /** Does the desktop file for this id exist? Default: GioUnix.DesktopAppInfo.new(id) !== null (cached until invalidate()). */
@@ -150,6 +167,20 @@ export class PinnedStore {
         });
     }
 
+    moveShown(fromIndex: number, toIndex: number): void {
+        this._apply(s => {
+            const shown = this._shownRaw(s);
+            const from = shown[fromIndex];
+            if (from === undefined)
+                return s;
+            return ops.move(s, from, shown[Math.max(0, Math.min(toIndex, shown.length - 1))]);
+        });
+    }
+
+    moveInFolder(uuid: string, fromIndex: number, toIndex: number): void {
+        this._apply(s => ops.moveInFolder(s, uuid, fromIndex, toIndex));
+    }
+
     createFolder(name: string, ids: string[], index?: number): string {
         const uuid = this._newUuid();
         this._apply(s => ops.createFolder(s, uuid, name, ids, this._rawIndex(s, index)));
@@ -166,6 +197,35 @@ export class PinnedStore {
 
     dissolveFolder(uuid: string): void {
         this._apply(s => ops.dissolveFolder(s, uuid));
+    }
+
+    captureFolder(uuid: string): FolderUndo | null {
+        const entry = this._settings.get('pinned-apps').find(e => ops.isFolderEntry(e) && e.id === uuid);
+        if (!entry || !isValidFolderId(uuid))
+            return null;
+        return {uuid, name: entry.name || this._folderName(uuid), snapshot: this._settings.snapshot(['pinned-apps'], [uuid]), after: null};
+    }
+
+    markDissolved(undo: FolderUndo): void {
+        undo.after = this._topKey();
+    }
+
+    isUnchangedSince(undo: FolderUndo): boolean {
+        return undo.after === null || undo.after === this._topKey();
+    }
+
+    restoreFolder(undo: FolderUndo): boolean {
+        if (!this.isUnchangedSince(undo))
+            return false;
+        this._writing++;
+        try {
+            this._settings.restore(undo.snapshot);
+            this._watchFolders(this._settings.get('pinned-apps'));
+        } finally {
+            this._writing--;
+        }
+        this._emit();
+        return true;
     }
 
     invalidate(): void {
@@ -195,6 +255,20 @@ export class PinnedStore {
             this._existsCache.set(id, v);
         }
         return v;
+    }
+
+    private _topKey(): string {
+        return JSON.stringify(this._settings.get('pinned-apps'));
+    }
+
+    /** Full-list indices of the entries items(true) shows (all but folder entries with an unusable id). */
+    private _shownRaw(s: ops.PinnedSnapshot): number[] {
+        const out: number[] = [];
+        s.top.forEach((e, i) => {
+            if (!ops.isFolderEntry(e) || isValidFolderId(e.id))
+                out.push(i);
+        });
+        return out;
     }
 
     private _emit(): void {

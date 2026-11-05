@@ -735,3 +735,27 @@
 .spawn-light.spawn-runner .spawn-result-row:selected {
     color: rgba(0, 0, 0, 0.87);
 }
+
+/* ---- undo banner (ui/widgets/undoBanner.ts) ----
+ * The in-menu toast after "Delete Folder": message + a focusable Undo button. Same tokens as the
+ * rest of the left pane: 4/8 px grid, 8 px radius, 12 px text inset, neutral tint; the Undo button is
+ * a .spawn-nav-button, so hover / focus / pressed (accent ring) come from the item rules. */
+
+.spawn-undo-banner {
+    spacing: 8px;
+    padding: 4px 4px 4px 12px;
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.spawn-undo-label {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.spawn-light .spawn-undo-banner {
+    background-color: rgba(0, 0, 0, 0.06);
+}
+
+.spawn-light .spawn-undo-label {
+    color: rgba(0, 0, 0, 0.87);
+}

@@ -148,6 +148,63 @@ test('onChanged fires once per operation and stops after its scope is disposed',
     scope.dispose();
 });
 
+test('moveShown uses the shown index space (ghosts count) and moveInFolder reorders a folder', () => {
+    const {store, settings, scope} = fixture([app('a'), app('gone'), app('b'), folder('F1', 'Fold')], {F1: [app('x'), app('y'), app('z')]}, new Set(['gone.desktop']));
+    // shown: a, gone, b, F1
+    store.moveShown(2, 1);
+    assertEquals(settings.get('pinned-apps').map(e => e.id), ['a.desktop', 'b.desktop', 'gone.desktop', 'F1']);
+    store.moveShown(0, 3);
+    assertEquals(settings.get('pinned-apps').map(e => e.id), ['b.desktop', 'gone.desktop', 'F1', 'a.desktop']);
+    store.moveShown(9, 0); // out of range from: no-op
+    assertEquals(settings.get('pinned-apps').map(e => e.id), ['b.desktop', 'gone.desktop', 'F1', 'a.desktop']);
+    let n = 0;
+    store.onChanged(scope, () => n++);
+    store.moveInFolder('F1', 0, 2);
+    assertEquals(settings.folder('F1').pinnedApps.map(e => e.id), ['y.desktop', 'z.desktop', 'x.desktop']);
+    assertEquals(n, 1);
+    store.moveInFolder('F1', 2, 2); // no-op, no notification
+    assertEquals(n, 1);
+    scope.dispose();
+});
+
+test('captureFolder + dissolveFolder + restoreFolder brings the folder back exactly', () => {
+    const {store, settings, scope} = fixture(
+        [app('a'), folder('F1', 'Fold'), app('b'), folder('F2', 'Other')],
+        {F1: [app('x'), app('y'), app('z')], F2: [app('q')]},
+    );
+    settings.folder('F1').name = 'Fold';
+    const topBefore = settings.get('pinned-apps');
+    const folderBefore = settings.folder('F1').pinnedApps;
+    const undo = store.captureFolder('F1');
+    assert(undo !== null);
+    assertEquals(undo.name, 'Fold');
+    store.dissolveFolder('F1');
+    store.markDissolved(undo);
+    assertEquals(settings.get('pinned-apps').map(e => e.id), ['a.desktop', 'x.desktop', 'y.desktop', 'z.desktop', 'b.desktop', 'F2']);
+    assertEquals(settings.folder('F1').pinnedApps, []);
+    assert(store.isUnchangedSince(undo));
+    assert(store.restoreFolder(undo));
+    assertEquals(settings.get('pinned-apps'), topBefore);
+    assertEquals(settings.folder('F1').pinnedApps, folderBefore);
+    assertEquals(settings.folder('F1').name, 'Fold');
+    assertEquals(store.items().map(i => i.kind === 'folder' ? i.name : i.id), ['a.desktop', 'Fold', 'b.desktop', 'Other']);
+    assertEquals(store.folderApps('F1').map(e => e.id), ['x.desktop', 'y.desktop', 'z.desktop']);
+    scope.dispose();
+});
+
+test('restoreFolder refuses once the pinned list changed after the dissolve', () => {
+    const {store, settings, scope} = fixture([app('a'), folder('F1', 'Fold')], {F1: [app('x')]});
+    const undo = store.captureFolder('F1');
+    store.dissolveFolder('F1');
+    store.markDissolved(undo);
+    store.pin('late.desktop');
+    assert(!store.isUnchangedSince(undo));
+    assert(!store.restoreFolder(undo));
+    assertEquals(settings.get('pinned-apps').map(e => e.id), ['a.desktop', 'x.desktop', 'late.desktop']);
+    assertEquals(store.captureFolder('nope'), null);
+    scope.dispose();
+});
+
 test('external changes to a folder or to pinned-apps notify listeners', () => {
     const {store, settings, scope} = fixture([app('a'), app('b')]);
     const uuid = store.createFolder('F', ['a.desktop']);
