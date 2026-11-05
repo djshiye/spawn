@@ -14,7 +14,8 @@
 //   store.unpin(id): void                           also removes it from a folder
 //   store.move(fromIndex, toIndex): void            reorder top level
 //   store.moveShown(fromIndex, toIndex): void       reorder top level; indices into items(true), i.e. what the
-//                                                   menu shows (ghosts included): keyboard reordering
+//                                                   menu shows (ghosts included, an entry listed twice by a
+//                                                   hand-edit shown once, at its first occurrence): keyboard reordering
 //   store.moveInFolder(uuid, fromIndex, toIndex): void  reorder inside a folder; indices into folderApps(uuid, true)
 //   store.captureFolder(uuid): FolderUndo | null    state dissolveFolder(uuid) is about to change
 //   store.markDissolved(undo) / store.isUnchangedSince(undo)  remember / check the list right after the dissolve
@@ -169,11 +170,24 @@ export class PinnedStore {
 
     moveShown(fromIndex: number, toIndex: number): void {
         this._apply(s => {
-            const shown = this._shownRaw(s);
+            const shown = this._displayedRaw(s);
             const from = shown[fromIndex];
             if (from === undefined)
                 return s;
-            return ops.move(s, from, shown[Math.max(0, Math.min(toIndex, shown.length - 1))]);
+            const dest = shown[Math.max(0, Math.min(toIndex, shown.length - 1))];
+            let next = ops.move(s, from, dest);
+            if (next === s)
+                return s;
+            // The moved entry now sits at `dest`. A repeat of it that it was moved past would become its
+            // first occurrence (the one the menu shows) and the row would land short: park such repeats
+            // right behind it.
+            const key = this._shownKey(s.top[from]);
+            const firstOf = (list: typeof s.top) => list.findIndex(e => this._shownKey(e) === key);
+            for (let pos = dest, first = firstOf(next.top); first >= 0 && first < pos; first = firstOf(next.top)) {
+                next = ops.move(next, first, pos);
+                pos--;
+            }
+            return next;
         });
     }
 
@@ -269,6 +283,27 @@ export class PinnedStore {
                 out.push(i);
         });
         return out;
+    }
+
+    /**
+     * Raw indices of what the menu shows, in order: _shownRaw without repeats. The menu draws one tile per
+     * distinct entry (a hand-edited pinned-apps may list an id twice), so its tile index is an index here,
+     * not into _shownRaw.
+     */
+    private _displayedRaw(s: ops.PinnedSnapshot): number[] {
+        const seen = new Set<string>();
+        return this._shownRaw(s).filter(i => {
+            const key = this._shownKey(s.top[i]);
+            if (seen.has(key))
+                return false;
+            seen.add(key);
+            return true;
+        });
+    }
+
+    /** Identity of a top-level entry as the menu keys its tiles: kind plus id. */
+    private _shownKey(e: ops.PinnedSnapshot['top'][number]): string {
+        return `${ops.isFolderEntry(e) ? 'f' : isAppEntry(e) ? 'a' : 'c'}:${e.id}`;
     }
 
     private _emit(): void {

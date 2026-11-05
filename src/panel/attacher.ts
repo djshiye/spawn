@@ -25,6 +25,8 @@
 //   attacher.status(): AttachmentStatus Dev/diagnostics snapshot; every AttachmentInfo carries
 //                                       `side` ('top'|'bottom'|'left'|'right'), the screen edge of
 //                                       that attachment's panel (see also MenuButton.side/arrowSide)
+//                                       and `intellihide`, the Dash to Panel intellihide state of its
+//                                       panel ({enabled, hold, visible, translation}, null without DtP)
 //   AttacherDeps: {settings, targets, createButton: () => MenuButton}
 
 import GLib from 'gi://GLib';
@@ -38,7 +40,8 @@ import type {Scope} from '../core/scope.js';
 import type {SettingKey, SpawnSettings} from '../core/settings.js';
 import type {MenuButton} from '../ui/button.js';
 import {ActivitiesHider} from './activities.js';
-import type {PanelTargets} from './targets.js';
+import {intellihideStatus} from './intellihide.js';
+import {dtpWrapperOfPanel, type PanelTargets} from './targets.js';
 import {
     type ActorLike,
     GIVE_UP_MS,
@@ -71,6 +74,8 @@ export interface AttachmentInfo {
     icon: {iconName: string | null; file: string | null} | null;
     /** The button carries the :active pseudo class (a menu is open on it); dev status / tests. */
     active: boolean;
+    /** Dash to Panel intellihide state of the panel (dev status / tests); null when not a DtP panel. */
+    intellihide: ReturnType<typeof intellihideStatus>;
 }
 
 export interface AttachmentStatus {
@@ -150,6 +155,7 @@ export class ButtonAttacher {
                 side: this._sideOf(a),
                 icon: this._iconOf(a),
                 active: this._activeOf(a),
+                intellihide: intellihideStatus(dtpWrapperOfPanel(a.target.panel)),
             })),
             pending: this._pendingSince !== null,
             pendingForMs: this._pendingSince === null ? 0 : this._now() - this._pendingSince,

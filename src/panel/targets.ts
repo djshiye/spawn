@@ -12,6 +12,9 @@
 //   targets.notifyChanged()              request a (debounced) 'changed' manually
 //   readPanelGlobals()                   the single place that touches global.dashToPanel /
 //                                        global.azTaskbar
+//   createIntellihideHold(scope)         IntellihideHold (panel/intellihide.ts) wired to the live
+//                                        Dash to Panel panels and the pointer
+//   dtpWrapperOfPanel(panel)             the current Dash to Panel wrapper of an inner panel, or null
 //
 // Triggers for 'changed': extension-state-changed of Dash to Panel / App Icons Taskbar,
 // 'panels-created' of the CURRENT emitter (re-bound whenever the emitter object is
@@ -24,6 +27,7 @@ import {debounce, type Debounced} from '../core/debounce.js';
 import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import {type ConnectableEmitter, EmitterBindings} from './emitterBinding.js';
+import {type DtpWrapper, IntellihideHold, wrapperOfPanel} from './intellihide.js';
 import {
     type ExtensionSnapshot,
     type PanelEmitterLike,
@@ -45,6 +49,24 @@ export interface PanelGlobals {
 export function readPanelGlobals(): PanelGlobals {
     const g = global as unknown as PanelGlobals;
     return {dashToPanel: g.dashToPanel, azTaskbar: g.azTaskbar};
+}
+
+function dtpPanels(): unknown {
+    return readPanelGlobals().dashToPanel?.panels;
+}
+
+export function createIntellihideHold(scope: Scope): IntellihideHold {
+    return new IntellihideHold(scope, {
+        panels: dtpPanels,
+        pointer: () => {
+            const [x, y] = global.get_pointer();
+            return [x, y];
+        },
+    });
+}
+
+export function dtpWrapperOfPanel(panel: unknown): DtpWrapper | null {
+    return wrapperOfPanel(dtpPanels(), panel);
 }
 
 const PROVIDERS = [

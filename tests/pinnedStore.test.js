@@ -167,6 +167,60 @@ test('moveShown uses the shown index space (ghosts count) and moveInFolder reord
     scope.dispose();
 });
 
+test('moveShown with an id listed twice (hand-edited pinned-apps): indices are into what the menu shows', () => {
+    const ids = settings => settings.get('pinned-apps').map(e => e.id.replace('.desktop', '')).join(' ');
+    const shown = store => store.items(true).map(i => i.id ?? i.uuid).filter((id, n, all) => all.indexOf(id) === n).map(id => id.replace('.desktop', '')).join(' ');
+    // [a, a, b, c]: the menu shows a b c. Moving b (tile 1) up must move b, not the hidden second a.
+    {
+        const {store, settings, scope} = fixture([app('a'), app('a'), app('b'), app('c')]);
+        store.moveShown(1, 0);
+        assertEquals(shown(store), 'b a c');
+        assertEquals(ids(settings).startsWith('b'), true);
+        scope.dispose();
+    }
+    // [a, b, a, c]: b down onto c lands after c (not after the hidden second a).
+    {
+        const {store, settings, scope} = fixture([app('a'), app('b'), app('a'), app('c')]);
+        store.moveShown(1, 2);
+        assertEquals(shown(store), 'a c b');
+        assertEquals(ids(settings), 'a a c b');
+        scope.dispose();
+    }
+    // moving a past its own repeat: it must end up last in the menu
+    {
+        const {store, settings, scope} = fixture([app('a'), app('b'), app('a'), app('c')]);
+        store.moveShown(0, 2);
+        assertEquals(shown(store), 'b c a');
+        assertEquals(ids(settings), 'b c a a');
+        store.moveShown(2, 0); // and back to the front
+        assertEquals(shown(store), 'a b c');
+        store.moveShown(0, 5); // Ctrl+End style: clamped to the last tile
+        assertEquals(shown(store), 'b c a');
+        store.moveShown(3, 0); // out of range: no-op
+        assertEquals(shown(store), 'b c a');
+        assertEquals(ids(settings).split(' ').length, 4); // nothing was dropped
+        scope.dispose();
+    }
+    // the same with a ghost (missing app) and a folder in the list
+    {
+        const {store, scope} = fixture([app('a'), app('gone'), app('a'), folder('F1', 'Fold'), app('gone')], {F1: [app('x')]}, new Set(['gone.desktop']));
+        store.moveShown(0, 2); // shown: a gone F1
+        assertEquals(shown(store), 'gone F1 a');
+        store.moveShown(1, 0);
+        assertEquals(shown(store), 'F1 gone a');
+        scope.dispose();
+    }
+});
+
+test('moveInFolder is positional even when a folder lists an id twice', () => {
+    const {store, settings, scope} = fixture([folder('F1', 'Fold')], {F1: [app('x'), app('y'), app('x'), app('z')]});
+    store.moveInFolder('F1', 1, 0);
+    assertEquals(settings.folder('F1').pinnedApps.map(e => e.id), ['y.desktop', 'x.desktop', 'x.desktop', 'z.desktop']);
+    store.moveInFolder('F1', 3, 2);
+    assertEquals(settings.folder('F1').pinnedApps.map(e => e.id), ['y.desktop', 'x.desktop', 'z.desktop', 'x.desktop']);
+    scope.dispose();
+});
+
 test('captureFolder + dissolveFolder + restoreFolder brings the folder back exactly', () => {
     const {store, settings, scope} = fixture(
         [app('a'), folder('F1', 'Fold'), app('b'), folder('F2', 'Other')],
