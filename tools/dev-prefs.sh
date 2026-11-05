@@ -51,7 +51,14 @@ if [ "${1:-}" != "--inner" ]; then
     chmod 700 "$dev/runtime"
 
     # Private build (tsc errors in other modules must not stop the prefs check).
-    (cd "$root" && npx tsc -p tsconfig.json --outDir "$dev/build" >"$dev/tsc.log" 2>&1) || echo "tsc reported errors (see $dev/tsc.log); continuing"
+    # SPAWN_PREFS_PREBUILT=1 (set by tools/dev-shell-container.sh, which has no node_modules or network) takes
+    # the compiled modules from build/ instead.
+    if [ -n "${SPAWN_PREFS_PREBUILT:-}" ]; then
+        cp -r "$root/build/." "$dev/build/"
+        rm -rf "$dev/build/data" "$dev/build/schemas"
+    else
+        (cd "$root" && npx tsc -p tsconfig.json --outDir "$dev/build" >"$dev/tsc.log" 2>&1) || echo "tsc reported errors (see $dev/tsc.log); continuing"
+    fi
     cp "$root/metadata.json" "$root/stylesheet.css" "$dev/build/"
     mkdir -p "$dev/build/schemas"
     cp "$root"/schemas/*.gschema.xml "$dev/build/schemas/"

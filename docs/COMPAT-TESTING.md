@@ -37,6 +37,8 @@ control: it should behave exactly like the host.
   `~/.local/share/applications`, which the host harness cannot see either) are copied to
   `.dev/f<release>/stub-apps` and mounted read-only as `/usr/local/share/applications`; `TryExec` is dropped
   and `Exec` points at `/usr/bin/true`, because GIO rejects entries whose program is missing.
+- `prefs` compiles nothing in the container (no `node_modules`, no network): `tools/dev-prefs.sh` copies the host-built
+  `build/` (`SPAWN_PREFS_PREBUILT=1`), which `tools/dev-shell-container.sh` makes sure is fresh.
 - `--network none`: the shell's extension updater would otherwise "update" the host's user-theme from
   extensions.gnome.org into the sandbox copy on 49 / 50 and break it.
 - The Dev screenshot hook only writes below a `.dev/` directory, which is why the per-release dirs are

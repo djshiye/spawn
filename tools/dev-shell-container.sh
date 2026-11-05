@@ -48,8 +48,8 @@ if [ "${SPAWN_CONTAINER_REBUILD:-0}" = 1 ] || ! podman image exists "$image"; th
     podman build -q --build-arg "RELEASE=$rel" -t "$image" "$root/tools/container" >/dev/null
 fi
 
-# ---- build on the host (prefs builds its own copy inside the container)
-if [ "$scenario" != prefs ] && [ -z "${SPAWN_CONTAINER_BUILD:-}" ]; then
+# ---- build on the host (prefs copies the compiled modules from build/ into its own tree)
+if [ -z "${SPAWN_CONTAINER_BUILD:-}" ]; then
     stamp="$root/build/.built"
     if [ ! -f "$stamp" ] || [ -n "$(find "$root/src" "$root/schemas" "$root/data" "$root/stylesheet.css" \
             "$root/metadata.json" "$root/tsconfig.json" -newer "$stamp" -print -quit)" ]; then
@@ -105,5 +105,5 @@ fi
 # download "updates" of the host's user-theme from extensions.gnome.org into the sandbox copy and break it.
 exec podman run --rm --userns=keep-id --security-opt label=disable --network none --shm-size=1g \
     -w /work "${mounts[@]}" \
-    -e HOME=/home/dev -e SPAWN_NO_BUILD=1 -e "SPAWN_DEV_DIR=$run_dev" \
+    -e HOME=/home/dev -e SPAWN_NO_BUILD=1 -e SPAWN_PREFS_PREBUILT=1 -e "SPAWN_DEV_DIR=$run_dev" \
     "$image" tools/container/entrypoint.sh "${cmd[@]}"
