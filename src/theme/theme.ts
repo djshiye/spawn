@@ -18,7 +18,8 @@
 //   accentColor(name: string): string     PURE; GNOME accent name -> css colour (blue default)
 //   sanitizeColor(value: string): string | null   PURE; null when `value` is not a safe colour
 //   withAlpha(color: string, alpha: number): string  PURE; best effort alpha for #hex/rgb()/rgba()
-//   ThemeInput: {accent, override, colors, buttonColors, searchEntryRadius?}
+//   ThemeInput: {accent, override, colors, buttonColors, searchEntryRadius?, arrowRise?}
+//   (presets.ts, imported directly: pure helpers for the `menu-themes` presets)
 //
 // Selectors styled (all through generated rules; stylesheet.css stays structural):
 //   Always (accent only):
@@ -41,6 +42,8 @@
 //     .spawn-popup StEntry / .hint-text     foreground, separator colour as border
 //     .spawn-separator, .spawn-popup .popup-separator-menu-item-separator  separators
 //   Optional (`searchEntryRadius` enabled): .spawn-search-box border-radius.
+//   Optional (`arrowRise` enabled, independent of override): .spawn-menu-popup { -arrow-rise } (the main
+//   popup only; ui/menu.ts adds the class), which moves the menu away from / towards the panel.
 //   Colour values from settings are validated by sanitizeColor; an invalid colour drops its
 //   rule instead of breaking the stylesheet.
 
@@ -65,7 +68,7 @@ const THEME_KEYS: SettingKey[] = [
     'override-menu-theme', 'menu-background-color', 'menu-foreground-color', 'menu-border-color',
     'menu-border-width', 'menu-border-radius', 'menu-font-size', 'menu-separator-color',
     'menu-item-hover-bg-color', 'menu-item-hover-fg-color', 'menu-item-active-bg-color',
-    'menu-item-active-fg-color', 'menu-button-fg-color', 'menu-button-bg-color',
+    'menu-item-active-fg-color', 'menu-arrow-rise', 'menu-button-fg-color', 'menu-button-bg-color',
     'menu-button-border-radius', 'menu-button-border-width', 'menu-button-border-color',
     'menu-button-hover-bg-color', 'menu-button-hover-fg-color', 'menu-button-active-bg-color',
     'menu-button-active-fg-color', 'search-entry-border-radius',
@@ -177,6 +180,7 @@ export class Theme {
                 activeFg: s.get('menu-button-active-fg-color'),
             },
             searchEntryRadius: s.get('search-entry-border-radius'),
+            arrowRise: s.get('menu-arrow-rise'),
         };
     }
 

@@ -1,4 +1,5 @@
-// Preferences page "Appearance": follow the shell theme or use custom colours.
+// Preferences page "Appearance": follow the shell theme or use custom colours (with presets, see
+// prefs/presets.ts), the menu's distance from the panel, and the panel button's colours.
 //
 // Public API:
 //   createAppearancePage(ctx: PrefsContext): Adw.PreferencesPage
@@ -9,6 +10,8 @@ import Gio from 'gi://Gio';
 
 import type {SettingKey} from '../../core/settings.js';
 import type {PrefsContext} from '../context.js';
+import {createPresetsGroup} from '../presets.js';
+import {BORDER_RADIUS_RANGE, BORDER_WIDTH_RANGE, FONT_SIZE_RANGE} from '../../theme/presets.js';
 import {colorRow, group, optionalColorRow, optionalSpinRow, spinRow, switchRow} from '../widgets.js';
 
 export function createAppearancePage(ctx: PrefsContext): Adw.PreferencesPage {
@@ -25,6 +28,7 @@ export function createAppearancePage(ctx: PrefsContext): Adw.PreferencesPage {
         'Off: the menu follows the shell theme and the GNOME accent colour',
     );
     page.add(group(ctx, 'Theme', [override], {reset: ['override-menu-theme']}));
+    page.add(createPresetsGroup(ctx));
 
     const colourKeys: SettingKey[] = [
         'menu-background-color', 'menu-foreground-color', 'menu-border-color', 'menu-separator-color',
@@ -43,15 +47,23 @@ export function createAppearancePage(ctx: PrefsContext): Adw.PreferencesPage {
     page.add(menu);
 
     const shape = group(ctx, 'Menu shape', [
-        spinRow(ctx, 'menu-border-width', 'Border width', 0, 5),
-        spinRow(ctx, 'menu-border-radius', 'Corner radius', 0, 25),
-        spinRow(ctx, 'menu-font-size', 'Font size', 8, 18),
+        spinRow(ctx, 'menu-border-width', 'Border width', ...BORDER_WIDTH_RANGE),
+        spinRow(ctx, 'menu-border-radius', 'Corner radius', ...BORDER_RADIUS_RANGE),
+        spinRow(ctx, 'menu-font-size', 'Font size', ...FONT_SIZE_RANGE),
     ], {reset: ['menu-border-width', 'menu-border-radius', 'menu-font-size']});
     page.add(shape);
 
     // Colours and shape only make sense with the override on.
     ctx.settings.raw.bind('override-menu-theme', menu, 'sensitive', Gio.SettingsBindFlags.GET);
     ctx.settings.raw.bind('override-menu-theme', shape, 'sensitive', Gio.SettingsBindFlags.GET);
+
+    // Independent of the custom colours: moves the popup away from (or towards) the panel.
+    page.add(group(ctx, 'Menu placement', [
+        optionalSpinRow(ctx, 'menu-arrow-rise', 'Distance from the panel', 0, 50),
+    ], {
+        reset: ['menu-arrow-rise'],
+        description: 'Used only while its switch is on. The space between the panel and the menu, in pixels.',
+    }));
 
     const buttonKeys: SettingKey[] = [
         'menu-button-fg-color', 'menu-button-bg-color', 'menu-button-border-color', 'menu-button-hover-bg-color',

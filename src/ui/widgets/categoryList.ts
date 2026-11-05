@@ -25,7 +25,7 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 import {error} from '../../core/log.js';
 import type {Scope} from '../../core/scope.js';
 import type {Services} from '../../core/services.js';
-import {applyScrollSettings, displayName, iconSizeFor} from '../util.js';
+import {applyScrollSettings, displayName, iconSizeFor, iconSizeOrHidden} from '../util.js';
 import {AppRow} from './appRow.js';
 import type {TileHost} from './appTile.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
@@ -205,15 +205,18 @@ export class CategoryList {
     }
 
     private _buildColumn(): void {
-        const size = iconSizeFor(this._services.settings, 'icon-size-categories', 16);
+        const size = iconSizeOrHidden(this._services.settings, 'icon-size-categories', 16);
+        const hideIcons = size === 0; // icon-size-categories = 0: no category icons
         for (const cat of this._categories()) {
             const button = makeItemButton('spawn-category-row');
             const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
-            const icon = new St.Icon({style_class: 'spawn-category-icon', icon_size: size, y_align: Clutter.ActorAlign.CENTER});
-            icon.gicon = Gio.ThemedIcon.new(cat.icon);
             const label = new St.Label({text: cat.name, style_class: 'spawn-row-label', y_align: Clutter.ActorAlign.CENTER, x_expand: true});
             label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-            box.add_child(icon);
+            if (!hideIcons) {
+                const icon = new St.Icon({style_class: 'spawn-category-icon', icon_size: size, y_align: Clutter.ActorAlign.CENTER});
+                icon.gicon = Gio.ThemedIcon.new(cat.icon);
+                box.add_child(icon);
+            }
             box.add_child(label);
             button.set_child(makeFace('spawn-row-surface', box));
             this._host.tooltips?.attach(button, label);

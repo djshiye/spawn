@@ -5,6 +5,7 @@
 //   PrefsContext (prefs/context.ts): {settings, extensionDir, window, metadata}
 
 import Adw from 'gi://Adw';
+import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk?version=4.0';
 
 import type {PrefsContext} from '../context.js';
@@ -123,6 +124,36 @@ function runnerHotkeyGroup(ctx: PrefsContext): Adw.PreferencesGroup {
     return g;
 }
 
+/** `menu-position-alignment`: a 0..100 slider (Left - Center - Right), shown only while the button is centred in the panel. */
+function alignmentRow(ctx: PrefsContext): Adw.ActionRow {
+    const scale = new Gtk.Scale({
+        orientation: Gtk.Orientation.HORIZONTAL,
+        adjustment: new Gtk.Adjustment({lower: 0, upper: 100, step_increment: 1, page_increment: 10, value: ctx.settings.get('menu-position-alignment')}),
+        digits: 0,
+        draw_value: false,
+        hexpand: true,
+        valign: Gtk.Align.CENTER,
+        width_request: 220,
+    });
+    scale.add_mark(0, Gtk.PositionType.BOTTOM, 'Left');
+    scale.add_mark(50, Gtk.PositionType.BOTTOM, 'Center');
+    scale.add_mark(100, Gtk.PositionType.BOTTOM, 'Right');
+    label(scale, 'Menu alignment');
+    ctx.settings.raw.bind('menu-position-alignment', scale.adjustment, 'value', Gio.SettingsBindFlags.DEFAULT);
+    const row = new Adw.ActionRow({
+        title: 'Menu alignment',
+        subtitle: 'Where the menu sits relative to a button centred in the panel',
+        activatable_widget: scale,
+    });
+    row.add_suffix(scale);
+    const refresh = (): void => {
+        row.visible = ctx.settings.get('position-in-panel') === 'Center';
+    };
+    refresh();
+    watch(ctx, row, ['position-in-panel'], refresh);
+    return row;
+}
+
 export function createGeneralPage(ctx: PrefsContext): Adw.PreferencesPage {
     const page = new Adw.PreferencesPage({
         name: 'general',
@@ -132,6 +163,7 @@ export function createGeneralPage(ctx: PrefsContext): Adw.PreferencesPage {
 
     page.add(group(ctx, 'Panel', [
         enumRow(ctx, 'position-in-panel', 'Button position', [['Left', 'Left'], ['Center', 'Center'], ['Right', 'Right']]),
+        alignmentRow(ctx),
         spinRow(ctx, 'menu-button-position-offset', 'Position offset', 0, 20, {
             subtitle: 'Number of panel items to skip from the chosen edge',
         }),
@@ -145,9 +177,10 @@ export function createGeneralPage(ctx: PrefsContext): Adw.PreferencesPage {
         enumRow(ctx, 'runner-position', 'Position', [['Top', 'Top'], ['Centered', 'Centered']], 'Where the runner opens on the monitor'),
         spinRow(ctx, 'runner-menu-width', 'Width', 300, 2000, {step: 10, subtitle: 'In pixels'}),
         spinRow(ctx, 'runner-menu-height', 'Maximum height', 300, 1000, {step: 10, subtitle: 'The runner grows with its results up to this height'}),
+        spinRow(ctx, 'runner-font-size', 'Font size', 0, 30, {subtitle: 'In points; 0 uses the menu font'}),
         enumRow(ctx, 'runner-default-view', 'Before typing', [['Default', 'Nothing'], ['Pinned_Apps', 'Pinned apps'], ['Frequent_Apps', 'Frequent apps']]),
     ], {
-        reset: ['runner-position', 'runner-menu-width', 'runner-menu-height', 'runner-default-view'],
+        reset: ['runner-position', 'runner-menu-width', 'runner-menu-height', 'runner-font-size', 'runner-default-view'],
     }));
 
     page.add(group(ctx, 'Behaviour', [
@@ -161,9 +194,9 @@ export function createGeneralPage(ctx: PrefsContext): Adw.PreferencesPage {
     const resetAll = new Gtk.Button({label: 'Reset General Settings', halign: Gtk.Align.CENTER, css_classes: ['destructive-action', 'pill']});
     resetAll.connect('clicked', () => {
         resetWithUndo(ctx, [
-            'position-in-panel', 'menu-button-position-offset', 'multi-monitor', 'hide-activities-button',
+            'position-in-panel', 'menu-position-alignment', 'menu-button-position-offset', 'multi-monitor', 'hide-activities-button',
             'super-key-toggle', 'spawn-hotkey', 'runner-hotkey', 'runner-position', 'runner-menu-width',
-            'runner-menu-height', 'runner-default-view', 'activate-on-launch', 'keep-open-on-ctrl-click', 'show-tooltips',
+            'runner-menu-height', 'runner-font-size', 'runner-default-view', 'activate-on-launch', 'keep-open-on-ctrl-click', 'show-tooltips',
         ], 'General settings reset to defaults');
     });
     const tail = new Adw.PreferencesGroup();

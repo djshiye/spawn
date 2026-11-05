@@ -141,13 +141,14 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
         'icon-size-apps', 'icon-size-shortcuts', 'icon-size-categories', 'icon-size-buttons', 'icon-size-misc',
         'icon-size-grid',
     ];
-    const hint = '-1 uses the default, 0 hides the icons';
+    const hint = '-1 uses the default';
+    const hintHide = '-1 uses the default, 0 hides the icons';
     page.add(group(ctx, 'Icon sizes', [
         spinRow(ctx, 'icon-size-apps', 'App list icons', -1, 64, {subtitle: hint}),
-        spinRow(ctx, 'icon-size-shortcuts', 'Shortcut icons', -1, 64, {subtitle: hint}),
-        spinRow(ctx, 'icon-size-categories', 'Category icons', -1, 64, {subtitle: hint}),
+        spinRow(ctx, 'icon-size-shortcuts', 'Shortcut icons', -1, 64, {subtitle: hintHide}),
+        spinRow(ctx, 'icon-size-categories', 'Category icons', -1, 64, {subtitle: hintHide}),
         spinRow(ctx, 'icon-size-buttons', 'Power button icons', -1, 64, {subtitle: hint}),
-        spinRow(ctx, 'icon-size-misc', 'Other icons', -1, 64, {subtitle: hint}),
+        spinRow(ctx, 'icon-size-misc', 'Search and Back / All Apps icons', -1, 64, {subtitle: hint}),
         ...gridRows(ctx),
     ], {reset: iconKeys, description: 'Pinned app tiles use the last three values.'}));
 

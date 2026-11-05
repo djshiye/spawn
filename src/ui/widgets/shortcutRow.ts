@@ -12,7 +12,7 @@
 //   row.destroy()
 //   ShortcutRow.resolve(entry): ResolvedShortcut | null    null when it cannot be shown (missing app)
 //   ShortcutHost: {close(), showAllApps?(), tooltips?}
-//   ShortcutOptions: {iconSize?, symbolic?, scope?}
+//   ShortcutOptions: {iconSize?, symbolic?, scope?}   iconSize 0 = no icon
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
@@ -198,19 +198,23 @@ export class ShortcutRow {
         this.actor = button;
 
         const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
-        const icon = new St.Icon({
-            style_class: 'spawn-shortcut-icon',
-            icon_size: opts.iconSize ?? 16,
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-        const gicon = resolved?.icon;
-        if (typeof gicon === 'string') {
-            if (gicon.startsWith('/'))
-                icon.gicon = Gio.FileIcon.new(Gio.File.new_for_path(gicon));
-            else
-                icon.icon_name = gicon;
-        } else if (gicon) {
-            icon.gicon = opts.symbolic ? symbolicGIcon(gicon) : gicon;
+        // iconSize 0 (icon-size-shortcuts = 0) hides the icon: the row keeps its height (the face's min-height)
+        if (opts.iconSize !== 0) {
+            const icon = new St.Icon({
+                style_class: 'spawn-shortcut-icon',
+                icon_size: opts.iconSize ?? 16,
+                y_align: Clutter.ActorAlign.CENTER,
+            });
+            const gicon = resolved?.icon;
+            if (typeof gicon === 'string') {
+                if (gicon.startsWith('/'))
+                    icon.gicon = Gio.FileIcon.new(Gio.File.new_for_path(gicon));
+                else
+                    icon.icon_name = gicon;
+            } else if (gicon) {
+                icon.gicon = opts.symbolic ? symbolicGIcon(gicon) : gicon;
+            }
+            box.add_child(icon);
         }
         const label = new St.Label({
             text: resolved?.name ?? entry.name ?? entry.id,
@@ -219,7 +223,6 @@ export class ShortcutRow {
             x_expand: true,
         });
         label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-        box.add_child(icon);
         box.add_child(label);
         button.set_child(makeFace('spawn-row-surface', box));
 

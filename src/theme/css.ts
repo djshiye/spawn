@@ -35,6 +35,8 @@ export interface ThemeInput {
     buttonColors: ButtonColors;
     /** `search-entry-border-radius` (bi); omitted = leave the stylesheet.css value alone. */
     searchEntryRadius?: [boolean, number];
+    /** `menu-arrow-rise` (bi): the main popup's distance from the panel (0..50: a negative rise would pull the menu over the panel and off the screen edge); omitted / disabled = the shell theme's. */
+    arrowRise?: [boolean, number];
 }
 
 // ---- pure helpers ----
@@ -132,6 +134,8 @@ const each = (suffix: string, scope = ''): string[] => [...ITEM.map(s => `${scop
 // same prefix to win. Hover/active feedback in the theme is an inset box-shadow overlay, not a
 // background colour, so those states override box-shadow (a solid colour covers the overlay).
 const BUTTON = '#panel .panel-button.spawn-button';
+/** The panel button's popup (the runner shares .spawn-popup but must keep its own arrow-rise of 0). */
+const MENU_POPUP = '.spawn-menu-popup';
 
 function buttonRules(b: ButtonColors): string[] {
     const on = <T>(t: [boolean, T] | undefined): T | null => (t && t[0] ? t[1] : null);
@@ -240,6 +244,9 @@ export function buildCss(input: ThemeInput): string {
     parts.push(...buttonRules(input.buttonColors));
     if (input.override)
         parts.push(...overrideRules(input.colors));
+    const rise = input.arrowRise;
+    if (rise && rise[0])
+        parts.push(rule(MENU_POPUP, [['-arrow-rise', `${num(rise[1], 0, 50, 4)}px`]]));
     const sr = input.searchEntryRadius;
     if (sr && sr[0])
         parts.push(rule('.spawn-search-box', [['border-radius', `${num(sr[1], 0, 60, 18)}px`]]));

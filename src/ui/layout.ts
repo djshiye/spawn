@@ -60,7 +60,7 @@ import {TileGrid} from './widgets/tileGrid.js';
 import {TooltipManager} from './widgets/tooltip.js';
 import {UndoBanner} from './widgets/undoBanner.js';
 import {UserCard} from './widgets/userCard.js';
-import {applyScrollSettings, displayName, iconSizeFor, launchApp, lookupApp, ownedScope, scrollIntoView} from './util.js';
+import {applyScrollSettings, displayName, iconSizeFor, iconSizeOrHidden, launchApp, lookupApp, ownedScope, scrollIntoView} from './util.js';
 
 export interface LayoutHost {
     /** Close the popup (e.g. after launching an app). */
@@ -600,7 +600,11 @@ export class SpawnLayout implements ShortcutHost {
         const button = makeItemButton('spawn-nav-button');
         button.x_expand = false;
         const box = new St.BoxLayout({style_class: 'spawn-row-box'});
-        box.add_child(new St.Icon({icon_name: iconName, icon_size: 16, y_align: Clutter.ActorAlign.CENTER}));
+        const navIcon = new St.Icon({icon_name: iconName, icon_size: iconSizeFor(this._services.settings, 'icon-size-misc', 16), y_align: Clutter.ActorAlign.CENTER});
+        this._services.settings.onChanged(this._scope, ['icon-size-misc'], () => {
+            navIcon.icon_size = iconSizeFor(this._services.settings, 'icon-size-misc', 16);
+        });
+        box.add_child(navIcon);
         box.add_child(new St.Label({text, y_align: Clutter.ActorAlign.CENTER}));
         button.set_child(makeFace('spawn-nav-surface', box));
         wireItem(button, {activate: () => cb()});
@@ -669,7 +673,7 @@ export class SpawnLayout implements ShortcutHost {
         const shortcutsBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-shortcuts-box'});
         const scroll = this._makeScroll(shortcutsBox, 'spawn-shortcuts', false);
         this._shortcutScroll = scroll;
-        const iconSize = iconSizeFor(s, 'icon-size-shortcuts', 16);
+        const iconSize = iconSizeOrHidden(s, 'icon-size-shortcuts', 16);
         const symbolic = s.get('icon-style-shortcuts') === 'Symbolic';
 
         const dirs = s.get('directory-shortcuts');

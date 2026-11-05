@@ -14,7 +14,7 @@ Writes: single settings are written immediately. Multi-key operations (group Res
 through `SpawnSettings.batch()`, which delays and applies on a throwaway `Gio.Settings`; the prefs' own `settings.raw`
 (every row is bound to it) is never put in delay mode, because GSettings has no way back and later writes would stay pending.
 Integer keys with a `<range>` in the schema: `menu-height` 360..1600, `left-panel-width` 420..1200,
-`right-panel-width` 180..600, `menu-width-adjustment` -350..800, `max-frequent-apps` 1..50, `runner-menu-width` 300..2000, `runner-menu-height` 300..1000 (the UI floors are 360 / 420 / 180; the migration
+`right-panel-width` 180..600, `menu-width-adjustment` -350..800, `max-frequent-apps` 1..50, `runner-menu-width` 300..2000, `runner-menu-height` 300..1000, `menu-position-alignment` 0..100, `runner-font-size` 0..30 (the UI floors are 360 / 420 / 180; the migration
 clamps ArcMenu values into these ranges and warns). GSettings rejects anything outside, so `SpawnSettings.set()`
 returns false for it.
 The ArcMenu import never writes a value equal to Spawn's default (it resets the key instead), so a later change of
@@ -60,7 +60,9 @@ and offers the two lists ArcMenu has.
 | `runner-menu-height` | i | `400` | `runner-menu-height`  (range 300..1000; the maximum height: the runner grows with its results) |
 | `runner-default-view` | enum runner-default-view | `'Default'` | `default-menu-view-runner`  (Default = nothing, Pinned_Apps, `Frequent Apps` -> `Frequent_Apps`). Pinned_Apps lists the top-level pinned apps (no folders, at most 10), Frequent_Apps `max-frequent-apps` (at most 10) |
 
-ArcMenu runner keys that are read but have no equivalent (listed as skipped in the import preview): `runner-font-size`,
+| `runner-font-size` | i | `0` | `runner-font-size`  (range 0..30, pt; 0 = the runner uses the menu font; set on the runner's content and search entry) |
+
+ArcMenu runner keys that are read but have no equivalent (listed as skipped in the import preview):
 `runner-menu-height-static`, `runner-searchbar-location`, `runner-search-display-style`, `runner-show-settings-button`,
 `runner-hotkey-overlay-key-enabled` (the Super key only opens Spawn's menu), `runner-hotkey-open-primary-monitor`
 (the runner always opens on the monitor under the pointer).
@@ -70,6 +72,7 @@ ArcMenu runner keys that are read but have no equivalent (listed as skipped in t
 | Key | Type | Default | Migrates from (ArcMenu) |
 |---|---|---|---|
 | `position-in-panel` | enum menu-position | `'Left'` | `position-in-panel` |
+| `menu-position-alignment` | i | `50` | `menu-position-alignment`  (range 0..100; only used while `position-in-panel` is `Center` and the panel is horizontal, as in ArcMenu: 0 = the menu extends to the left of the button, 50 = centred on it, 100 = to the right. Applied as the popup's arrow alignment `1 - value / 100`, live. Prefs: General > Panel, shown only for Center) |
 | `menu-button-position-offset` | i | `0` | `menu-button-position-offset` |
 | `menu-button-appearance` | enum menu-button-appearance | `'Icon'` | `menu-button-appearance` |
 | `menu-button-text` | s | `'Apps'` | `menu-button-text` |
@@ -101,11 +104,11 @@ ArcMenu runner keys that are read but have no equivalent (listed as skipped in t
 | `scrollview-fade-effect` | b | `true` | `scrollview-fade-effect` |
 | `show-user-avatar` | b | `true` | `show-user-avatar` |
 | `avatar-style` | enum avatar-style | `'Round'` | `avatar-style` |
-| `icon-size-apps` | i | `-1` | `icon-size-apps` |
-| `icon-size-shortcuts` | i | `-1` | `icon-size-shortcuts` |
-| `icon-size-categories` | i | `-1` | `icon-size-categories` |
-| `icon-size-buttons` | i | `-1` | `icon-size-buttons` |
-| `icon-size-misc` | i | `-1` | `icon-size-misc` |
+| `icon-size-apps` | i | `-1` | `icon-size-apps`  (<= 0 = the default size) |
+| `icon-size-shortcuts` | i | `-1` | `icon-size-shortcuts`  (-1 = 16 px, 0 = no shortcut icons; the rows keep their height) |
+| `icon-size-categories` | i | `-1` | `icon-size-categories`  (-1 = 16 px, 0 = no category icons; the rows keep their height) |
+| `icon-size-buttons` | i | `-1` | `icon-size-buttons`  (<= 0 = 16 px: the power buttons are icon-only, so 0 does not hide them) |
+| `icon-size-misc` | i | `-1` | `icon-size-misc`  (the search box's find / clear icons and the Back / All Apps button icons, as in ArcMenu's search entry and back button; <= 0 = 16 px; live) |
 | `icon-size-grid` | a{si} | `{'width': -1, 'height': -1, 'size': -1}` | `icon-size-grid` |
 | `icon-style-categories` | enum menu-item-icon-style | `'Symbolic'` | `icon-style-categories` |
 | `icon-style-shortcuts` | enum menu-item-icon-style | `'Symbolic'` | `icon-style-shortcuts` |
@@ -143,6 +146,8 @@ ArcMenu runner keys that are read but have no equivalent (listed as skipped in t
 | Key | Type | Default | Migrates from (ArcMenu) |
 |---|---|---|---|
 | `override-menu-theme` | b | `false` | `override-menu-theme` |
+| `menu-themes` | aas | ArcMenu's four built-ins (ArcMenu Style, Simply Dark, Dark Blue, Light Blue) | `menu-themes`  (same 12-string entries `[name, background, text, border colour, border width, corner radius, font size, separator colour, hover bg, hover fg, pressed bg, pressed fg]`, numbers as strings; copied by the import, malformed entries (wrong length, empty name, unusable colour, non-numeric number) are dropped with a warning in the preview, numbers outside 0..5 / 0..25 / 8..18 are clamped). The list is only a template: choosing a preset in Appearance writes `override-menu-theme = true` and the eleven keys below in one batch (with Undo) and never changes this key; "Follow the desktop theme" sets `override-menu-theme = false`; "Save current colours as a preset" appends the eleven current values (disabled while ALL eleven equal an existing preset); "Manage presets" renames, reorders and removes entries (`theme/presets.ts` holds the pure logic) |
+| `menu-arrow-rise` | (bi) | `(false, 6)` | `menu-arrow-rise`  (px clamped to 0..50 with a warning: ArcMenu allows negatives, which would pull the menu over the panel. When enabled the main popup gets `-arrow-rise: N px`, i.e. the distance between the panel and the menu; the shell theme's own value is about 4-6 px. Independent of `override-menu-theme`; read when the menu opens. Prefs: Appearance > Menu placement) |
 | `menu-background-color` | s | `"rgba(48,48,49,0.98)"` | `menu-background-color` |
 | `menu-foreground-color` | s | `"rgb(223,223,223)"` | `menu-foreground-color` |
 | `menu-border-color` | s | `"rgb(60,60,60)"` | `menu-border-color` |
@@ -184,7 +189,7 @@ The bundled ArcMenu schema is from ArcMenu release 74 (`BUNDLED_ARCMENU_VERSION`
 installed ArcMenu is newer, because keys added since then are not read.
 
 Other layouts' keys (`*-layout-*`, `raven-*`, `default-menu-view-<layout>` except the runner's, ...), `menu-layout` (only read to derive `pinned-apps-display`),
-`force-menu-location`, `menu-position-alignment`, `menu-arrow-rise`, `menu-themes`,
+`force-menu-location` (a dummy-widget placement with eight screen positions, not part of v1),
 `extra-categories*`, `recently-installed-apps`, `show-recently-installed-apps`, update-notifier keys,
 `settings-width/height`, `prefs-visible-page`, `hide-overview-*`, `enable-horizontal-flip`, `dash-to-panel-standalone`, `pop-*`,
 `hotkey-open-primary-monitor`, `activate-on-hover`, `show-category-sub-menus`,

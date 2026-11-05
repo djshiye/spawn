@@ -5,7 +5,8 @@
 //   ownedScope(parent, label)                 child scope + release() that also unregisters it from `parent`
 //   displayName(app, settings)                app name, or its GenericName when apps-show-generic-names is on
 //   launchApp(app, settings, newWindow)       activate or open a new window, per activate-on-launch
-//   iconSizeFor(settings, key, fallback)      icon-size-* setting (-1 = default) -> px
+//   iconSizeFor(settings, key, fallback)      icon-size-* setting (<= 0 = default) -> px
+//   iconSizeOrHidden(settings, key, fallback) same for icon-size-shortcuts / -categories, but 0 stays 0 (hide the icons)
 //   symbolicGIcon(icon)                       themed icon with its "-symbolic" variants tried first
 //   applyScrollSettings(scroll, settings)     scrollbars-visible / -overlay / scrollview-fade-effect, live
 //   scrollIntoView(scroll, actor)             scroll a St.ScrollView so `actor` is visible
@@ -62,6 +63,14 @@ export function launchApp(app: Shell.App, settings: SpawnSettings, newWindow: bo
 export function iconSizeFor(settings: SpawnSettings, key: 'icon-size-apps' | 'icon-size-shortcuts' | 'icon-size-categories' | 'icon-size-buttons' | 'icon-size-misc', fallback: number): number {
     const v = settings.get(key);
     return v > 0 ? v : fallback;
+}
+
+/**
+ * Like iconSizeFor, but a stored 0 stays 0 = "hide these icons". Only for the keys whose rows keep a label
+ * and their height without the icon (categories, shortcuts); the others treat 0 like -1 (the default).
+ */
+export function iconSizeOrHidden(settings: SpawnSettings, key: 'icon-size-shortcuts' | 'icon-size-categories', fallback: number): number {
+    return settings.get(key) === 0 ? 0 : iconSizeFor(settings, key, fallback);
 }
 
 export function symbolicGIcon(icon: Gio.Icon | null): Gio.Icon | null {
