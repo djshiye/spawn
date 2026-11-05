@@ -10,6 +10,7 @@
 //   row.app: Shell.App
 //   row.destroy()
 //   RowOptions: {iconSize?, description?: boolean, folderUuid?, symbolic?, name?, pinned?}
+//   A pinned row is an outer transparent button (`spawn-pinned-row`) around a `spawn-row-surface` that draws it.
 //   new ActionRow(name, icon, activate, host?, opts?)   arbitrary action; opts: {iconSize?, context?}
 
 import Clutter from 'gi://Clutter';
@@ -37,6 +38,10 @@ export interface RowOptions {
 
 export const DEFAULT_ROW_ICON_SIZE = 28;
 
+/** Outer button of a pinned list row (transparent, full hit area) and its visible face (see interact.ts). */
+export const PINNED_ROW_CLASS = 'spawn-pinned-row';
+export const PINNED_ROW_BOX = 'spawn-row-box spawn-surface spawn-row-surface';
+
 
 export class AppRow {
     readonly actor: St.Button;
@@ -44,10 +49,10 @@ export class AppRow {
 
     constructor(app: Shell.App, host: TileHost, opts: RowOptions = {}) {
         this._app = app;
-        const button = makeItemButton(opts.pinned ? 'spawn-row spawn-pinned-row' : 'spawn-row');
+        const button = makeItemButton(opts.pinned ? PINNED_ROW_CLASS : 'spawn-row');
         this.actor = button;
 
-        const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
+        const box = new St.BoxLayout({style_class: opts.pinned ? PINNED_ROW_BOX : 'spawn-row-box', x_expand: true});
         const icon = new St.Icon({
             style_class: 'spawn-row-icon',
             icon_size: opts.iconSize ?? DEFAULT_ROW_ICON_SIZE,
@@ -97,9 +102,9 @@ export class ActionRow {
 
     constructor(name: string, icon: Gio.Icon | string, activate: (ctrl: boolean) => void, host?: {tooltips?: TooltipManager},
         opts: {iconSize?: number; context?: () => void} = {}) {
-        const button = makeItemButton('spawn-row spawn-pinned-row');
+        const button = makeItemButton(PINNED_ROW_CLASS);
         this.actor = button;
-        const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
+        const box = new St.BoxLayout({style_class: PINNED_ROW_BOX, x_expand: true});
         const iconActor = new St.Icon({
             style_class: 'spawn-row-icon',
             icon_size: opts.iconSize ?? DEFAULT_ROW_ICON_SIZE,

@@ -14,7 +14,7 @@
 //   view.startRename(): void
 //   view.scroll: St.ScrollView
 //   view.destroy()
-//   FolderViewHost: TileHost & {back(), metrics?(): {columns, tileWidth, iconSize, multiLine?, list?, rowIconSize?},
+//   FolderViewHost: TileHost & {back(), metrics?(): {columns, tileWidth, iconSize, multiLine?, list?, rowIconSize?, size?},
 //                               openMissingContext?(tile, id)}
 //
 // Apps of the folder whose .desktop file is gone are shown as dimmed tiles (context menu: Unpin)
@@ -28,6 +28,7 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 
 import type {Scope} from '../../core/scope.js';
 import type {Services} from '../../core/services.js';
+import type {PinnedItemSize} from '../../core/settings.js';
 import {acceptDrops, enableDrag, rejectDrops} from '../dnd.js';
 import {applyScrollSettings, displayName, lookupApp} from '../util.js';
 import {ActionRow, AppRow} from './appRow.js';
@@ -43,6 +44,8 @@ export interface FolderMetrics {
     /** List display: rows (of `rowIconSize`) instead of a grid of tiles. */
     list?: boolean;
     rowIconSize?: number;
+    /** pinned-item-size tier (default Compact). */
+    size?: PinnedItemSize;
 }
 
 export type FolderViewHost = TileHost & {
@@ -194,7 +197,7 @@ export class FolderView {
             tiles.push(actor);
         }
         this._tiles = tiles;
-        this._grid.setTiles(tiles, list ? 1 : metrics.columns, list ? -1 : metrics.tileWidth);
+        this._grid.setTiles(tiles, list ? 1 : metrics.columns, list ? -1 : metrics.tileWidth, metrics.size);
         acceptDrops(this._tileScope, this._grid.actor, store, {kind: 'grid', index: () => -1, folderUuid: uuid});
     }
 

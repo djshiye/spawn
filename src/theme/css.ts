@@ -114,10 +114,16 @@ function rule(selectors: string | string[], decls: Decl[]): string {
 }
 
 const ITEM = [
-    '.spawn-tile', '.spawn-row', '.spawn-shortcut-row', '.spawn-folder-tile',
+    '.spawn-row', '.spawn-shortcut-row',
     '.spawn-user-card', '.spawn-nav-button', '.spawn-power-button',
 ];
-const each = (suffix: string, scope = ''): string[] => ITEM.map(s => `${scope}${s}${suffix}`);
+// Pinned list rows and grid tiles (folder tiles included): the St.Button is a transparent hit area,
+// the visible face is its .spawn-surface child, so the state of the button styles the surface.
+const FACE = (suffix: string, scope: string): string[] => [
+    `${scope}.spawn-pinned-row${suffix} .spawn-row-surface`,
+    `${scope}.spawn-tile${suffix} .spawn-tile-surface`,
+];
+const each = (suffix: string, scope = ''): string[] => [...ITEM.map(s => `${scope}${s}${suffix}`), ...FACE(suffix, scope)];
 
 // The shell theme nests panel-button rules under `#panel` (specificity 1,1,0 and up), and both
 // GNOME's panel and Dash to Panel's panels are named 'panel', so our rules must carry the

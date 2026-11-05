@@ -34,17 +34,18 @@ import {debounce} from '../core/debounce.js';
 import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
-import type {Entry} from '../core/settings.js';
+import type {Entry, PinnedItemSize} from '../core/settings.js';
 import type {PinnedItem} from '../model/pinned.js';
 import type {SearchHandle, SearchResult} from '../search/engine.js';
 import {AppContextMenu} from './contextMenu.js';
 import {acceptDrops, enableDrag, rejectDrops} from './dnd.js';
-import {ActionRow, AppRow, DEFAULT_ROW_ICON_SIZE} from './widgets/appRow.js';
-import {ActionTile, AppTile, DEFAULT_TILE_ICON_SIZE, type TileHost} from './widgets/appTile.js';
+import {ActionRow, AppRow} from './widgets/appRow.js';
+import {ActionTile, AppTile, type TileHost} from './widgets/appTile.js';
 import {CategoryList} from './widgets/categoryList.js';
 import {FolderRow, FolderTile, type FolderHost} from './widgets/folderTile.js';
 import {FolderView} from './widgets/folderView.js';
 import {makeItemButton, wireItem} from './widgets/interact.js';
+import {sizeMetrics} from './widgets/pinnedSize.js';
 import {PowerBar} from './widgets/powerBar.js';
 import {ResultList, type ResultHost} from './widgets/resultList.js';
 import {SearchBox} from './widgets/searchBox.js';
@@ -72,10 +73,9 @@ export type ViewId = 'pinned' | 'frequent' | 'categories' | 'all' | 'folder' | '
 export const MIN_LEFT_WIDTH = 420;
 export const MIN_RIGHT_WIDTH = 180;
 const MIN_COLUMNS = 3;
-const TILE_TARGET_WIDTH = 88;
 /**
  * Horizontal space used inside the left pane that tiles cannot use: its own 8 + 8 px padding and
- * the 8 + 8 px grid gutter (`.spawn-tile-grid` padding, which also absorbs a classic scrollbar).
+ * the 8 + 8 px grid gutter (padding of the first / last column's tiles, which also absorbs a classic scrollbar).
  */
 const LEFT_CHROME = 32;
 const MIN_HEIGHT = 360;
@@ -91,7 +91,7 @@ const SEPARATOR_W = 13;
 const RELAYOUT_KEYS = [
     'menu-height', 'menu-width-adjustment', 'left-panel-width', 'right-panel-width',
     'icon-size-grid', 'default-menu-view', 'vert-separator', 'search-entry-location', 'search-hidden',
-    'multi-lined-labels', 'pinned-apps-display',
+    'multi-lined-labels', 'pinned-apps-display', 'pinned-item-size',
 ] as const;
 
 /** Read once when a view is built: a change rebuilds the lists. */
@@ -179,7 +179,7 @@ export class SpawnLayout implements ShortcutHost {
     private _searchToken = 0;
     private _cols = 4;
     private _tileWidth = 96;
-    private _tileIconSize = DEFAULT_TILE_ICON_SIZE;
+    private _tileIconSize = sizeMetrics('Compact').tileIcon;
     /** Icon size / label mode / naming the cached tiles were built with; a change rebuilds them. */
     private _tileSignature = '';
     private _side: St.Side = St.Side.TOP;
@@ -496,11 +496,12 @@ export class SpawnLayout implements ShortcutHost {
         this.actor.set_height(height);
 
         const avail = left - LEFT_CHROME;
-        this._cols = Math.max(MIN_COLUMNS, Math.floor(avail / TILE_TARGET_WIDTH));
+        const metrics = sizeMetrics(s.get('pinned-item-size'));
+        this._cols = Math.max(MIN_COLUMNS, Math.floor(avail / metrics.tileTargetWidth));
         this._tileWidth = Math.floor(avail / this._cols);
         const grid = s.get('icon-size-grid');
         const size = grid?.size ?? -1;
-        this._tileIconSize = size > 0 ? size : DEFAULT_TILE_ICON_SIZE;
+        this._tileIconSize = size > 0 ? size : metrics.tileIcon;
 
         const sig = `${this._cols}|${this._tileWidth}|${this._tileIconSize}`;
         const changed = this._metricsSig !== '' && sig !== this._metricsSig;
@@ -816,6 +817,7 @@ export class SpawnLayout implements ShortcutHost {
                     multiLine: this._services.settings.get('multi-lined-labels') && !this._listMode(),
                     list: this._listMode(),
                     rowIconSize: this._rowIconSize(),
+                    size: this._itemSize(),
                 }),
                 openMissingContext: (tile, id) => this._context.open(tile, {kind: 'custom', id}),
             });
@@ -907,9 +909,14 @@ export class SpawnLayout implements ShortcutHost {
         return this._services.settings.get('pinned-apps-display') === 'List';
     }
 
-    /** Icon size of list rows: `icon-size-apps`, the same as the frequent / all-apps rows. */
+    /** `pinned-item-size`: Compact / Comfortable / Large (list row height, tile icon, folder plate). */
+    private _itemSize(): PinnedItemSize {
+        return this._services.settings.get('pinned-item-size');
+    }
+
+    /** Icon size of list rows: `icon-size-apps` when set, else the item size's default (28 at Compact, as the frequent / all-apps rows). */
     private _rowIconSize(): number {
-        return iconSizeFor(this._services.settings, 'icon-size-apps', DEFAULT_ROW_ICON_SIZE);
+        return iconSizeFor(this._services.settings, 'icon-size-apps', sizeMetrics(this._itemSize()).rowIcon);
     }
 
     private _syncPinned(): void {
@@ -925,7 +932,8 @@ export class SpawnLayout implements ShortcutHost {
         // any of them (or list <-> grid, which swaps tiles for rows) rebuilds every entry
         // (otherwise old and new sizes mix in one grid).
         // List rows are always one line (multi-lined-labels is a grid setting).
-        const signature = list ? `list${rowIconSize}|${generic}` : `grid${this._tileIconSize}|${multiLine}|${generic}`;
+        const size = this._itemSize();
+        const signature = list ? `list${rowIconSize}|${generic}|${size}` : `grid${this._tileIconSize}|${multiLine}|${generic}|${size}`;
         if (signature !== this._tileSignature) {
             this._tileSignature = signature;
             for (const [key, entry] of [...this._tileEntries]) {
@@ -986,7 +994,8 @@ export class SpawnLayout implements ShortcutHost {
                 }
                 const {scope, release} = ownedScope(this._scope, key);
                 const Folder = list ? FolderRow : FolderTile;
-                const tile = new Folder(item.uuid, item.name, this._folderIcons(item.uuid), this._folderHost, tileOpts);
+                const tile = new Folder(item.uuid, item.name, this._folderIcons(item.uuid), this._folderHost,
+                    {...tileOpts, plateInset: sizeMetrics(size).plateInset});
                 enableDrag(scope, tile.actor, {id: item.uuid, isFolder: true});
                 acceptDrops(scope, tile.actor, store, {kind: 'folder', uuid: item.uuid}, dropOpts);
                 return {key, entry: {widget: tile.actor, scope, release, folder: tile}};
@@ -1027,7 +1036,7 @@ export class SpawnLayout implements ShortcutHost {
                 entry.widget.destroy();
             }
         }
-        this._grid.setTiles(tiles, list ? 1 : this._cols, list ? -1 : this._tileWidth);
+        this._grid.setTiles(tiles, list ? 1 : this._cols, list ? -1 : this._tileWidth, size);
     }
 
     private _runCustom(id: string): void {

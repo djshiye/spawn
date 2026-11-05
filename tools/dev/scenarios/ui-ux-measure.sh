@@ -21,6 +21,10 @@ import json, sys
 d = json.load(open(sys.argv[1]))
 # the focused item carries the :focus pseudo class: its background alpha is the 25 % accent tint
 it = next(i for i in d["items"] if sys.argv[2] in i.get("cls", "").split())
+# pinned rows / tiles: the tint is drawn by the visible face inside the (transparent) button
+if sys.argv[2] in ("spawn-pinned-row", "spawn-tile"):
+    k = d["items"].index(it)
+    it = next(i for i in d["items"][k + 1:] if "spawn-surface" in i.get("cls", "").split())
 bg = it["bg"]
 print("focus bg", sys.argv[2], bg)
 sys.exit(0 if bg[3] > 0.15 and bg[2] > bg[0] else 1)

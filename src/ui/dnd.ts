@@ -3,7 +3,8 @@
 // Responsibility: make tiles draggable (DND.makeDraggable, 200 ms press-and-move like the shell's
 // app grid), accept drops on the grid or list (reorder / append), on an app tile or row (drop in
 // the middle creates a folder from the two apps, near the left/right edge - top/bottom edge in a
-// vertical list - reorders), on a folder tile / row (middle adds, edges reorder) and on a "remove
+// vertical list - reorders; the bands are fractions of the entry's visible face, with a little
+// hysteresis so the pointer resting on a band edge does not flicker), on a folder tile / row (middle adds, edges reorder) and on a "remove
 // from folder" zone. All mutations go through PinnedStore. Drop feedback uses the classes
 // spawn-drop-target (middle) and spawn-drop-before / spawn-drop-after (reorder).
 //
@@ -32,6 +33,7 @@
 // pointer, that view scrolls (GNOME's DND grabs the pointer, so the wheel does not work mid-drag).
 
 import Clutter from 'gi://Clutter';
+import GLib from 'gi://GLib';
 import St from 'gi://St';
 
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
@@ -40,6 +42,7 @@ import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {PinnedStore} from '../model/pinned.js';
+import {surfaceOf} from './widgets/interact.js';
 
 export interface DragPayload {
     id: string;
@@ -73,6 +76,14 @@ const AUTOSCROLL_TICK_MS = 40;
 
 const DROP_CLASSES = ['spawn-drop-target', 'spawn-drop-before', 'spawn-drop-after'];
 
+/**
+ * Hysteresis of the before / onto / after bands: the band the pointer is in keeps this many px of
+ * extra room, so hovering exactly on a band edge does not flicker between "reorder" and "onto".
+ * The memory is dropped when no motion came for ZONE_MEMORY_MS (the pointer was elsewhere).
+ */
+const ZONE_HYSTERESIS = 3;
+const ZONE_MEMORY_MS = 250;
+
 function delegateOf(actor: Clutter.Actor): Delegate {
     const holder = actor as unknown as {_delegate?: Delegate};
     holder._delegate ??= {};
@@ -83,8 +94,10 @@ function clearDropClasses(widget: St.Widget | null): void {
     if (!widget)
         return;
     try {
+        // pinned rows / tiles show the feedback on their visible face, not on the transparent button
+        const face = surfaceOf(widget);
         for (const c of DROP_CLASSES)
-            widget.remove_style_class_name(c);
+            face.remove_style_class_name(c);
     } catch {
         // destroyed mid-drag
     }
@@ -228,14 +241,24 @@ export function enableDrag(scope: Scope, tile: St.Widget, payload: DragPayload):
     }, 'drag monitor');
 }
 
-/** Bands of a grid tile (left / middle / right) or, `vertical`, of a list row (top / middle / bottom). */
-function zoneOf(target: St.Widget, x: number, y: number, vertical: boolean): Zone {
-    const size = (vertical ? target.height : target.width) || 1;
-    const pos = vertical ? y : x;
-    const edge = vertical ? 0.3 : 0.22;
-    if (pos < size * edge)
+/**
+ * Bands of a grid tile (left / middle / right) or, `vertical`, of a list row (top / middle /
+ * bottom): 22 % / 30 % of the VISIBLE face on each side, so they scale with the row height. The
+ * transparent gap around the face counts as the nearest outer band. `prev` (the zone of the last
+ * motion over this target) widens its own band by ZONE_HYSTERESIS px.
+ */
+function zoneOf(target: St.Widget, x: number, y: number, vertical: boolean, prev: Zone | null): Zone {
+    const face = surfaceOf(target);
+    const inner = face !== target;
+    const origin = inner ? (vertical ? face.y : face.x) : 0;
+    const size = (vertical ? (inner ? face.height : target.height) : (inner ? face.width : target.width)) || 1;
+    const pos = (vertical ? y : x) - origin;
+    const edge = size * (vertical ? 0.3 : 0.22);
+    const before = edge + (prev === 'before' ? ZONE_HYSTERESIS : prev === 'onto' ? -ZONE_HYSTERESIS : 0);
+    const after = size - edge - (prev === 'after' ? ZONE_HYSTERESIS : prev === 'onto' ? -ZONE_HYSTERESIS : 0);
+    if (pos < before)
         return 'before';
-    if (pos > size * (1 - edge))
+    if (pos > after)
         return 'after';
     return 'onto';
 }
@@ -274,24 +297,34 @@ export function acceptDrops(scope: Scope, target: St.Widget, store: PinnedStore,
         }
     };
 
-    const toZone = (x: number, y: number): Zone => drop.kind === 'grid' || drop.kind === 'unfolder' ? 'onto' : zoneOf(target, x, y, vertical);
+    let last: {zone: Zone; at: number} | null = null;
+    const toZone = (x: number, y: number, remember: boolean): Zone => {
+        if (drop.kind === 'grid' || drop.kind === 'unfolder')
+            return 'onto';
+        const now = GLib.get_monotonic_time() / 1000;
+        const prev = last && now - last.at <= ZONE_MEMORY_MS ? last.zone : null;
+        const zone = zoneOf(target, x, y, vertical, prev);
+        last = remember ? {zone, at: now} : null;
+        return zone;
+    };
 
     delegate.handleDragOver = (source, _actor, x, y) => {
-        const zone = toZone(x, y);
+        const zone = toZone(x, y, true);
         clearDropClasses(target);
         if (!canAccept(source, zone))
             return DND.DragMotionResult.NO_DROP;
         if (drop.kind === 'grid')
             return DND.DragMotionResult.MOVE_DROP;
+        const face = surfaceOf(target);
         if (drop.kind === 'unfolder' || zone === 'onto')
-            target.add_style_class_name('spawn-drop-target');
+            face.add_style_class_name('spawn-drop-target');
         else
-            target.add_style_class_name(zone === 'before' ? 'spawn-drop-before' : 'spawn-drop-after');
+            face.add_style_class_name(zone === 'before' ? 'spawn-drop-before' : 'spawn-drop-after');
         return DND.DragMotionResult.MOVE_DROP;
     };
 
     delegate.acceptDrop = (source, _actor, x, y) => {
-        const zone = toZone(x, y);
+        const zone = toZone(x, y, false);
         clearDropClasses(target);
         if (!canAccept(source, zone))
             return false;
