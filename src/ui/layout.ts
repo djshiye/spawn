@@ -390,6 +390,8 @@ export class SpawnLayout implements ShortcutHost {
     }
 
     search(query: string): void {
+        if (this._isOpen && this._search.actor.visible)
+            this._search.focus();
         this._search.text = query;
     }
 

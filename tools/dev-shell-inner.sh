@@ -575,4 +575,16 @@ if grep -E '\[spawn\]' "$log" | grep -Eq 'ERROR:|failed|threw' ||
 else
     echo "RESULT: no spawn errors in the shell log"
 fi
+# Any GLib "-CRITICAL" line from the shell process (Clutter-, St-, Gjs-, GNOME Shell-CRITICAL, ...) fails
+# the run, whoever owns it: a CRITICAL is a failed g_return_if_fail somewhere, and we have none to spare.
+# Known external noise is filtered through CRITICAL_NOISE (extended regex); currently empty: none seen.
+CRITICAL_NOISE='^$'
+criticals="$(grep -E '^\(gnome-shell:[0-9]+\): .*-CRITICAL' "$log" | grep -Ev "$CRITICAL_NOISE")"
+if [ -n "$criticals" ]; then
+    echo "RESULT: CRITICAL lines in the shell log:"
+    echo "$criticals" | sed 's/^/  /'
+    status=1
+else
+    echo "RESULT: no CRITICAL lines in the shell log"
+fi
 exit "$status"

@@ -46,6 +46,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {AZ_TASKBAR_UUID, ContextMenuId, DTP_UUID, PowerType, ShortcutId, SPAWN_ICON} from '../core/constants.js';
 import {resolveButtonIcon} from '../core/icons.js';
 import {error} from '../core/log.js';
+import {openExtensionPrefs} from '../core/openPrefs.js';
 import type {Scope} from '../core/scope.js';
 import type {Entry, SpawnSettings} from '../core/settings.js';
 import {ExtState} from '../panel/validate.js';
@@ -365,7 +366,7 @@ export class ButtonMenu {
                 icon: this._icon(entry, 'application-x-addon-symbolic'),
                 run: close => {
                     close();
-                    this._scope.idle(() => Main.extensionManager.openExtensionPrefs(target.uuid, '', {}));
+                    this._scope.idle(() => openExtensionPrefs(target.uuid));
                 },
             };
         }

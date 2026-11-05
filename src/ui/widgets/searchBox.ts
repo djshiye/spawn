@@ -48,10 +48,7 @@ export class SearchBox {
         clearIcon.hide();
 
         const ct = this.actor.clutter_text;
-        ct.connect('key-focus-in', () => console.log(`[spawn] DBG key-focus-in ${new Error().stack}`));
-        ct.connect('key-focus-out', () => console.log('[spawn] DBG key-focus-out'));
         ct.connect('text-changed', () => {
-            console.log(`[spawn] DBG text-changed hasfocus=${ct.has_key_focus()} stagefocus=${(global.stage.key_focus as unknown) === ct}`);
             clearIcon.visible = ct.text.length > 0;
             if (this._silent)
                 return;
@@ -107,7 +104,6 @@ export class SearchBox {
     }
 
     focus(): void {
-        console.log(`[spawn] DBG focus() ${new Error().stack}`);
         this.actor.clutter_text.grab_key_focus();
     }
 

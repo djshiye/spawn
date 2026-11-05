@@ -17,6 +17,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {DesktopMemory} from './core/desktopToggle.js';
 import {error, log} from './core/log.js';
+import {openExtensionPrefs} from './core/openPrefs.js';
 import {Scope} from './core/scope.js';
 import {type ExtensionInfo, Services} from './core/services.js';
 import {SCHEMA_ID, SpawnSettings} from './core/settings.js';
@@ -124,15 +125,7 @@ export default class SpawnExtension extends Extension {
                     settings,
                     iconDir: info.iconDir,
                     popup: popup ?? {isOpen: false, toggle: () => {}, open: () => {}, close: () => {}},
-                    // openPreferences() is async and rejects with "Already showing a prefs
-                    // dialog" when a prefs window is already open; that rejection is
-                    // expected and must not become an unhandled error.
-                    openPreferences: () => {
-                        Promise.resolve(this.openPreferences()).catch((e: unknown) => {
-                            if (!String(e).includes('Already showing'))
-                                error('openPreferences failed', e);
-                        });
-                    },
+                    openPreferences: () => openExtensionPrefs(this.uuid),
                 }),
             });
             attacher.start();
