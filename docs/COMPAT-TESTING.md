@@ -33,11 +33,19 @@ control: it should behave exactly like the host.
 - `--with-dtp` mounts the host's Dash to Panel read-only; its `metadata.json` must list the release (v74
   lists 46-51). The host's Orchis theme and user-theme extension are mounted too (as the host harness
   uses them for seeded runs); `SPAWN_CONTAINER_NO_THEME=1` skips them.
-- The seeded scenarios pin apps from `tools/dev/seed.ini` that the container does not have; `.desktop`
-  stubs (copies of the host's files when found) are generated into `.dev/f<release>/stub-apps` and put on
-  `XDG_DATA_DIRS`.
+- The scenarios depend on the apps installed on the host (`tools/dev/seed.ini` pins them, the context menu
+  and Frequent view list them). The host's `.desktop` files from its `XDG_DATA_DIRS` (not
+  `~/.local/share/applications`, which the host harness cannot see either) are copied to
+  `.dev/f<release>/stub-apps` and mounted read-only as `/usr/local/share/applications`; `TryExec` is dropped
+  and `Exec` points at `/usr/bin/true`, because GIO rejects entries whose program is missing.
+- `--network none`: the shell's extension updater would otherwise "update" the host's user-theme from
+  extensions.gnome.org into the sandbox copy on 49 / 50 and break it.
 - The Dev screenshot hook only writes below a `.dev/` directory, which is why the per-release dirs are
   `.dev/f<release>` and not `.dev-f<release>`.
+- `SPAWN_CONTAINER_BUILD=<dir>` runs a complete build tree from elsewhere (mounted over `/work/build`,
+  state in `.dev/f<release>-patched/`): use it to try a hand-patched build without touching `build/`.
+- Run at most two or three releases at once; the scenarios are sleep-timed and a loaded machine produces
+  timing flakes (re-run the single scenario alone before believing a failure).
 
 ## Static check against the 49 / 50 typings
 

@@ -101,7 +101,9 @@ fi
 
 # --userns=keep-id: files written to the mounted repo belong to you. label=disable instead of :Z, which
 # would relabel the whole worktree on the host.
-exec podman run --rm --userns=keep-id --security-opt label=disable --shm-size=1g \
+# --network none: nothing here needs the network, and on 49 / 50 the shell's extension updater would otherwise
+# download "updates" of the host's user-theme from extensions.gnome.org into the sandbox copy and break it.
+exec podman run --rm --userns=keep-id --security-opt label=disable --network none --shm-size=1g \
     -w /work "${mounts[@]}" \
     -e HOME=/home/dev -e SPAWN_NO_BUILD=1 -e "SPAWN_DEV_DIR=$run_dev" \
     "$image" tools/container/entrypoint.sh "${cmd[@]}"

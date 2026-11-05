@@ -15,7 +15,8 @@ RUN dnf install -y --setopt=install_weak_deps=False \
     && dbus-uuidgen --ensure=/etc/machine-id \
     && mkdir -p /home/dev && chmod 0777 /home/dev
 
-# Load extensions regardless of their metadata.json shell-version (key of org.gnome.shell).
+# Load extensions regardless of their metadata.json shell-version (key of org.gnome.shell). Do NOT touch
+# allow-extension-installation: with it false the shell does not find any user extension.
 RUN printf '[org.gnome.shell]\ndisable-extension-version-validation=true\n' \
         >/usr/share/glib-2.0/schemas/zz-spawn-dev.gschema.override \
     && glib-compile-schemas --strict /usr/share/glib-2.0/schemas \
