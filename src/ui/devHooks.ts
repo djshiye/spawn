@@ -24,6 +24,13 @@
 //                            [{kind: 'item'|'separator'|'submenu', label, visible, open?, items?}]
 //   Windows() -> s           JSON: [{title, appId, type, minimized, skipTaskbar}] of every window (Show Desktop checks)
 //   FocusInfo() -> s         JSON: {type, cls} of the actor holding the keyboard focus (null when none)
+//   HitSweep(s itemCls) -> s JSON: hit-tests every pixel of the visible pinned list / grid (the first visible
+//                            `spawn-tile-grid`, clipped to its scroll view) with Clutter.PickMode.REACTIVE and
+//                            checks that each point belongs to an actor carrying `itemCls` (spawn-pinned-row /
+//                            spawn-tile): {rect, rows, contiguous (the rows start at the grid's top and touch), total, hit,
+//                            skipped, misses: [[x, y, picked]...]}.
+//                            Every pixel row; columns: the outer 12 px at each end, 6 px around every tile edge and every 5th between.
+//                            A grid's partly filled last row is only checked over its tiles' extent.
 //   Dump() -> s              JSON: monitor, anchor, popup rect and every visible actor of the popup /
 //                            context menu / tooltip with allocation, padding, margin, colours, font
 //                            (the UX audit measurements; see tools/dev/scenarios/ui-ux-measure.sh)
@@ -62,6 +69,7 @@ const IFACE = `
     <method name="MenuItems"><arg type="s" direction="in" name="cls"/><arg type="s" direction="out" name="json"/></method>
     <method name="Windows"><arg type="s" direction="out" name="json"/></method>
     <method name="FocusInfo"><arg type="s" direction="out" name="json"/></method>
+    <method name="HitSweep"><arg type="s" direction="in" name="itemCls"/><arg type="s" direction="out" name="json"/></method>
     <method name="Dump"><arg type="s" direction="out" name="json"/></method>
   </interface>
 </node>`;
@@ -179,6 +187,81 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
         return [x, y, w, h].map(v => Math.round(v * 10) / 10);
     };
 
+    const hitSweep = (itemCls: string): string => {
+        const grid = findAll('spawn-tile-grid')[0];
+        if (!grid)
+            throw new Error('no visible spawn-tile-grid');
+        const [gx, gy, gw, gh] = rectOf(grid);
+        // the part of the grid that is scrolled into view
+        let top = gy;
+        let bottom = gy + gh;
+        for (let a = grid.get_parent(); a; a = a.get_parent()) {
+            if (a instanceof St.ScrollView) {
+                const [, sy, , sh] = rectOf(a);
+                top = Math.max(top, sy);
+                bottom = Math.min(bottom, sy + sh);
+                break;
+            }
+        }
+        const rows = grid.get_children().filter(r => r.visible);
+        let contiguous = rows.length > 0;
+        // (a folder's list may be shorter than its stretched container: only the rows have to touch)
+        let prevBottom = gy;
+        const spans: Array<{y0: number; y1: number; x0: number; x1: number; edges: number[]}> = [];
+        for (const row of rows) {
+            const [, ry, , rh] = rectOf(row);
+            const tiles = row.get_children().filter(t => t.visible).map(t => rectOf(t));
+            if (tiles.length === 0)
+                continue;
+            if (Math.abs(ry - prevBottom) > 0.5)
+                contiguous = false;
+            prevBottom = ry + rh;
+            spans.push({
+                y0: ry, y1: ry + rh,
+                x0: Math.min(...tiles.map(t => t[0] as number)),
+                x1: Math.max(...tiles.map(t => (t[0] as number) + (t[2] as number))),
+                edges: tiles.flatMap(t => [t[0] as number, (t[0] as number) + (t[2] as number)]),
+            });
+        }
+        let total = 0;
+        let hit = 0;
+        let skipped = 0;
+        const misses: Array<[number, number, string]> = [];
+        for (let y = Math.ceil(top); y < Math.floor(bottom); y++) {
+            const span = spans.find(sp => y + 0.5 >= sp.y0 && y + 0.5 < sp.y1);
+            if (!span)
+                continue;
+            const x0 = Math.ceil(span.x0);
+            const x1 = Math.floor(span.x1);
+            for (let x = x0; x < x1; x++) {
+                // dense where a gap can be (the ends of the row, 6 px around every tile edge), strided between
+                if (x - x0 >= 12 && x1 - 1 - x >= 12 && (x - x0) % 5 !== 0 && !span.edges.some(e => Math.abs(x + 0.5 - e) <= 6))
+                    continue;
+                const picked = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x + 0.5, y + 0.5) as Clutter.Actor | null;
+                let owner = false;
+                let bar = false;
+                for (let a: Clutter.Actor | null = picked; a && a !== grid; a = a.get_parent()) {
+                    if (a instanceof St.ScrollBar)
+                        bar = true;
+                    if (hasClass(a, itemCls)) {
+                        owner = true;
+                        break;
+                    }
+                }
+                if (bar && !owner) {
+                    skipped++;
+                    continue;
+                }
+                total++;
+                if (owner)
+                    hit++;
+                else if (misses.length < 20)
+                    misses.push([x, y, picked ? `${picked.constructor.name}.${(picked as St.Widget).style_class ?? ''}` : 'none']);
+            }
+        }
+        return JSON.stringify({rect: [gx, gy, gw, gh], rows: rows.length, contiguous, total, hit, skipped, misses});
+    };
+
     const dump = (): string => {
         const sides: St.Side[] = [St.Side.TOP, St.Side.RIGHT, St.Side.BOTTOM, St.Side.LEFT];
         const col = (c: {red: number; green: number; blue: number; alpha: number}) => [c.red, c.green, c.blue, c.alpha];
@@ -288,6 +371,7 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
             const info = f && f !== global.stage ? {type: f.constructor.name, cls: (f as St.Widget).style_class ?? ''} : null;
             return new GLib.Variant('(s)', [JSON.stringify(info)]);
         }),
+        HitSweepAsync: ([cls]: [string], inv: Invocation) => reply(inv, () => new GLib.Variant('(s)', [hitSweep(cls)])),
         DumpAsync: (_p: unknown[], inv: Invocation) => reply(inv, () => new GLib.Variant('(s)', [dump()])),
         SearchAsync: ([q]: [string], inv: Invocation) => reply(inv, () => popup.search(q)),
         ShowViewAsync: ([id]: [string], inv: Invocation) => reply(inv, () => popup.showView(id)),

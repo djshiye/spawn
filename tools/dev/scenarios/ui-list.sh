@@ -43,12 +43,12 @@ screenshot ui-list-pinned
 echo "-- keyboard: Down walks the rows, Return opens a folder row, Escape comes back"
 expect "focus starts in the search entry" "$(state_get layout.focus | cut -c1-12)" "Clutter_Text"
 key Down 0.5
-expect "Down focuses the first row" "$(state_get layout.focus)" "St_Button.spawn-row spawn-pinned-row"
+expect "Down focuses the first row" "$(state_get layout.focus)" "St_Button.spawn-pinned-row"
 expect_state "... at index 0" layout.focusIndex 0
 key Down 0.5; key Down 0.5
 expect_state "Down x3 is the third row" layout.focusIndex 2
 key Down 0.5
-expect "the fourth row is a folder" "$(state_get layout.focus)" "St_Button.spawn-row spawn-pinned-row spawn-folder-row"
+expect "the fourth row is a folder" "$(state_get layout.focus)" "St_Button.spawn-pinned-row spawn-folder-row"
 key Up 0.5
 expect_state "Up goes back one row" layout.focusIndex 2
 key Down 0.5
@@ -64,7 +64,7 @@ expect_state "Escape returns to the pinned list" layout.view pinned
 echo "-- Right leaves the list for the right pane; Tab cycle stays in the layout"
 focus_class spawn-pinned-row 0
 key Right
-check "Right moves to the right pane" "$([ "$(state_get layout.focus)" != "St_Button.spawn-row spawn-pinned-row" ]; echo $?)"
+check "Right moves to the right pane" "$([ "$(state_get layout.focus)" != "St_Button.spawn-pinned-row" ]; echo $?)"
 focus_class spawn-pinned-row 0
 for i in 1 2 3 4 5 6; do key Tab 0.25; done
 expect_state "focus still in the layout after the Tab cycle" layout.focusInLayout true

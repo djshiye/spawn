@@ -4,7 +4,9 @@
  * spacing, radii, sizes and neutral hover tints. The accent is used ONLY for focus / selection.
  *
  * Selectors the theme module re-colours (keep these class names and pseudo classes):
- *   .spawn-tile, .spawn-row, .spawn-shortcut-row, .spawn-folder-tile
+ *   .spawn-row, .spawn-shortcut-row, and the pinned entries' visible faces (.spawn-row-surface of a
+ *   .spawn-pinned-row, .spawn-tile-surface of a .spawn-tile / .spawn-folder-tile), styled through the
+ *   state of the button around them (".spawn-tile:focus .spawn-tile-surface")
  *       :focus                    keyboard focus (accent tint)
  *       :selected                 first search result / default pick (accent)
  *       :checked                  active category (accent)
@@ -14,6 +16,9 @@
  *   .spawn-separator         horizontal rule;   .spawn-accent  accent text
  * Local-only classes: .spawn-drop-before / -after (reorder insertion mark, accent edge),
  *   .spawn-vseparator, .spawn-folder-plate, .spawn-power-button, .spawn-nav-button,
+ *   .spawn-surface / .spawn-row-surface / .spawn-tile-surface (the visible face inside a pinned row /
+ *   tile button, whose own box is a transparent hit area), .spawn-size-compact|comfortable|large
+ *   (pinned-item-size, on the grid container),
  *   .spawn-popup-above (popup opens upward), .spawn-light (shell theme with dark text: set by
  *   ui/menu.ts from the popup's computed foreground; every white-alpha tint below has a black-alpha
  *   twin in the "light shell themes" block at the end).
@@ -22,7 +27,10 @@
  * targets (St min-height is content-box: min-height 20 + padding 6 + 6 = 32), one container edge
  * and one 12 px inset in each pane, four type sizes (caption .85em, tile .92em, body 1em,
  * emphasis 1.15em; the 15 px search text is the primary input). The one off-grid value, 6 px
- * row padding, exists only because 6 + 20 + 6 = 32.
+ * row padding, exists only because 6 + 20 + 6 = 32. Pinned list rows are 6 + 28 + 6 = 40 px at
+ * Compact (the default icon-size-apps is 28), 48 at Comfortable and 56 at Large (pinned-item-size);
+ * every pinned row / tile has a transparent outer hit area that also covers the gap to its
+ * neighbours (see "Pinned hit areas" below).
  * Structure: .spawn-popup (boxpointer) > .popup-menu-content > .spawn-layout >
  *   .spawn-left-pane | .spawn-vseparator | .spawn-right-pane
  */
@@ -249,27 +257,73 @@
     padding: 0;
 }
 
-/* The 16 px gutter LEFT_CHROME reserves, split evenly: first and last icon are equally inset. */
+/* Pinned hit areas (no dead zones). St hit-tests an actor's allocation, padding included, and not
+ * its margins or its container's spacing. So the grid / list container has NO padding and NO
+ * spacing, and every gap is transparent padding of the entry's own (outer) button; the visible
+ * tile / row is the .spawn-surface child (ui/widgets/interact.ts). The surface is drawn through the
+ * button's state (descendant selectors), so hover / pressed / focus / drag marks are unchanged.
+ *   grid:  gap between two tiles 2 + 4 + 2 = 8 -> 4 px on each side of every tile; the 8 px gutter
+ *          at the left / right edge belongs to the first / last column (inline padding, tileGrid.ts);
+ *   list:  1 px pitch -> 1 px under every row; the 4 px right inset (scroll bar room) is the row's
+ *          own right padding.
+ * Item sizes (pinned-item-size, src/ui/widgets/pinnedSize.ts): Compact is the original look. */
 .spawn-tile-grid {
-    padding: 2px 8px;
-    spacing: 4px;
+    padding: 0;
+    spacing: 0;
 }
 
 .spawn-tile-row {
     spacing: 0;
 }
 
-/* pinned-apps-display = List: one full-width .spawn-row per entry (same metrics as .spawn-list:
- * 1 px pitch, row inset 12 px so icons line up with the section title and the right pane). */
+/* pinned-apps-display = List: one full-width .spawn-pinned-row per entry (same pitch as .spawn-list,
+ * row inset 12 px so icons line up with the section title and the right pane). */
 .spawn-tile-grid.spawn-pinned-list {
-    padding: 0 4px 0 0;
-    spacing: 1px;
+    padding: 0;
+    spacing: 0;
 }
 
-/* List-mode folder row: the folder plate shrinks to the row icon (2 + 11 + 2 + 11 + 2 = 28). */
+.spawn-pinned-row {
+    padding: 0 4px 1px 0;
+}
+
+/* The visible row: 6 + 28 + 6 = 40 px at Compact; Comfortable 8 + 32 + 8 = 48, Large 8 + 40 + 8 = 56
+ * (min-height keeps the tier when `icon-size-apps` asks for a smaller icon). */
+.spawn-row-surface {
+    border-radius: 8px;
+    min-height: 20px;
+    padding: 6px 12px;
+    transition-duration: 120ms;
+}
+
+.spawn-size-comfortable .spawn-row-surface {
+    min-height: 32px;
+    padding: 8px 12px;
+}
+
+.spawn-size-large .spawn-row-surface {
+    min-height: 40px;
+    padding: 8px 12px;
+}
+
+.spawn-pinned-row:hover .spawn-row-surface {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.spawn-pinned-row:active .spawn-row-surface {
+    background-color: rgba(255, 255, 255, 0.14);
+}
+
+/* List-mode folder row: the folder plate is as big as the row icon (2 + 11 + 2 + 11 + 2 = 28 at
+ * Compact, 2 + 13 + 2 + 13 + 2 = 32 at Comfortable, 4 + 15 + 2 + 15 + 4 = 40 at Large). */
 .spawn-folder-row .spawn-folder-plate {
     padding: 2px;
     border-radius: 6px;
+}
+
+.spawn-size-large .spawn-folder-row .spawn-folder-plate {
+    padding: 4px;
+    border-radius: 8px;
 }
 
 .spawn-folder-row .spawn-folder-plate-row {
@@ -280,18 +334,28 @@
     color: rgba(255, 255, 255, 0.5);
 }
 
+/* The outer tile button: 4 px of the 8 px gap above and below (transparent, clickable). The first /
+ * last column also get the 8 px gutter at the grid edge as inline padding (ui/widgets/tileGrid.ts). */
 .spawn-tile {
+    padding: 4px 0;
+}
+
+/* The visible tile: 8 + 48 + 8 + label + 8 = 87 px at Compact; Large has 12 px of padding. */
+.spawn-tile-surface {
     border-radius: 12px;
     padding: 8px 4px;
-    margin: 2px 0;
     transition-duration: 120ms;
 }
 
-.spawn-tile:hover {
+.spawn-size-large .spawn-tile-surface {
+    padding: 12px 4px;
+}
+
+.spawn-tile:hover .spawn-tile-surface {
     background-color: rgba(255, 255, 255, 0.08);
 }
 
-.spawn-tile:active {
+.spawn-tile:active .spawn-tile-surface {
     background-color: rgba(255, 255, 255, 0.14);
 }
 
@@ -341,12 +405,13 @@
     box-shadow: inset -3px 0 0 st-transparentize(-st-accent-color, 0);
 }
 
-/* rows of a vertical list: the insertion mark is a top / bottom edge */
-.spawn-pinned-row.spawn-drop-before {
+/* rows of a vertical list: the insertion mark is a top / bottom edge (dnd.ts puts the drop
+ * classes on the visible surface, not on the transparent outer button) */
+.spawn-row-surface.spawn-drop-before {
     box-shadow: inset 0 3px 0 0 st-transparentize(-st-accent-color, 0);
 }
 
-.spawn-pinned-row.spawn-drop-after {
+.spawn-row-surface.spawn-drop-after {
     box-shadow: inset 0 -3px 0 0 st-transparentize(-st-accent-color, 0);
 }
 
@@ -582,7 +647,8 @@
 .spawn-light .spawn-user-card:hover,
 .spawn-light .spawn-shortcut-row:hover,
 .spawn-light .spawn-power-button:hover,
-.spawn-light .spawn-tile:hover,
+.spawn-light .spawn-tile:hover .spawn-tile-surface,
+.spawn-light .spawn-pinned-row:hover .spawn-row-surface,
 .spawn-light .spawn-row:hover {
     background-color: rgba(0, 0, 0, 0.08);
 }

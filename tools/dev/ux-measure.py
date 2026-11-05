@@ -115,8 +115,9 @@ if left and sb:
         all(abs(v - edge - 12) <= 1.5 for k, v in inset.items() if k in ("search glyph", "nav icon", "section title text")) and
         abs(inset.get("nav button edge", edge) - edge) <= 0.5)
 
-# --- grid symmetry
-tiles = [i for i in find("spawn-tile") if i["w"] > 0]
+# --- grid symmetry (the visible tile is the .spawn-tile-surface inside the transparent .spawn-tile button)
+outer_tiles = [i for i in find("spawn-tile") if i["w"] > 0]
+tiles = [i for i in find("spawn-tile-surface") if i["w"] > 0]
 icons = find("spawn-tile-icon")
 if left and tiles:
     ys = sorted({round(i["y"]) for i in tiles})
@@ -127,9 +128,15 @@ if left and tiles:
     row("pinned first-tile inset / last-tile inset (%d columns)" % len(row0), f"{li:g} / {ri:g}", "equal (+-2)", abs(li - ri) <= 2)
     t = tiles[0]
     row("tile size / icon / label font", f'{dim(t)} / {icons[0]["w"]:g} / {first("spawn-tile-label")["fs"]:.2f}', "87 high @ 1-line labels", t["h"] == 87)
+    # no dead zone: the transparent buttons around the tiles touch (4 + 4 px of the 8 px gap each, 8 px gutters at the ends)
+    rows_y = sorted({round(i["y"]) for i in outer_tiles})
+    ok = all(abs(b - (a + max(i["h"] for i in outer_tiles if round(i["y"]) == a))) <= 0.5 for a, b in zip(rows_y, rows_y[1:]))
+    row("pinned tile hit areas touch (no vertical gap)", "touch" if ok else "gap", "0 px between rows", ok)
 
 # --- pinned list (pinned-apps-display = List): full-width rows, 32 px targets, icon on the 12 px inset
-prows = [i for i in find("spawn-pinned-row") if i["w"] > 0]
+# (the visible row is the .spawn-row-surface inside the transparent, full-width .spawn-pinned-row button)
+hits = [i for i in find("spawn-pinned-row") if i["w"] > 0]
+prows = [i for i in find("spawn-row-surface") if i["w"] > 0]
 if left and prows:
     hs = sorted({i["h"] for i in prows})
     row("pinned row size", f'{prows[0]["w"]:g} x {hs[0]:g}..{hs[-1]:g}', ">= 32 high", hs[0] >= 32)
@@ -140,6 +147,11 @@ if left and prows:
         row("pinned row icon inset", f'{ic["x"] - prows[0]["x"]:g}', "12 (= section title text inset)", abs(ic["x"] - prows[0]["x"] - 12) <= 1.5)
     gaps = [round(b["y"] - (a["y"] + a["h"]), 1) for a, b in zip(prows, prows[1:])]
     row("pinned row pitch (gap px)", sorted(set(gaps)) or "-", "1 everywhere (as the right pane)", all(abs(g - 1) <= 0.5 for g in gaps))
+    # no dead zone: the transparent buttons around the rows touch each other and span the pane width
+    hgaps = [round(b["y"] - (a["y"] + a["h"]), 1) for a, b in zip(hits, hits[1:])]
+    row("pinned row hit areas (gap px between buttons)", sorted(set(hgaps)) or "-", "0 everywhere (no dead pixel between rows)", all(abs(g) <= 0.5 for g in hgaps))
+    right_gap = (left["x"] + left["w"] - 8) - (hits[0]["x"] + hits[0]["w"])
+    row("pinned row hit area vs pane width", f'{hits[0]["x"] - left["x"]:g} in, {right_gap:g} short on the right', "full width (0 short)", abs(right_gap) <= 0.5)
 
 # --- folder plate (48 px on a grid tile, row-icon sized in a list row)
 plate = first("spawn-folder-plate")
@@ -148,7 +160,7 @@ if plate and not prows:
     row("folder plate / mini icon", f'{dim(plate)} / {dim(mini)}', "48x48 / 16x16", plate["w"] == 48 and plate["h"] == 48 and (mini is None or (mini["w"] == 16 and mini["h"] == 16)))
 elif plate:
     mini = first("spawn-folder-mini")
-    row("folder plate / mini icon (list)", f'{dim(plate)} / {dim(mini)}', "square, mini = (plate - 6) / 2", plate["w"] == plate["h"] and (mini is None or abs(mini["w"] * 2 + 6 - plate["w"]) <= 1))
+    row("folder plate / mini icon (list)", f'{dim(plate)} / {dim(mini)}', "square, mini = (plate - 6) / 2 (padding 2) or (plate - 10) / 2 (padding 4, Large)", plate["w"] == plate["h"] and (mini is None or min(abs(mini["w"] * 2 + 6 - plate["w"]), abs(mini["w"] * 2 + 10 - plate["w"])) <= 1))
 
 # --- type scale
 sizes = sorted({round(i["fs"], 2) for i in items if i.get("fs") and (i["type"].startswith("St_Label"))})

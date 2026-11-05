@@ -6,7 +6,7 @@
 //
 // Public API:
 //   new FolderTile(uuid: string, name: string, icons: Gio.Icon[], host: FolderHost, opts?)
-//   new FolderRow(uuid, name, icons, host, opts?)     same API, list row (always one line; opts.iconSize only)
+//   new FolderRow(uuid, name, icons, host, opts?)     same API, list row (always one line; opts: {iconSize?, plateInset?})
 //   tile.actor: St.Widget
 //   tile.uuid: string
 //   tile.update(name: string, icons: Gio.Icon[]): void
@@ -20,9 +20,9 @@ import type Gio from 'gi://Gio';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
-import {DEFAULT_ROW_ICON_SIZE} from './appRow.js';
+import {DEFAULT_ROW_ICON_SIZE, PINNED_ROW_BOX, PINNED_ROW_CLASS} from './appRow.js';
 import {DEFAULT_TILE_ICON_SIZE, styleTileLabel} from './appTile.js';
-import {makeItemButton, wireItem} from './interact.js';
+import {makeItemButton, makeSurface, wireItem} from './interact.js';
 import type {TooltipManager} from './tooltip.js';
 
 export interface FolderHost {
@@ -131,7 +131,9 @@ export class FolderTile {
         styleTileLabel(this._label, Boolean(opts.multiLine));
         box.add_child(this._plate.actor);
         box.add_child(this._label);
-        button.set_child(box);
+        const surface = makeSurface('spawn-tile-surface');
+        surface.set_child(box);
+        button.set_child(surface);
 
         host.tooltips?.attach(button, this._label);
         wireItem(button, {
@@ -166,14 +168,14 @@ export class FolderRow {
     private readonly _label: St.Label;
     private readonly _plate: FolderPlate;
 
-    constructor(uuid: string, name: string, icons: Gio.Icon[], host: FolderHost, opts: {iconSize?: number} = {}) {
+    constructor(uuid: string, name: string, icons: Gio.Icon[], host: FolderHost, opts: {iconSize?: number; plateInset?: number} = {}) {
         this._uuid = uuid;
         const size = opts.iconSize ?? DEFAULT_ROW_ICON_SIZE;
-        const button = makeItemButton('spawn-row spawn-pinned-row spawn-folder-row');
+        const button = makeItemButton(`${PINNED_ROW_CLASS} spawn-folder-row`);
         this.actor = button;
 
-        const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
-        this._plate = new FolderPlate(size, ROW_PLATE_PADDING, ROW_PLATE_SPACING);
+        const box = new St.BoxLayout({style_class: PINNED_ROW_BOX, x_expand: true});
+        this._plate = new FolderPlate(size, opts.plateInset ?? ROW_PLATE_PADDING, ROW_PLATE_SPACING);
         box.add_child(this._plate.actor);
         this._label = new St.Label({text: name, style_class: 'spawn-row-label', y_align: Clutter.ActorAlign.CENTER, x_expand: true});
         this._label.clutter_text.ellipsize = Pango.EllipsizeMode.END;

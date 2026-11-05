@@ -42,6 +42,17 @@ test('every focusable item gets the accent ring; pressed is a 55% accent', () =>
     assert(!css.includes('.spawn-tile:active,\n.spawn-row:selected'), ':active is its own rule');
 });
 
+test('pinned rows and tiles are tinted on their visible face, never on the transparent hit-area button', () => {
+    const css = buildCss(input({override: true}));
+    for (const state of [':focus', ':active', ':hover']) {
+        const face = state === ':hover' ? '.spawn-popup ' : '';
+        assert(css.includes(`${face}.spawn-pinned-row${state} .spawn-row-surface`), `row face ${state}`);
+        assert(css.includes(`${face}.spawn-tile${state} .spawn-tile-surface`), `tile face ${state}`);
+    }
+    // a selector that ENDS at the button would paint the 4 px gap around the row / tile
+    assert(!/\.spawn-(tile|pinned-row|folder-tile):(focus|active|hover|selected|checked)\s*[,{]/.test(css), 'button itself styled');
+});
+
 test('override adds popup colours, font size and item states', () => {
     const css = buildCss(input({override: true}));
     assert(css.includes('.spawn-popup .popup-menu-content'));
