@@ -35,8 +35,7 @@ npm run build       # tools/build.sh -> build/ and dist/spawn@djshiye.github.io.
 
 ### Fedora (DNF repository)
 
-**After the first publish** (the repository does not exist until `tools/publish.sh --push` has been run once and GitHub
-Pages is enabled, see `docs/RELEASING.md`), one line installs and enables Spawn on Fedora 43, 44 or 45; then log out and back in:
+One line installs and enables Spawn on Fedora 43, 44 or 45; then log out and back in:
 
 ```sh
 sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.github.io/spawn/spawn.repo && sudo dnf install -y gnome-shell-extension-spawn && spawn-enable
