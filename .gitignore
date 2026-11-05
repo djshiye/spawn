@@ -3,3 +3,4 @@ build
 dist
 .dev
 .claude
+.gh-pages
