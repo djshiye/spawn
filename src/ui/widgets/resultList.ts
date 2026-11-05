@@ -46,7 +46,7 @@ import type {SearchBatch, SearchResult} from '../../search/engine.js';
 import {error} from '../../core/log.js';
 import {highlightMarkup} from '../../search/highlight.js';
 import {iconSizeFor} from '../util.js';
-import {makeItemButton, wireItem} from './interact.js';
+import {makeFace, makeItemButton, wireItem} from './interact.js';
 import type {ShortcutHost} from './shortcutRow.js';
 
 export type ResultHost = ShortcutHost & {
@@ -181,6 +181,7 @@ export class ResultList {
             at++;
         this._sections.splice(at, 0, section);
         this.actor.insert_child_at_index(box, at);
+        this._trimTail();
         this._updateSelection();
     }
 
@@ -218,6 +219,17 @@ export class ResultList {
     setSelectionVisible(visible: boolean): void {
         this._selectionVisible = visible;
         this._updateSelection();
+    }
+
+    /**
+     * Every row carries 1 px of the pitch below it; the very last one has nothing to separate from,
+     * and a popup that sizes itself to its content (the runner) must not grow by it.
+     */
+    private _trimTail(): void {
+        const rows = this._sections.flatMap(s => s.rows);
+        for (const row of rows)
+            row.set_style(null);
+        rows[rows.length - 1]?.set_style('padding-bottom: 0;');
     }
 
     private _clearSections(): void {
@@ -285,7 +297,7 @@ export class ResultList {
     }
 
     private _makeRow(result: SearchResult, query: string): St.Button {
-        const button = makeItemButton('spawn-row spawn-result-row');
+        const button = makeItemButton('spawn-result-row');
         const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
         const icon = this._makeIcon(result);
         box.add_child(icon);
@@ -304,7 +316,7 @@ export class ResultList {
             text.add_child(d);
         }
         box.add_child(text);
-        button.set_child(box);
+        button.set_child(makeFace('spawn-row-surface', box));
 
         this._host.tooltips?.attach(button, title, result.description ? () => `${result.title}\n${result.description}` : undefined);
         wireItem(button, {

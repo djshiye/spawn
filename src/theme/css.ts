@@ -113,16 +113,18 @@ function rule(selectors: string | string[], decls: Decl[]): string {
     return `${sel} {\n${body.join('\n')}\n}\n`;
 }
 
-const ITEM = [
-    '.spawn-row', '.spawn-shortcut-row',
-    '.spawn-user-card', '.spawn-nav-button', '.spawn-power-button',
+// The folder header's buttons draw themselves; every other item (list row, tile, user card, nav / power
+// button) is a transparent St.Button (the hit area, gap included) around a visible .spawn-surface
+// child, so the state of the button styles its face (ui/widgets/interact.ts).
+const ITEM = ['.spawn-row'];
+const ROW_FACE = '.spawn-row-surface';
+const FACES: Array<[button: string, face: string]> = [
+    ['.spawn-pinned-row', ROW_FACE], ['.spawn-list-row', ROW_FACE], ['.spawn-category-row', ROW_FACE],
+    ['.spawn-result-row', ROW_FACE], ['.spawn-shortcut-row', ROW_FACE],
+    ['.spawn-tile', '.spawn-tile-surface'], ['.spawn-user-card', '.spawn-card-surface'],
+    ['.spawn-nav-button', '.spawn-nav-surface'], ['.spawn-power-button', '.spawn-power-surface'],
 ];
-// Pinned list rows and grid tiles (folder tiles included): the St.Button is a transparent hit area,
-// the visible face is its .spawn-surface child, so the state of the button styles the surface.
-const FACE = (suffix: string, scope: string): string[] => [
-    `${scope}.spawn-pinned-row${suffix} .spawn-row-surface`,
-    `${scope}.spawn-tile${suffix} .spawn-tile-surface`,
-];
+const FACE = (suffix: string, scope: string): string[] => FACES.map(([button, face]) => `${scope}${button}${suffix} ${face}`);
 const each = (suffix: string, scope = ''): string[] => [...ITEM.map(s => `${scope}${s}${suffix}`), ...FACE(suffix, scope)];
 
 // The shell theme nests panel-button rules under `#panel` (specificity 1,1,0 and up), and both

@@ -14,6 +14,7 @@
 //   index.get(id: string): Shell.App | null lookup by desktop id ("org.gnome.Nautilus.desktop")
 //   index.categories(): AppCategory[]       ordered; apps inside are sorted by name
 //   index.frequent(limit: number): Shell.App[]
+//   index.setFrequentOverride(ids: string[] | null)   dev hook (Ui.SetFrequent): these apps ARE the most used; null = real usage
 //   index.usageScore(id: string): number  0..1 from Shell.AppUsage's ordering (1 = most used, 0 =
 //                                           unknown / usage tracking off); the ordering is re-read
 //                                           from get_most_used() at most every USAGE_TTL_MS
@@ -66,6 +67,7 @@ export class AppIndex {
     private _built = false;
     private _appSystem: Shell.AppSystem | null = null;
     private _usage: Shell.AppUsage | null = null;
+    private _frequentOverride: string[] | null = null;
     private _tree: GMenu.Tree | null = null;
     private readonly _collator = new Intl.Collator();
 
@@ -137,11 +139,18 @@ export class AppIndex {
         return this._categories;
     }
 
+    /** Dev hook: a sandboxed shell has no usage history, so the Frequent lists could not be tested. */
+    setFrequentOverride(ids: string[] | null): void {
+        this._frequentOverride = ids;
+    }
+
     frequent(limit: number): Shell.App[] {
         this.build();
         let used: Shell.App[] = [];
         try {
-            used = this._usage?.get_most_used() ?? [];
+            used = this._frequentOverride
+                ? this._frequentOverride.map(id => this.get(id)).filter((a): a is Shell.App => a !== null)
+                : this._usage?.get_most_used() ?? [];
         } catch (e) {
             warn(`AppIndex: get_most_used failed: ${e}`);
         }

@@ -17,7 +17,7 @@ import * as UserWidget from 'resource:///org/gnome/shell/ui/userWidget.js';
 import {error} from '../../core/log.js';
 import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
-import {makeItemButton, wireItem} from './interact.js';
+import {makeFace, makeItemButton, wireItem} from './interact.js';
 import type {ShortcutHost} from './shortcutRow.js';
 
 const AVATAR_SIZE = 40;
@@ -50,7 +50,7 @@ export class UserCard {
         this._label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         box.add_child(this._avatarBox);
         box.add_child(this._label);
-        button.set_child(box);
+        button.set_child(makeFace('spawn-card-surface', box));
 
         host.tooltips?.attach(button, this._label);
         wireItem(button, {

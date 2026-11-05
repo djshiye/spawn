@@ -92,7 +92,7 @@ key Down 0.4
 expect "Down from the last category lands on the nav row" "$(state_get layout.focus)" "St_Button.spawn-nav-button"
 focus_class spawn-category-row 0
 key Up 0.4
-expect "Up from the first category stays (search is at the bottom)" "$(state_get layout.focus)" "St_Button.spawn-row spawn-category-row"
+expect "Up from the first category stays (search is at the bottom)" "$(state_get layout.focus)" "St_Button.spawn-category-row"
 
 echo "-- ui #7: Down in the entry while results are pending/empty keeps the focus"
 reset_seed

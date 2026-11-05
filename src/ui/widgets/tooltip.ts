@@ -22,6 +22,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
 import {isTruncated} from '../util.js';
+import {surfaceOf} from './interact.js';
 
 const SHOW_DELAY_MS = 450;
 
@@ -100,8 +101,10 @@ export class TooltipManager {
         Main.uiGroup.set_child_above_sibling(tip, null);
         tip.show();
 
-        const [x, y] = widget.get_transformed_position();
-        const [w, h] = widget.get_transformed_size();
+        // below the visible face, not the transparent hit area around it
+        const face = surfaceOf(widget);
+        const [x, y] = face.get_transformed_position();
+        const [w, h] = face.get_transformed_size();
         const monitor = Main.layoutManager.findMonitorForActor(widget) ?? Main.layoutManager.primaryMonitor;
         const [, natW] = tip.get_preferred_width(-1);
         const [, natH] = tip.get_preferred_height(natW);

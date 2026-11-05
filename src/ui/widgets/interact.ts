@@ -6,9 +6,11 @@
 //                                               right click, Menu key, Shift+F10 -> context()
 //   applyStyleVariant(widget, className, on)    toggle a style class
 //   makeSurface(styleClass): St.Bin             the visible face of a pinned grid tile (see below)
-//   surfaceOf(widget): St.Widget                the face of a pinned entry, else the widget itself
+//   makeFace(styleClass, child): St.Bin         the visible face of any other button: a Bin around its content
+//   surfaceOf(widget): St.Widget                the face of an entry (a child with `.spawn-surface`), else the widget itself
 //
-// Pinned entries (list rows, grid tiles) have no dead zones: St only hit-tests an actor's
+// Every item (pinned entries, list rows, search results, categories, shortcuts, user card, nav and
+// power buttons) has no dead zones: St only hit-tests an actor's
 // allocation (padding included, margins and container spacing excluded), so the St.Button stays the
 // OUTER, reactive actor and carries the transparent gap around the item as padding, while its single
 // child, the SURFACE (`.spawn-surface`), draws the visible row / tile (radius, tint, focus ring).
@@ -36,6 +38,17 @@ export function makeItemButton(styleClass: string): St.Button {
         button_mask: St.ButtonMask.PRIMARY | St.ButtonMask.MIDDLE | St.ButtonMask.SECONDARY,
         x_expand: true,
     });
+}
+
+/**
+ * The visible face of a button (`styleClass`: spawn-row-surface, spawn-card-surface, ...): a Bin around
+ * its content that the button's gap padding surrounds. The Bin places the content exactly as the button
+ * did before it became a transparent hit area (a short icon / label is centred in the face's min-height).
+ */
+export function makeFace(styleClass: string, child: St.Widget): St.Bin {
+    const face = new St.Bin({style_class: `spawn-surface ${styleClass}`, x_expand: true});
+    face.set_child(child);
+    return face;
 }
 
 /** The visible face of a pinned grid tile: a Bin around the icon + label box (a list row uses its row box). */

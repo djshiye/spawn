@@ -30,7 +30,7 @@ import type {Scope} from '../../core/scope.js';
 import type {Entry} from '../../core/settings.js';
 import {toggleShowDesktop} from '../showDesktop.js';
 import {symbolicGIcon} from '../util.js';
-import {makeItemButton, wireItem} from './interact.js';
+import {makeFace, makeItemButton, wireItem} from './interact.js';
 import {POWER_SHORTCUTS, runPowerAction} from './powerActions.js';
 import type {TooltipManager} from './tooltip.js';
 
@@ -221,7 +221,7 @@ export class ShortcutRow {
         label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         box.add_child(icon);
         box.add_child(label);
-        button.set_child(box);
+        button.set_child(makeFace('spawn-row-surface', box));
 
         host.tooltips?.attach(button, label);
         wireItem(button, {activate: () => resolved?.run(host, scope as Scope)});

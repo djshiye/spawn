@@ -34,7 +34,8 @@ test('default CSS: accent only, no override or button rules', () => {
 
 test('every focusable item gets the accent ring; pressed is a 55% accent', () => {
     const css = buildCss(input());
-    for (const sel of ['.spawn-user-card:focus', '.spawn-nav-button:focus', '.spawn-power-button:focus', '.spawn-tile:focus'])
+    for (const sel of ['.spawn-user-card:focus .spawn-card-surface', '.spawn-nav-button:focus .spawn-nav-surface',
+        '.spawn-power-button:focus .spawn-power-surface', '.spawn-tile:focus .spawn-tile-surface'])
         assert(css.includes(sel), sel);
     assert(css.includes('box-shadow: inset 0 0 0 2px #3584e4;'), 'focus ring');
     const active = css.slice(css.indexOf('.spawn-tile:active'));
@@ -42,15 +43,21 @@ test('every focusable item gets the accent ring; pressed is a 55% accent', () =>
     assert(!css.includes('.spawn-tile:active,\n.spawn-row:selected'), ':active is its own rule');
 });
 
-test('pinned rows and tiles are tinted on their visible face, never on the transparent hit-area button', () => {
+test('rows, tiles and buttons are tinted on their visible face, never on the transparent hit-area button', () => {
     const css = buildCss(input({override: true}));
+    const faces = {
+        '.spawn-pinned-row': '.spawn-row-surface', '.spawn-list-row': '.spawn-row-surface', '.spawn-category-row': '.spawn-row-surface',
+        '.spawn-result-row': '.spawn-row-surface', '.spawn-shortcut-row': '.spawn-row-surface', '.spawn-tile': '.spawn-tile-surface',
+        '.spawn-user-card': '.spawn-card-surface', '.spawn-nav-button': '.spawn-nav-surface', '.spawn-power-button': '.spawn-power-surface',
+    };
     for (const state of [':focus', ':active', ':hover']) {
-        const face = state === ':hover' ? '.spawn-popup ' : '';
-        assert(css.includes(`${face}.spawn-pinned-row${state} .spawn-row-surface`), `row face ${state}`);
-        assert(css.includes(`${face}.spawn-tile${state} .spawn-tile-surface`), `tile face ${state}`);
+        const scope = state === ':hover' ? '.spawn-popup ' : '';
+        for (const [button, face] of Object.entries(faces))
+            assert(css.includes(`${scope}${button}${state} ${face}`), `${button} face ${state}`);
     }
-    // a selector that ENDS at the button would paint the 4 px gap around the row / tile
-    assert(!/\.spawn-(tile|pinned-row|folder-tile):(focus|active|hover|selected|checked)\s*[,{]/.test(css), 'button itself styled');
+    // a selector that ENDS at the button would paint the gap around the item
+    const names = Object.keys(faces).map(b => b.slice(1)).join('|');
+    assert(!new RegExp(`\\.(${names}|spawn-folder-tile):(focus|active|hover|selected|checked)\\s*[,{]`).test(css), 'button itself styled');
 });
 
 test('override adds popup colours, font size and item states', () => {
