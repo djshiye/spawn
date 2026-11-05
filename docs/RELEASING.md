@@ -82,16 +82,7 @@ spawn-enable --remove; sudo dnf remove gnome-shell-extension-spawn
 
 ## Open items
 
-1. `src/prefs.ts` needs the same schema fallback as `extension.ts`: `fillPreferencesWindow` calls
-   `Gio.SettingsSchemaSource.new_from_directory(<dir>/schemas, ...)`, which throws when the directory does not exist, so on the RPM
-   install the preferences window fails to open. Fix:
-   ```ts
-   const schemaDir = this.dir.get_child('schemas');
-   const schemaSource = schemaDir.query_exists(null)
-       ? Gio.SettingsSchemaSource.new_from_directory(schemaDir.get_path() ?? '', Gio.SettingsSchemaSource.get_default(), false)
-       : Gio.SettingsSchemaSource.get_default()!;
-   ```
-2. `shell-version` is `["51"]` while the RPM says `gnome-shell >= 49`: on Fedora 43 (GNOME 49) and 44 (GNOME 50) the package installs but the
+1. `shell-version` is `["51"]` while the RPM says `gnome-shell >= 49`: on Fedora 43 (GNOME 49) and 44 (GNOME 50) the package installs but the
    shell lists the extension as incompatible. Widen `shell-version` after testing on those shells, or raise `%global min_shell` to 51.
-3. The RPM ships the developer test code (`ui/devHooks.js`, `dev/benchmark.js`, the `Dev` D-Bus interface); all of it is inert unless the
+2. The RPM ships the developer test code (`ui/devHooks.js`, `dev/benchmark.js`, the `Dev` D-Bus interface); all of it is inert unless the
    `dev-mode` setting (default `false`) is turned on.

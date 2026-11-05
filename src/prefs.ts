@@ -51,11 +51,13 @@ function buildPage(ctx: PrefsContext, [name, title, create]: (typeof PAGES)[numb
 
 export default class SpawnPreferences extends ExtensionPreferences {
     override async fillPreferencesWindow(window: Parameters<ExtensionPreferences['fillPreferencesWindow']>[0]): Promise<void> {
-        const schemaSource = Gio.SettingsSchemaSource.new_from_directory(
-            this.dir.get_child('schemas').get_path() ?? '',
-            Gio.SettingsSchemaSource.get_default(),
-            false,
-        );
+        // Zip install: <extension dir>/schemas. RPM install: the system schema directory (no schemas/ here).
+        const schemaDir = this.dir.get_child('schemas');
+        const schemaSource = schemaDir.query_exists(null)
+            ? Gio.SettingsSchemaSource.new_from_directory(schemaDir.get_path() ?? '', Gio.SettingsSchemaSource.get_default(), false)
+            : Gio.SettingsSchemaSource.get_default();
+        if (!schemaSource)
+            throw new Error('no GSettings schema source');
         const ctx: PrefsContext = {
             settings: new SpawnSettings(this.getSettings(), schemaSource),
             extensionDir: this.path,
