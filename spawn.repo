@@ -1,0 +1,7 @@
+[spawn]
+name=Spawn
+baseurl=https://djshiye.github.io/spawn/fedora-$releasever/
+enabled=1
+# The packages are built locally and are not signed.
+gpgcheck=0
+metadata_expire=1h
