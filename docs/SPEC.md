@@ -71,6 +71,9 @@ your area before writing code.
   D-Bus method `ToggleRunner`, opened on the monitor under the pointer (Top / Centered). Same search pipeline and
   result widgets as the menu; closes on Escape, on activating a result, on a click outside and when the main menu
   opens (and the other way round).
+- Dash to Panel intellihide: while the menu is open on a panel with intellihide enabled, the panel is held
+  revealed (Dash to Panel's temporary hold). It is released when the menu closes, once the pointer is off the
+  panel, immediately on a fullscreen monitor, and on disable or panel rebuild (src/panel/intellihide.ts).
 - Option to hide the Activities button (restore its *previous* visibility).
 - Preferences (Adw): General, Button, Menu (views, sizes), Pinned & Shortcuts,
   Appearance, Import from ArcMenu, About.
