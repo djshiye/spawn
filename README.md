@@ -50,6 +50,10 @@ system-wide extension at the next login.
 The extension declares GNOME Shell 49, 50 and 51 (Fedora 43, 44 and 45). Packages are unsigned (`gpgcheck=0`).
 The extension lands in `/usr/share/gnome-shell/extensions/` and its schema in `/usr/share/glib-2.0/schemas/`.
 
+**Fedora Glass:** [Fedora Glass](https://github.com/djshiye/fedora-glass) 1.5.6 and later themes Spawn the way it
+themes ArcMenu (its "Spawn" entry, under Panel). Import from ArcMenu before you apply Glass, so Spawn's own colours are
+the ones Glass's Restore original puts back.
+
 ### From a checkout
 
 ```sh
