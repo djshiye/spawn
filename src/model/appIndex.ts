@@ -14,6 +14,9 @@
 //   index.get(id: string): Shell.App | null lookup by desktop id ("org.gnome.Nautilus.desktop")
 //   index.categories(): AppCategory[]       ordered; apps inside are sorted by name
 //   index.frequent(limit: number): Shell.App[]
+//   index.usageScore(id: string): number  0..1 from Shell.AppUsage's ordering (1 = most used, 0 =
+//                                           unknown / usage tracking off); the ordering is re-read
+//                                           from get_most_used() at most every USAGE_TTL_MS
 //   index.searchEntries(): AppSearchEntry[] precomputed normalised keys for search/providers/apps
 //   index.onChanged(scope, cb)              cb() after any incremental update
 //
@@ -55,6 +58,8 @@ export interface AppSearchEntry {
 
 const REBUILD_DELAY_MS = 500;
 const OTHER_ID = 'Other';
+/** get_most_used() sorts every tracked app: re-read it at most this often while searching. */
+const USAGE_TTL_MS = 5000;
 
 export class AppIndex {
     private readonly _scope: Scope;
@@ -69,6 +74,8 @@ export class AppIndex {
     private _categories: AppCategory[] = [];
     private _entries: AppSearchEntry[] = [];
     private readonly _listeners = new Set<() => void>();
+    private _usageScores: Map<string, number> | null = null;
+    private _usageStamp = 0;
 
     constructor(scope: Scope) {
         this._scope = scope;
@@ -108,6 +115,7 @@ export class AppIndex {
             this._tree = null;
             this._appSystem = null;
             this._usage = null;
+            this._usageScores = null;
             this._built = false;
         }, 'appIndex state');
 
@@ -146,6 +154,28 @@ export class AppIndex {
                 break;
         }
         return out;
+    }
+
+    /** Usage as 0..1 (most used app 1, linearly down; 0 = unknown). Empty when usage tracking is off. */
+    usageScore(id: string): number {
+        this.build();
+        const now = Date.now();
+        if (!this._usageScores || now - this._usageStamp > USAGE_TTL_MS) {
+            const scores = new Map<string, number>();
+            try {
+                const used = this._usage?.get_most_used() ?? [];
+                used.forEach((app, i) => {
+                    const appId = app?.get_id();
+                    if (appId)
+                        scores.set(appId, (used.length - i) / used.length);
+                });
+            } catch (e) {
+                warn(`AppIndex: get_most_used failed: ${e}`);
+            }
+            this._usageScores = scores;
+            this._usageStamp = now;
+        }
+        return this._usageScores.get(id) ?? 0;
     }
 
     /** Apps of a category id; also understands the special ids 'all' and 'frequent'. */

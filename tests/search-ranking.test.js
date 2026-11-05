@@ -1,7 +1,7 @@
 // App search ranking with the REAL appKeys + scoring (the same code AppsProvider runs), on a
 // fake application list: id keys must not pollute results (finding: ".desktop" / reverse-DNS).
 import {appKeys, descriptionKey, idKey} from '../build/model/appKeys.js';
-import {APP_KEY_WEIGHT, DESCRIPTION_WEIGHT, applyRelativeCutoff, hasAlnum, rankApps, scoreApp, scoreDescription, scoreMatch} from '../build/search/rank.js';
+import {APP_KEY_WEIGHT, DESCRIPTION_WEIGHT, USAGE_BOOST_MAX, applyRelativeCutoff, applyUsageBoost, hasAlnum, rankApps, scoreApp, scoreDescription, scoreMatch, scoreNormalized} from '../build/search/rank.js';
 import {assert, assertEquals, run, test} from './harness.js';
 
 const KEY_WEIGHT = APP_KEY_WEIGHT;
@@ -272,6 +272,145 @@ test('idKey: more reverse-DNS shapes', () => {
     assertEquals(idKey('Foo.bar.baz'), 'Foo.bar.baz'); // capitalised first segment: not reverse-DNS
     assertEquals(idKey('some-app.beta'), 'some-app.beta');
     assertEquals(search('codeberg', REAL), []);
+});
+
+// --- "ff" -> Firefox (doubled initial) and initials / acronyms ---
+
+test('"ff" finds Firefox first, ahead of substring hits in Coffee / LibreOffice (was: only FL Studio via its exec key)', () => {
+    for (const list of [APPS, REAL]) {
+        const r = search('ff', list);
+        assertEquals(r[0], 'Firefox', JSON.stringify(r));
+    }
+    const withNoise = [...APPS, app('Coffee Break', 'coffee.desktop'), app('FL Studio', 'bottles-flstudio.desktop', {exec: 'bottles-flstudio-flstudio'})];
+    const s = scores('ff', withNoise);
+    assertEquals(Object.keys(s)[0], 'Firefox');
+    assert(s.Firefox > s['LibreOffice Writer'] && s.Firefox > s['Coffee Break'], JSON.stringify(s));
+});
+
+test('doubled-initial tier is narrow: names only, same word, close, two identical letters', () => {
+    assert(scoreNormalized('ff', 'Firefox') === 0, 'off by default (windows / files)');
+    assert(scoreNormalized('ff', 'Firefox', true) >= 470 && scoreNormalized('ff', 'Firefox', true) < 540);
+    assertEquals(search('fx', REAL), []); // not a doubled letter
+    assertEquals(search('ss', [app('Settings', 's.desktop')]), []); // too far apart (window)
+    assertEquals(search('ff', [app('Fan Fan', 'x.desktop')]).length, 1); // acronym of two words, as before
+    assert(search('tt', [app('Text Editor', 'te.desktop')]).includes('Text Editor'));
+    // keys (keywords, exec, id) never use it: only the display name does
+    assertEquals(search('ff', [app('Web', 'w.desktop', {exec: 'firefox'})]), []);
+    // it does not touch letters inside another word
+    assertEquals(search('ff', [app('Alpha Beta', 'ab.desktop')]), []);
+});
+
+test('2-letter queries gain no junk: "fi" / "fir" / "of" are unchanged by initials', () => {
+    const fi = search('fi', REAL);
+    assertEquals(fi[0], 'Files');
+    assertEquals(fi[1], 'Firefox');
+    const withFoxit = [...REAL, app('Foxit Reader', 'foxit.desktop'), app('Fantasy Intro', 'fi.desktop')];
+    assert(!search('fi', withFoxit).includes('Foxit Reader') || scores('fi', withFoxit)['Foxit Reader'] < 470, 'fi must not add Foxit through an initials match');
+    assertEquals(search('fir', REAL), ['Firefox']);
+    // the initials tier fires for doubled letters only: every other 2-letter query scores exactly as without it
+    const names = [...REAL, ...APPS].map(a => a.name);
+    const letters = 'abcdefghijklmnopqrstuvwxyz';
+    for (const x of letters) {
+        for (const y of letters) {
+            if (x === y)
+                continue;
+            for (const name of names)
+                assertEquals(scoreNormalized(x + y, name, true), scoreNormalized(x + y, name, false), `${x}${y} ${name}`);
+        }
+    }
+});
+
+test('acronyms: vsc -> Visual Studio Code, gs -> GNOME Software, gt -> GNOME Terminal', () => {
+    assertEquals(search('vsc', REAL)[0], 'Visual Studio Code');
+    const sw = [app('GNOME Software', 'org.gnome.Software.desktop'), app('Settings', 's.desktop'), app('Calculator', 'c.desktop')];
+    assertEquals(search('gs', sw)[0], 'GNOME Software');
+    assertEquals(search('gt', APPS)[0], 'GNOME Terminal');
+});
+
+// --- usage as a tie-break ---
+
+function usageFrom(order) { // most used first -> 0..1, like AppIndex.usageScore
+    const m = new Map(order.map((id, i) => [id, (order.length - i) / order.length]));
+    return id => m.get(id) ?? 0;
+}
+
+function searchU(query, apps, usageOf) {
+    return rankApps(query, apps, undefined, usageOf).map(r => r.item.name);
+}
+
+test('usage breaks ties inside a tier: the more used of two near-equal name prefixes goes first', () => {
+    const apps = [app('Firefox', 'firefox.desktop'), app('Firejail', 'firejail.desktop')];
+    assertEquals(searchU('fi', apps), ['Firefox', 'Firejail']); // no usage: shorter name first, as before
+    assertEquals(searchU('fi', apps, () => 0), ['Firefox', 'Firejail']);
+    assertEquals(searchU('fi', apps, usageFrom(['firejail.desktop'])), ['Firejail', 'Firefox']);
+    assertEquals(searchU('fi', apps, usageFrom(['firejail.desktop', 'firefox.desktop'])), ['Firejail', 'Firefox']);
+    assertEquals(searchU('fi', apps, usageFrom(['firefox.desktop', 'firejail.desktop'])), ['Firefox', 'Firejail']);
+    // a clearly better name match (Files, 7 points of name ratio) is not overtaken by a hot Firejail
+    assertEquals(searchU('fi', [app('Firejail', 'firejail.desktop'), app('Files', 'files.desktop')], usageFrom(['firejail.desktop'])), ['Files', 'Firejail']);
+});
+
+test('usage never lifts a weaker tier over a better text match', () => {
+    const apps = [app('Code Runner', 'cr.desktop'), app('Claude', 'claude.desktop', {keywords: ['code']}), app('Notes', 'n.desktop', {description: 'edit code snippets'})];
+    const base = scores('code', apps);
+    const usage = usageFrom(['n.desktop', 'claude.desktop', 'cr.desktop']);
+    const boosted = Object.fromEntries(rankApps('code', apps, undefined, usage).map(r => [r.item.name, r.score]));
+    assertEquals(Object.keys(boosted), Object.keys(base));
+    for (const name of Object.keys(base))
+        assert(boosted[name] - base[name] <= USAGE_BOOST_MAX, `${name} ${base[name]} -> ${boosted[name]}`);
+    // exhaustive: any single heavily used app, any query, never changes the tier order
+    for (const q of ['code', 'co', 'fir', 'fl', 'set', 'term', 'ff', 'vsc', 'files', 'manager', 'flatpak']) {
+        const text = rankApps(q, REAL);
+        for (const hot of REAL) {
+            const out = rankApps(q, REAL, undefined, id => id === hot.id ? 1 : 0);
+            assertEquals(out.length, text.length, q);
+            const textScore = new Map(text.map(r => [r.item.name, r.score]));
+            for (const a of out) {
+                for (const b of out) {
+                    if (textScore.get(a.item.name) - textScore.get(b.item.name) > USAGE_BOOST_MAX && out.indexOf(a) > out.indexOf(b)) {
+                        // a clearly better text match must not end up behind b
+                        throw new Error(`${q}: ${a.item.name} (${textScore.get(a.item.name)}) behind ${b.item.name} (${textScore.get(b.item.name)}) with ${hot.name} hot`);
+                    }
+                }
+            }
+        }
+    }
+});
+
+test('usage is clamped to the tier: prefix 850+ stays below exact 1000, substring stays below the initials / acronym tiers', () => {
+    const ranked = [{item: {id: 'a'}, score: 459}, {item: {id: 'b'}, score: 465}];
+    const out = applyUsageBoost(ranked, id => (id === 'a' ? 1 : 0));
+    assert(out.find(r => r.item.id === 'a').score <= 469, JSON.stringify(out)); // substring ceiling = 469
+    const hi = applyUsageBoost([{item: {id: 'a'}, score: 897}, {item: {id: 'b'}, score: 700}], () => 1);
+    assert(hi[0].score <= 999 && hi[1].score <= 849, JSON.stringify(hi));
+    const exact = applyUsageBoost([{item: {id: 'a'}, score: 1000}], () => 1);
+    assertEquals(exact[0].score, 1000 + USAGE_BOOST_MAX);
+    const edge = applyUsageBoost([{item: {id: 'a'}, score: 538}, {item: {id: 'b'}, score: 541}], id => (id === 'a' ? 1 : 0));
+    assertEquals(edge.map(r => r.item.id), ['b', 'a']); // 538 -> at most 539, still behind 541
+});
+
+test('no usage data: ranking and scores are exactly as before', () => {
+    for (const q of ['code', 'fir', 'ff', 'fl', 'set', 'files', 'minecraft launcher', 'fl-studio', 'gs', 'vsc']) {
+        const plain = rankApps(q, REAL).map(r => [r.item.name, r.score]);
+        assertEquals(rankApps(q, REAL, undefined, () => 0).map(r => [r.item.name, r.score]), plain, q);
+        assertEquals(rankApps(q, REAL, undefined, undefined).map(r => [r.item.name, r.score]), plain, q);
+    }
+    // items without an id are never boosted
+    assertEquals(applyUsageBoost([{item: {name: 'x'}, score: 500}], () => 1)[0].score, 500);
+});
+
+test('usage with the regressions: "code" margin, "fir" only Firefox, limit applied after the boost', () => {
+    const hot = usageFrom(['claude.desktop', 'firefox.desktop', 'husk.desktop', 'org.gnome.Nautilus.desktop']);
+    const s = Object.fromEntries(rankApps('code', REAL, undefined, hot).map(r => [r.item.name, r.score]));
+    assertEquals(Object.keys(s)[0], 'Visual Studio Code');
+    assert(s['Visual Studio Code'] - s.Claude >= 90, JSON.stringify(s));
+    assertEquals(searchU('fir', REAL, hot), ['Firefox']);
+    assertEquals(searchU('minecraft launcher', REAL, hot)[0], 'Prism Launcher');
+    assertEquals(searchU('file manager', REAL, hot)[0], 'Files');
+    assertEquals(searchU('fl-studio', REAL, hot)[0], 'FL Studio');
+    assertEquals(searchU('fl_studio', REAL, hot)[0], 'FL Studio');
+    assertEquals(searchU('proton-up', REAL, hot)[0], 'ProtonUp-Qt');
+    const pair = [app('Firefox', 'firefox.desktop'), app('Firejail', 'firejail.desktop')];
+    assertEquals(rankApps('fi', pair, 1, usageFrom(['firejail.desktop'])).map(r => r.item.name), ['Firejail']);
 });
 
 run();

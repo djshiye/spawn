@@ -1,4 +1,4 @@
-import {normalize, rankItems, scoreMatch} from '../build/search/rank.js';
+import {normalize, rankItems, scoreMatch, scoreNormalized} from '../build/search/rank.js';
 import {assert, assertEquals, run, test} from './harness.js';
 
 const names = items => items.map(r => r.item);
@@ -99,6 +99,16 @@ test('fuzzy subsequence matches only compact enough hits', () => {
     assert(scoreMatch('frfx', 'Firefox') > 0);
     assertEquals(scoreMatch('fxq', 'Firefox'), 0);
     assertEquals(scoreMatch('abc', 'axxxxxxxxxxxxxxxxxxxxbxxxxxxxxxxxxxxxxxxxxc'), 0);
+});
+
+test('doubled-initial tier ("ff" -> Firefox) sits between substring and acronym, and is opt-in', () => {
+    assertEquals(scoreMatch('ff', 'Firefox'), 0); // windows / files do not use it
+    const ff = scoreNormalized('ff', 'Firefox', true);
+    assert(ff > scoreNormalized('ff', 'LibreOffice Writer', true), `${ff}`); // substring "ff"
+    assert(ff < scoreNormalized('vs', 'Visual Studio Code', true), `${ff}`); // acronym
+    assertEquals(scoreNormalized('ft', 'Firefox', true), 0);
+    assertEquals(scoreNormalized('ff', 'Fox', true), 0); // letters must be 2+ apart, in one word
+    assertEquals(scoreNormalized('ff', 'Alpha Beta', true), 0); // no f at a word start
 });
 
 test('rankItems takes the best key, is stable and honours the limit', () => {

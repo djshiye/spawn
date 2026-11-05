@@ -8,6 +8,7 @@
 //   word prefix                   700..755   (word starts: after space - _ . / ( etc. and
 //                                             camelCase humps, e.g. "office" in LibreOffice)
 //   acronym                       540..620   ("vsc" -> Visual Studio Code, "vscode" too)
+//   doubled initial (2 letters)   470..497   ("ff" -> Firefox; display names only, see scoreInitials)
 //   substring                     400..460
 //   subsequence (fuzzy)           100..300
 // Score 0 means "no match". Within a tier shorter candidates (higher query/candidate
@@ -30,7 +31,8 @@
 //   rankItemsBy<T>(query, items, scoreOf, limit?): Ranked<T>[]  same, but `scoreOf(item, q)`
 //                                          computes the score from the normalised query `q`
 //                                          (use scoreNormalized for weighted keys)
-//   scoreNormalized(q, candidate): number q must already be normalize()d
+//   scoreNormalized(q, candidate, initials?): number  q must already be normalize()d; `initials`
+//                                          (default false) enables the 2-letter doubled-initial tier
 //   scoreKeys(q, name, keys, keyWeight): number  best of `name` (raw, full weight) and `keys`
 //                                          (already normalised, scaled by keyWeight)
 //   scoreDescription(q, text): number     word-level match of a (normalised) description:
@@ -48,8 +50,13 @@
 //                                          results scoring below 25 % of it (fuzzy junk behind a
 //                                          strong match); never applied when the best is weak;
 //                                          always keeps the first result
-//   rankApps(query, items, limit?)        rankItemsBy + scoreApp (APP_KEY_WEIGHT) + the cutoff:
-//                                          what AppsProvider runs; items need {name, keys, description}
+//   rankApps(query, items, limit?, usageOf?)  rankItemsBy + scoreApp (APP_KEY_WEIGHT) + the cutoff
+//                                          + usage tie-break: what AppsProvider runs; items need
+//                                          {name, keys, description} (+ id for usageOf)
+//   applyUsageBoost(ranked, usageOf)      adds up to USAGE_BOOST_MAX (6) points by usage (usageOf(id)
+//                                          in 0..1, 0 = unknown), clamped to the item's own tier
+//                                          (the TIER_FLOORS below), so a better text match in a higher
+//                                          tier always wins and no usage at all changes nothing
 //   hasAlnum(query): boolean              false for punctuation-only queries ("." "-"), which
 //                                          providers should not rank at all
 
@@ -183,8 +190,33 @@ function subsequenceSpan(q: string, c: string): number {
     return qi === q.length ? last - first + 1 : 0;
 }
 
+const INITIALS_BAND = 470;
+const INITIALS_WINDOW = 4;
+
+/**
+ * Two identical letters, the first at a word start and the second a few letters later in the same
+ * word ("ff" -> Fire|fox, "tt" -> Text Editor). Deliberately narrow: any "first letter of a word +
+ * another letter of it" rule matches a large share of all apps for most 2-letter queries (measured
+ * on a real app list), while the doubled letter is what makes "ff" mean Firefox. The general
+ * subsequence match still needs >= 3 letters.
+ */
+function scoreInitials(q: string, lower: string, boundary: boolean[]): number {
+    if (q[0] !== q[1])
+        return 0;
+    for (let i = 0; i < lower.length; i++) {
+        if (!boundary[i] || lower[i] !== q[0])
+            continue;
+        const end = Math.min(lower.length, i + 1 + INITIALS_WINDOW);
+        for (let j = i + 2; j < end && isAlnum(lower[j]) && !boundary[j]; j++) {
+            if (lower[j] === q[1])
+                return INITIALS_BAND;
+        }
+    }
+    return 0;
+}
+
 /** Score a single term (no spaces) or a contiguous phrase. */
-function scoreOne(q: string, folded: string, lower: string, boundary: boolean[], phrase: boolean): number {
+function scoreOne(q: string, folded: string, lower: string, boundary: boolean[], phrase: boolean, initials: boolean): number {
     const ratio = q.length / lower.length;
     if (lower === q)
         return 1000;
@@ -216,6 +248,12 @@ function scoreOne(q: string, folded: string, lower: string, boundary: boolean[],
         }
     }
 
+    if (initials && !phrase && q.length === 2) {
+        const band = scoreInitials(q, lower, boundary);
+        if (band > 0)
+            return Math.round(band + 40 * ratio);
+    }
+
     if (firstSub >= 0)
         return Math.round(400 + 50 * ratio + Math.max(0, 10 - firstSub));
 
@@ -244,15 +282,15 @@ function spaceSeparators(q: string): string {
 }
 
 /** `q` must already be normalised; `candidate` may be raw (case gives camelCase boundaries). */
-export function scoreNormalized(q: string, candidate: string): number {
-    const s = scoreAsTyped(q, candidate);
+export function scoreNormalized(q: string, candidate: string, initials = false): number {
+    const s = scoreAsTyped(q, candidate, initials);
     if (s >= SUBSTRING_BAND || !SEPARATORS.test(q))
         return s;
     const spaced = spaceSeparators(q);
-    return spaced && spaced !== q ? Math.max(s, scoreAsTyped(spaced, candidate)) : s;
+    return spaced && spaced !== q ? Math.max(s, scoreAsTyped(spaced, candidate, initials)) : s;
 }
 
-function scoreAsTyped(q: string, candidate: string): number {
+function scoreAsTyped(q: string, candidate: string, initials: boolean): number {
     if (!q || !candidate)
         return 0;
     const folded = fold(candidate);
@@ -268,12 +306,12 @@ function scoreAsTyped(q: string, candidate: string): number {
     }
 
     if (!q.includes(' '))
-        return scoreOne(q, folded, lower, boundary, false);
+        return scoreOne(q, folded, lower, boundary, false, initials);
 
-    const phrase = scoreOne(q, folded, lower, boundary, true);
+    const phrase = scoreOne(q, folded, lower, boundary, true, initials);
     let terms = Infinity;
     for (const term of q.split(' ')) {
-        const s = scoreOne(term, folded, lower, boundary, false);
+        const s = scoreOne(term, folded, lower, boundary, false, initials);
         if (s === 0) {
             terms = 0;
             break;
@@ -350,7 +388,7 @@ function scoreAcrossKeys(q: string, name: string, keys: readonly string[], keyWe
 
 /** Best score of the display name (full weight) and secondary keys (scaled by `keyWeight`). */
 export function scoreKeys(q: string, name: string, keys: readonly string[], keyWeight: number): number {
-    let best = scoreNormalized(q, name);
+    let best = scoreNormalized(q, name, true);
     for (const key of keys) {
         const s = Math.round(scoreNormalized(q, key) * keyWeight);
         if (s > best)
@@ -406,13 +444,53 @@ export function applyRelativeCutoff<T>(ranked: Ranked<T>[], strong = STRONG_SCOR
 }
 
 export interface AppRankable {
+    /** Desktop id; only needed with a `usageOf` function. */
+    id?: string;
     name: string;
     keys: readonly string[];
     description: string;
 }
 
-export function rankApps<T extends AppRankable>(query: string, items: readonly T[], limit?: number): Ranked<T>[] {
+/** Usage of an app: 0 = unknown / never used, up to 1 = the most used app. */
+export type UsageOf = (id: string) => number;
+
+/** Most points usage can add to a text score. */
+export const USAGE_BOOST_MAX = 6;
+/** Lower edge of every score tier (see the header). Usage never lifts a score into the next tier. */
+const TIER_FLOORS = [1000, 850, 700, 540, 470, 400, 100];
+
+function tierCeiling(score: number): number {
+    let ceiling = Infinity;
+    for (const floor of TIER_FLOORS) {
+        if (floor > score && floor - 1 < ceiling)
+            ceiling = floor - 1;
+    }
+    return ceiling;
+}
+
+/**
+ * Usage as a tie-break: up to USAGE_BOOST_MAX points for the most used app, clamped to the tier
+ * the text score is in, so a better text match in a higher tier always wins. Stable; with no usage
+ * at all (every usageOf is 0) the order is untouched. `ranked` must be sorted best first.
+ */
+export function applyUsageBoost<T extends {id?: string}>(ranked: Ranked<T>[], usageOf: UsageOf): Ranked<T>[] {
+    let any = false;
+    const boosted = ranked.map(({item, score}, index) => {
+        const usage = item.id ? usageOf(item.id) : 0;
+        if (usage > 0)
+            any = true;
+        const boost = usage > 0 ? Math.max(1, Math.round(USAGE_BOOST_MAX * Math.min(1, usage))) : 0;
+        return {item, score: Math.min(score + boost, tierCeiling(score)), index};
+    });
+    if (!any)
+        return ranked;
+    boosted.sort((a, b) => b.score - a.score || a.index - b.index);
+    return boosted.map(({item, score}) => ({item, score}));
+}
+
+export function rankApps<T extends AppRankable>(query: string, items: readonly T[], limit?: number, usageOf?: UsageOf): Ranked<T>[] {
     const ranked = rankItemsBy(query, items, (item, q) => scoreApp(q, item.name, item.keys, APP_KEY_WEIGHT, item.description));
     const cut = applyRelativeCutoff(ranked);
-    return limit !== undefined && limit >= 0 ? cut.slice(0, limit) : cut;
+    const ordered = usageOf ? applyUsageBoost(cut, usageOf) : cut;
+    return limit !== undefined && limit >= 0 ? ordered.slice(0, limit) : ordered;
 }
