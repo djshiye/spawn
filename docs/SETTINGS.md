@@ -14,7 +14,7 @@ Writes: single settings are written immediately. Multi-key operations (group Res
 through `SpawnSettings.batch()`, which delays and applies on a throwaway `Gio.Settings`; the prefs' own `settings.raw`
 (every row is bound to it) is never put in delay mode, because GSettings has no way back and later writes would stay pending.
 Integer keys with a `<range>` in the schema: `menu-height` 360..1600, `left-panel-width` 420..1200,
-`right-panel-width` 180..600, `menu-width-adjustment` -350..800, `max-frequent-apps` 1..50 (the UI floors are 360 / 420 / 180; the migration
+`right-panel-width` 180..600, `menu-width-adjustment` -350..800, `max-frequent-apps` 1..50, `runner-menu-width` 300..2000, `runner-menu-height` 300..1000 (the UI floors are 360 / 420 / 180; the migration
 clamps ArcMenu values into these ranges and warns). GSettings rejects anything outside, so `SpawnSettings.set()`
 returns false for it.
 The ArcMenu import never writes a value equal to Spawn's default (it resets the key instead), so a later change of
@@ -43,6 +43,27 @@ Enum differences from ArcMenu: `menu-button-*-click-action` is `Menu|None|Contex
 |---|---|---|---|
 | `super-key-toggle` | b | `true` | `arcmenu-hotkey-overlay-key-enabled`  (and Super_L in arcmenu-hotkey) |
 | `spawn-hotkey` | as | `[]` | `arcmenu-hotkey`  (every entry except `Super_L`; bare modifier keys such as `Super_R` are dropped). All entries are editable on the General page; was `menu-hotkey` before v1 |
+
+## Runner
+
+The standalone runner (`src/ui/runner.ts`): a search-only popup with its own shortcut, independent of the panel button.
+It opens on the monitor under the pointer and uses the same search providers, result rows and `max-search-results`
+as the menu. Also reachable through the D-Bus method `ToggleRunner` on `io.github.djshiye.Spawn`.
+Before anything is typed ArcMenu shows nothing by default (`Default`); Spawn keeps that (a runner is a bare search box)
+and offers the two lists ArcMenu has.
+
+| Key | Type | Default | Migrates from (ArcMenu) |
+|---|---|---|---|
+| `runner-hotkey` | as | `[]` (off) | `runner-hotkey`  (same filtering as `spawn-hotkey`: bare modifier keys such as `Super_R`, and `Super_L`, are dropped with a warning) |
+| `runner-position` | enum runner-position | `'Top'` | `runner-position`  (Top, Centered) |
+| `runner-menu-width` | i | `500` | `runner-menu-width`  (range 300..2000; ArcMenu allows up to 5000, clamped with a warning) |
+| `runner-menu-height` | i | `400` | `runner-menu-height`  (range 300..1000; the maximum height: the runner grows with its results) |
+| `runner-default-view` | enum runner-default-view | `'Default'` | `default-menu-view-runner`  (Default = nothing, Pinned_Apps, `Frequent Apps` -> `Frequent_Apps`). Pinned_Apps lists the top-level pinned apps (no folders, at most 10), Frequent_Apps `max-frequent-apps` (at most 10) |
+
+ArcMenu runner keys that are read but have no equivalent (listed as skipped in the import preview): `runner-font-size`,
+`runner-menu-height-static`, `runner-searchbar-location`, `runner-search-display-style`, `runner-show-settings-button`,
+`runner-hotkey-overlay-key-enabled` (the Super key only opens Spawn's menu), `runner-hotkey-open-primary-monitor`
+(the runner always opens on the monitor under the pointer).
 
 ## Button
 
@@ -161,10 +182,10 @@ Enum differences from ArcMenu: `menu-button-*-click-action` is `Menu|None|Contex
 The bundled ArcMenu schema is from ArcMenu release 74 (`BUNDLED_ARCMENU_VERSION`); the Import page warns when the
 installed ArcMenu is newer, because keys added since then are not read.
 
-Other layouts' keys (`*-layout-*`, `raven-*`, `runner-*`, `default-menu-view-<layout>`, ...), `menu-layout` (only read to derive `pinned-apps-display`),
+Other layouts' keys (`*-layout-*`, `raven-*`, `default-menu-view-<layout>` except the runner's, ...), `menu-layout` (only read to derive `pinned-apps-display`),
 `force-menu-location`, `menu-position-alignment`, `menu-arrow-rise`, `menu-themes`,
 `extra-categories*`, `recently-installed-apps`, `show-recently-installed-apps`, update-notifier keys,
 `settings-width/height`, `prefs-visible-page`, `hide-overview-*`, `enable-horizontal-flip`, `dash-to-panel-standalone`, `pop-*`,
-`runner-hotkey*`, `hotkey-open-primary-monitor`, `activate-on-hover`, `show-category-sub-menus`,
+`hotkey-open-primary-monitor`, `activate-on-hover`, `show-category-sub-menus`,
 `group-apps-alphabetically-*`, `show-external-devices`, `show-bookmarks`, `enable-activities-shortcut`,
 `searchbar-default-top-location`, `icon-size` for removed layouts.

@@ -2,6 +2,7 @@
 //
 // Public interface   io.github.djshiye.Spawn  at /io/github/djshiye/Spawn
 //   Toggle()                      toggle the menu on the default button
+//   ToggleRunner()                toggle the standalone runner (search-only popup, no panel button needed)
 // Dev interface      io.github.djshiye.Spawn.Dev   (exported ONLY while `dev-mode` is true;
 //                                 follows the setting live)
 //   Open() / Close()
@@ -13,6 +14,8 @@
 //   AttachmentStatus() -> s       JSON: {attachments: [{key, kind, monitorIndex, attached,
 //                                 fallback, side}], pending, pendingForMs}
 //   HotkeyStatus() -> s           JSON of Hotkeys.status() (overlay-key handler ids, toggles, ...)
+//   OpenRunner() / CloseRunner()  open / close the standalone runner (ToggleRunner toggles)
+//   RunnerState() -> s            JSON: SpawnRunner.debugState() plus accelBound (the runner-hotkey binding)
 //   Benchmark(s sections) -> s    JSON timings measured inside the shell (src/dev/benchmark.ts);
 //                                 async, may take several seconds
 //   EmitOverlayKey()              emits 'overlay-key' on global.display, like pressing Super alone
@@ -28,6 +31,7 @@
 //   new DBusService(scope, settings, controller: MenuController)
 //   service.start(): void
 //   MenuController: {toggle(source?), open(), close(), search(query), attachmentStatus(): string,
+//                    toggleRunner(), openRunner?(), closeRunner?(), runnerState?(): string,
 //                    hotkeyStatus?(): string, emitOverlayKey?(): void}
 
 import Gio from 'gi://Gio';
@@ -48,6 +52,10 @@ export interface MenuController {
     open(): void;
     close(): void;
     search(query: string): void;
+    toggleRunner(): void;
+    openRunner?(): void;
+    closeRunner?(): void;
+    runnerState?(): string;
     attachmentStatus(): string;
     hotkeyStatus?(): string;
     emitOverlayKey?(): void;
@@ -61,6 +69,7 @@ const MAIN_IFACE = `
 <node>
   <interface name="io.github.djshiye.Spawn">
     <method name="Toggle"/>
+    <method name="ToggleRunner"/>
   </interface>
 </node>`;
 
@@ -73,6 +82,9 @@ const DEV_IFACE = `
     <method name="Screenshot"><arg type="s" direction="in" name="path"/></method>
     <method name="AttachmentStatus"><arg type="s" direction="out" name="json"/></method>
     <method name="HotkeyStatus"><arg type="s" direction="out" name="json"/></method>
+    <method name="OpenRunner"/>
+    <method name="CloseRunner"/>
+    <method name="RunnerState"><arg type="s" direction="out" name="json"/></method>
     <method name="EmitOverlayKey"/>
     <method name="FocusButton"/>
     <method name="ActivateWorkspace"><arg type="i" direction="in" name="index"/></method>
@@ -195,6 +207,9 @@ export class DBusService {
             ToggleAsync: (_params: unknown[], invocation: Invocation) => {
                 this._call(invocation, () => this._controller.toggle());
             },
+            ToggleRunnerAsync: (_params: unknown[], invocation: Invocation) => {
+                this._call(invocation, () => this._controller.toggleRunner());
+            },
         };
     }
 
@@ -214,6 +229,15 @@ export class DBusService {
             },
             HotkeyStatusAsync: (_params: unknown[], invocation: Invocation) => {
                 this._call(invocation, () => new GLib.Variant('(s)', [this._controller.hotkeyStatus?.() ?? '{}']));
+            },
+            OpenRunnerAsync: (_params: unknown[], invocation: Invocation) => {
+                this._call(invocation, () => this._controller.openRunner?.());
+            },
+            CloseRunnerAsync: (_params: unknown[], invocation: Invocation) => {
+                this._call(invocation, () => this._controller.closeRunner?.());
+            },
+            RunnerStateAsync: (_params: unknown[], invocation: Invocation) => {
+                this._call(invocation, () => new GLib.Variant('(s)', [this._controller.runnerState?.() ?? '{}']));
             },
             EmitOverlayKeyAsync: (_params: unknown[], invocation: Invocation) => {
                 this._call(invocation, () => this._controller.emitOverlayKey?.());

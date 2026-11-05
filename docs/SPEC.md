@@ -41,8 +41,12 @@ your area before writing code.
   per provider.
 - Hotkeys: Super key toggles menu (optional), custom accelerator (default
   `<Super>space` off by default), D-Bus `io.github.djshiye.Spawn` method
-  `Toggle`. Super interception must be **in memory only** (block GNOME's handler,
+  `Toggle` (`ToggleRunner` for the runner). Super interception must be **in memory only** (block GNOME's handler,
   connect ours); never write mutter's `overlay-key` to dconf.
+- Standalone runner (`ui/runner.ts`): a search-only popup with its own accelerator (`runner-hotkey`) and the
+  D-Bus method `ToggleRunner`, opened on the monitor under the pointer (Top / Centered). Same search pipeline and
+  result widgets as the menu; closes on Escape, on activating a result, on a click outside and when the main menu
+  opens (and the other way round).
 - Option to hide the Activities button (restore its *previous* visibility).
 - Preferences (Adw): General, Button, Menu (views, sizes), Pinned & Shortcuts,
   Appearance, Import from ArcMenu, About.
@@ -54,7 +58,7 @@ your area before writing code.
   `Screenshot(s path)` (uses Shell.Screenshot in-process), `Benchmark(s sections)` (in-shell timings, see README)
   for headless testing; plus a `.Ui` interface (src/ui/devHooks.ts) to drive the menu.
 
-Out of scope for v1 (later): the other 22 ArcMenu layouts, standalone runner,
+Out of scope for v1 (later): the other 22 ArcMenu layouts,
 extra categories links, intellihide integration beyond showing the panel.
 
 ## Tech
@@ -117,6 +121,8 @@ src/
   search/rank.ts          pure ranking functions (unit-tested)
   search/providers/*.ts   apps, windows, recentFiles, shellProviders
   input/hotkeys.ts        Super interception (in memory) + accelerator
+  input/accelerator.ts    one custom accelerator (spawn-hotkey, runner-hotkey) via Main.wm.addKeybinding
+  ui/runner.ts            SpawnRunner: the standalone search-only popup (lazy, own scope)
   input/dbus.ts           io.github.djshiye.Spawn (+ Dev when dev-mode)
   theme/theme.ts          accent + optional custom colours → stylesheet written
                           synchronously to $XDG_RUNTIME_DIR/spawn/theme.css,

@@ -17,9 +17,9 @@
 //   * On disable (setting off, stop(), scope disposal) we disconnect ours and unblock GNOME's,
 //     but only if that handler is still connected (the shell may have replaced it).
 //
-// Accelerator details: the `spawn-hotkey` key (as) of our own schema is bound under the name
-// 'spawn-hotkey' with modes NORMAL | OVERVIEW | POPUP, so it works in the Overview and can also
-// close the open menu. Changes re-bind (debounced); an empty list means no binding.
+// Accelerator details (input/accelerator.ts): the `spawn-hotkey` key (as) of our own schema is bound
+// under the name 'spawn-hotkey' with modes NORMAL | OVERVIEW | POPUP, so it works in the Overview and
+// can also close the open menu. Changes re-bind (debounced); an empty list means no binding.
 //
 //   * mutter drops the overlay-key binding while a modal grab with a mode outside the allowed
 //     mask is active (WindowManager._filterKeybinding), and the open menu's PopupMenuManager
@@ -47,10 +47,10 @@ import Shell from 'gi://Shell';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-import {debounce, type Debounced} from '../core/debounce.js';
 import {error, log, warn} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {SpawnSettings} from '../core/settings.js';
+import {Accelerator} from './accelerator.js';
 
 export const ACCEL_KEY = 'spawn-hotkey';
 export type HotkeySource = 'super' | 'accelerator';
@@ -64,7 +64,6 @@ function overlayModes(): number {
     const allowed = (Main.wm as unknown as {_allowedKeybindings?: Record<string, number>})._allowedKeybindings;
     return allowed?.[OVERLAY_KEY] ?? -1;
 }
-const REBIND_DEBOUNCE_MS = 300;
 
 /**
  * Id of the first (oldest) 'overlay-key' handler on global.display; 0 when there is none.
@@ -96,10 +95,9 @@ export class Hotkeys {
     private readonly _onToggle: (source: HotkeySource) => void;
 
     private _run: Scope | null = null;
-    private _rebind: Debounced | null = null;
+    private _accel: Accelerator | null = null;
     private _gnomeHandler = 0;
     private _ourHandler = 0;
-    private _accelBound = false;
     private _toggles = 0;
     /** The overlay-key mask to put back on release; null while we have not widened it. */
     private _savedModes: number | null = null;
@@ -117,20 +115,20 @@ export class Hotkeys {
         const run = this._scope.child('hotkeys');
         this._run = run;
 
-        this._rebind = debounce(run, REBIND_DEBOUNCE_MS, () => this._syncAccelerator());
         this._settings.onChanged(run, ['super-key-toggle'], () => this._guard('super sync', () => this._syncSuper()));
-        this._settings.onChanged(run, [ACCEL_KEY], () => this._rebind?.call());
 
         this._guard('super sync', () => this._syncSuper());
-        this._guard('accelerator sync', () => this._syncAccelerator());
+        this._accel = new Accelerator(run, this._settings, ACCEL_KEY, () => this._fire('accelerator'));
+        this._accel.start();
     }
 
     stop(): void {
         const run = this._run;
         this._run = null;
-        this._rebind = null;
+        const accel = this._accel;
+        this._accel = null;
         this._guard('release super', () => this._releaseSuper());
-        this._guard('unbind accelerator', () => this._unbindAccelerator());
+        this._guard('unbind accelerator', () => accel?.stop());
         run?.dispose();
     }
 
@@ -153,7 +151,7 @@ export class Hotkeys {
             ourHandler: this._ourHandler,
             firstUnblocked,
             accelerators,
-            accelBound: this._accelBound,
+            accelBound: this._accel?.bound ?? false,
             toggles: this._toggles,
             overlayKeyModes: overlayModes(),
         };
@@ -222,35 +220,6 @@ export class Hotkeys {
             });
         }
         log('Super key released');
-    }
-
-    // ---- custom accelerator ----
-
-    private _syncAccelerator(): void {
-        if (!this._run)
-            return;
-        this._unbindAccelerator();
-        const accels = this._settings.get(ACCEL_KEY).filter(a => typeof a === 'string' && a !== '');
-        if (accels.length === 0)
-            return;
-        const action = Main.wm.addKeybinding(
-            ACCEL_KEY,
-            this._settings.raw,
-            Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
-            Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW | Shell.ActionMode.POPUP,
-            () => this._fire('accelerator'),
-        );
-        // NONE: mutter refused the binding (invalid accelerator, or the name is taken).
-        this._accelBound = action !== Meta.KeyBindingAction.NONE;
-        if (!this._accelBound)
-            warn(`mutter refused the '${ACCEL_KEY}' keybinding (${accels.join(', ')})`);
-    }
-
-    private _unbindAccelerator(): void {
-        if (!this._accelBound)
-            return;
-        this._accelBound = false;
-        Main.wm.removeKeybinding(ACCEL_KEY);
     }
 
     // ---- helpers ----

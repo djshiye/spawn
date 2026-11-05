@@ -52,6 +52,8 @@ export type DefaultMenuView = 'Pinned_Apps' | 'Categories_List' | 'Frequent_Apps
 export type AllAppsButtonAction = 'Categories_List' | 'All_Programs';
 export type SearchbarLocation = 'Bottom' | 'Top' | 'Auto';
 export type PowerDisplayStyle = 'Default' | 'In_Line' | 'Menu';
+export type RunnerPosition = 'Top' | 'Centered';
+export type RunnerDefaultView = 'Default' | 'Pinned_Apps' | 'Frequent_Apps';
 export type MenuItemIconStyle = 'Full_Color' | 'Symbolic';
 
 export interface SettingsMap {
@@ -63,6 +65,11 @@ export interface SettingsMap {
     'show-tooltips': boolean;
     'super-key-toggle': boolean;
     'spawn-hotkey': string[];
+    'runner-hotkey': string[];
+    'runner-position': RunnerPosition;
+    'runner-menu-width': number;
+    'runner-menu-height': number;
+    'runner-default-view': RunnerDefaultView;
     'position-in-panel': MenuPosition;
     'menu-button-position-offset': number;
     'menu-button-appearance': MenuButtonAppearance;

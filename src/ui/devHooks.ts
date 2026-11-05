@@ -128,7 +128,7 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
             out.push(menu);
         for (const c of Main.uiGroup.get_children()) {
             const cls = (c as St.Widget).style_class ?? '';
-            if (c !== menu && /spawn-(context-menu|button-menu|tooltip|power-popup)/.test(cls))
+            if (c !== menu && /spawn-(context-menu|button-menu|tooltip|power-popup|runner)/.test(cls))
                 out.push(c);
         }
         return out;

@@ -24,6 +24,7 @@ import {SCHEMA_ID, SpawnSettings} from './core/settings.js';
 import GLib from 'gi://GLib';
 
 import {runBenchmark} from './dev/benchmark.js';
+import {Accelerator} from './input/accelerator.js';
 import {DBusService, type MenuController} from './input/dbus.js';
 import {Hotkeys} from './input/hotkeys.js';
 import {ButtonAttacher} from './panel/attacher.js';
@@ -32,6 +33,7 @@ import {PanelTargets} from './panel/targets.js';
 import {Theme} from './theme/theme.js';
 import {MenuButton} from './ui/button.js';
 import {SpawnPopup} from './ui/menu.js';
+import {SpawnRunner} from './ui/runner.js';
 
 export default class SpawnExtension extends Extension {
     private _root: Scope | null = null;
@@ -116,6 +118,25 @@ export default class SpawnExtension extends Extension {
 
         const popup = this._start(root, 'popup', scope => new SpawnPopup(scope, services));
 
+        // The standalone runner: lazy (no actors before its first open), owned by its own scope, with its
+        // own accelerator (`runner-hotkey`). Opening one of runner / main menu closes the other.
+        let runnerAccel: Accelerator | null = null;
+        const runner = this._start(root, 'runner', scope => {
+            const r = new SpawnRunner(scope, services, {beforeOpen: () => {
+                if (popup?.isOpen)
+                    popup.close();
+            }});
+            runnerAccel = new Accelerator(scope, settings, 'runner-hotkey', () => r.toggle());
+            runnerAccel.start();
+            return r;
+        });
+        if (runner && popup) {
+            popup.onOpenStateChanged(root, open => {
+                if (open)
+                    runner.close();
+            });
+        }
+
         const attacher = this._start(root, 'panel', scope => {
             const targets = new PanelTargets(scope, {isMultiMonitor: () => settings.get('multi-monitor')});
             const attacher = new ButtonAttacher(scope, {
@@ -148,6 +169,7 @@ export default class SpawnExtension extends Extension {
             // Close if the menu is open anywhere; otherwise open it on the pointer's monitor. When
             // Spawn cannot do that, Super hands back to GNOME's own behaviour (the Overview).
             toggle: (source = 'dbus') => {
+                runner?.close();
                 if (popup?.isOpen) {
                     popup.close();
                     return;
@@ -163,11 +185,20 @@ export default class SpawnExtension extends Extension {
                     Main.overview.toggle();
             },
             open: () => {
+                runner?.close();
                 const anchor = anchorButton();
                 if (anchor && popup)
                     popup.open(anchor);
             },
             close: () => popup?.close(),
+            toggleRunner: () => runner?.toggle(),
+            openRunner: () => runner?.open(),
+            closeRunner: () => runner?.close(),
+            runnerState: () => JSON.stringify({
+                ...(runner?.debugState() ?? {open: false, built: false}),
+                accelBound: (runnerAccel as Accelerator | null)?.bound ?? false,
+                popupOpen: popup?.isOpen ?? false,
+            }),
             search: query => popup?.search(query),
             benchmark: sections => {
                 if (!popup)

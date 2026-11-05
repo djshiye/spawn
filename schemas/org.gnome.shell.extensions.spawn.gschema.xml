@@ -52,6 +52,15 @@
     <value value="0" nick="Full_Color"/>
     <value value="1" nick="Symbolic"/>
   </enum>
+  <enum id="org.gnome.shell.extensions.spawn.runner-position">
+    <value value="0" nick="Top"/>
+    <value value="1" nick="Centered"/>
+  </enum>
+  <enum id="org.gnome.shell.extensions.spawn.runner-default-view">
+    <value value="0" nick="Default"/>
+    <value value="1" nick="Pinned_Apps"/>
+    <value value="2" nick="Frequent_Apps"/>
+  </enum>
 
   <schema id="org.gnome.shell.extensions.spawn.folder">
     <key name="name" type="s">
@@ -103,6 +112,32 @@
       <default>[]</default>
       <summary>Menu keyboard shortcut</summary>
       <description>Custom accelerator(s) that toggle the menu, e.g. ["&lt;Super>space"]; empty = off</description>
+    </key>
+    <key name="runner-hotkey" type="as">
+      <default>[]</default>
+      <summary>Runner keyboard shortcut</summary>
+      <description>Accelerator(s) that toggle the standalone runner (a search-only popup, independent of the panel button), e.g. ["&lt;Alt>space"]; empty = off. The D-Bus method ToggleRunner does the same</description>
+    </key>
+    <key name="runner-position" enum="org.gnome.shell.extensions.spawn.runner-position">
+      <default>'Top'</default>
+      <summary>Runner position</summary>
+      <description>Top: at the top of the work area of the monitor under the pointer. Centered: vertically centred on it</description>
+    </key>
+    <key name="runner-menu-width" type="i">
+      <range min="300" max="2000"/>
+      <default>500</default>
+      <summary>Runner width in px</summary>
+    </key>
+    <key name="runner-menu-height" type="i">
+      <range min="300" max="1000"/>
+      <default>400</default>
+      <summary>Runner maximum height in px</summary>
+      <description>The runner grows with its results up to this height; Centered is centred on it</description>
+    </key>
+    <key name="runner-default-view" enum="org.gnome.shell.extensions.spawn.runner-default-view">
+      <default>'Default'</default>
+      <summary>What the runner shows before anything is typed</summary>
+      <description>Default: nothing (just the search box). Pinned_Apps / Frequent_Apps: that list of apps</description>
     </key>
     <key name="position-in-panel" enum="org.gnome.shell.extensions.spawn.menu-position">
       <default>'Left'</default>

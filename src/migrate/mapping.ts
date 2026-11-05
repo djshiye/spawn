@@ -74,6 +74,8 @@ export const INT_RANGES: Readonly<Record<string, readonly [min: number, max: num
     'left-panel-width': [420, 1200],
     'right-panel-width': [180, 600],
     'max-frequent-apps': [1, 50],
+    'runner-menu-width': [300, 2000],
+    'runner-menu-height': [300, 1000],
 };
 
 // ------------------------------------------------------------------------------------------
@@ -89,6 +91,11 @@ const AVATAR = ['Round', 'Square'] as const;
 const ICON_STYLE = ['Full_Color', 'Symbolic'] as const;
 const POWER_STYLE = ['Default', 'In_Line', 'Menu'] as const;
 const SEARCHBAR = ['Bottom', 'Top'] as const;
+const RUNNER_POSITION = ['Top', 'Centered'] as const;
+/** ArcMenu's `default-menu-view-runner` nicks -> Spawn's `runner-default-view` ("Frequent Apps" has a space in ArcMenu). */
+const RUNNER_VIEW: Readonly<Record<string, 'Default' | 'Pinned_Apps' | 'Frequent_Apps'>> = {
+    'Default': 'Default', 'Pinned_Apps': 'Pinned_Apps', 'Frequent Apps': 'Frequent_Apps',
+};
 
 /**
  * How each ArcMenu layout (MenuLayoutsInfo id) displays its items: the `display_type` its
@@ -138,6 +145,9 @@ const SAME_NAME: ReadonlyArray<readonly [SettingKey, Kind]> = [
     ['icon-style-buttons', ICON_STYLE],
     ['power-options', 'a(ib)'],
     ['power-display-style', POWER_STYLE],
+    ['runner-position', RUNNER_POSITION],
+    ['runner-menu-width', 'i'],
+    ['runner-menu-height', 'i'],
     ['search-hidden', 'b'],
     ['max-search-results', 'i'],
     ['highlight-search-result-terms', 'b'],
@@ -230,10 +240,14 @@ const SKIP_EXACT: Readonly<Record<string, string>> = {
     'settings-height': 'ArcMenu internal state',
     'enable-horizontal-flip': 'not supported in v1',
     'dash-to-panel-standalone': 'not part of v1',
-    'runner-hotkey': 'the standalone runner is not part of v1',
-    'runner-hotkey-overlay-key-enabled': 'the standalone runner is not part of v1',
+    'runner-hotkey-overlay-key-enabled': "the Super key only opens Spawn's menu; give the runner an ordinary shortcut",
     'hotkey-open-primary-monitor': 'not supported in v1',
-    'runner-hotkey-open-primary-monitor': 'the standalone runner is not part of v1',
+    'runner-hotkey-open-primary-monitor': 'the runner always opens on the monitor under the pointer',
+    'runner-font-size': 'the runner uses the menu font',
+    'runner-menu-height-static': 'the runner always grows with its results',
+    'runner-searchbar-location': 'the runner search box is always on top',
+    'runner-search-display-style': 'runner results are always a list',
+    'runner-show-settings-button': 'the runner has no settings button',
     'activate-on-hover': 'not supported in v1',
     'show-category-sub-menus': 'not supported in v1',
     'group-apps-alphabetically-list-layouts': 'not part of v1',
@@ -250,7 +264,7 @@ const SKIP_EXACT: Readonly<Record<string, string>> = {
     'pop-default-view': NO_LAYOUT,
 };
 const SKIP_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
-    [/^runner-/, 'the standalone runner is not part of v1'],
+    [/^runner-/, 'no equivalent in the Spawn runner'],
     [/^raven-/, NO_LAYOUT],
     [/^(az|brisk|eleven|insider|mint|sleek|zest|unity|windows)-layout-/, NO_LAYOUT],
     [/^default-menu-view-/, NO_LAYOUT],
@@ -461,29 +475,52 @@ export function planMigration(snapshot: ArcMenuSnapshot, spawnDefaults?: Partial
         add('hide-activities-button', 'show-activities-button', !show);
 
     // Hotkeys: Super_L + overlay flag -> super-key-toggle, anything else -> spawn-hotkey.
+    // Accelerators that are only a modifier key are dropped with a warning (they would swallow typing).
+    const cleanAccelerators = (from: string, hotkeys: string[]): string[] => {
+        const others: string[] = [];
+        for (const k of hotkeys) {
+            if (k === 'Super_L' || k === '' || others.includes(k))
+                continue;
+            if (BARE_MODIFIER.test(k)) {
+                plan.warnings.push(`${from}: '${k}' is a bare modifier key and was not imported`);
+                continue;
+            }
+            others.push(k);
+        }
+        return others;
+    };
     if (isSet('arcmenu-hotkey') || isSet('arcmenu-hotkey-overlay-key-enabled')) {
         const keys = effective('arcmenu-hotkey');
         const overlay = effective('arcmenu-hotkey-overlay-key-enabled');
         if (Array.isArray(keys) && keys.every(k => typeof k === 'string') && typeof overlay === 'boolean') {
             const hotkeys = keys as string[];
             add('super-key-toggle', 'arcmenu-hotkey-overlay-key-enabled', overlay && hotkeys.includes('Super_L'));
-            const others: string[] = [];
-            for (const k of hotkeys) {
-                if (k === 'Super_L' || k === '' || others.includes(k))
-                    continue;
-                if (BARE_MODIFIER.test(k)) {
-                    plan.warnings.push(`arcmenu-hotkey: '${k}' is a bare modifier key and was not imported`);
-                    continue;
-                }
-                others.push(k);
-            }
-            add('spawn-hotkey', 'arcmenu-hotkey', others);
+            add('spawn-hotkey', 'arcmenu-hotkey', cleanAccelerators('arcmenu-hotkey', hotkeys));
             if (!overlay && hotkeys.includes('Super_L'))
                 plan.warnings.push('ArcMenu had the Super key listed but disabled; the Super key toggle is off.');
         } else {
             skip('arcmenu-hotkey', 'unexpected value format');
             skip('arcmenu-hotkey-overlay-key-enabled', 'unexpected value format');
         }
+    }
+
+    // Standalone runner: its own accelerator(s) and start view.
+    if (isSet('runner-hotkey')) {
+        const keys = values['runner-hotkey'];
+        if (Array.isArray(keys) && keys.every(k => typeof k === 'string')) {
+            add('runner-hotkey', 'runner-hotkey', cleanAccelerators('runner-hotkey', keys as string[]));
+            if ((keys as string[]).includes('Super_L'))
+                plan.warnings.push("runner-hotkey: 'Super_L' was not imported (the Super key opens Spawn's menu); set another runner shortcut");
+        } else
+            skip('runner-hotkey', 'unexpected value format');
+    }
+    if (isSet('default-menu-view-runner')) {
+        const v = values['default-menu-view-runner'];
+        const mapped = typeof v === 'string' ? RUNNER_VIEW[v] : undefined;
+        if (mapped)
+            add('runner-default-view', 'default-menu-view-runner', mapped);
+        else
+            skip('default-menu-view-runner', 'unexpected value format');
     }
 
     // Panel button context menu.

@@ -214,6 +214,51 @@ test('hotkeys: Super_L + overlay enabled -> super-key-toggle; others -> spawn-ho
     assertEquals(p.items.find(i => i.key === 'super-key-toggle').value, false);
 });
 
+test('runner: hotkey, position, size and start view map; bare modifiers are dropped with a warning', () => {
+    let p = planMigration(snap({
+        'runner-hotkey': ['<Alt>space', '<Alt>space', 'Super_L', 'Super_R', '<Ctrl>F2'],
+        'runner-position': 'Centered',
+        'runner-menu-width': 640,
+        'runner-menu-height': 520,
+        'default-menu-view-runner': 'Frequent Apps',
+    }));
+    const v = k => p.items.find(i => i.key === k)?.value;
+    assertEquals(v('runner-hotkey'), ['<Alt>space', '<Ctrl>F2']);
+    assertEquals(v('runner-position'), 'Centered');
+    assertEquals(v('runner-menu-width'), 640);
+    assertEquals(v('runner-menu-height'), 520);
+    assertEquals(v('runner-default-view'), 'Frequent_Apps');
+    assert(p.warnings.some(w => w.includes('runner-hotkey') && w.includes('Super_R')), 'bare modifier not reported');
+    assert(p.warnings.some(w => w.includes('runner-hotkey') && w.includes('Super_L')), 'Super_L not reported');
+    assertEquals(p.skipped, []);
+    assert(!p.items.some(i => i.key === 'spawn-hotkey'), 'runner hotkey leaked into spawn-hotkey');
+    for (const [nick, want] of [['Default', 'Default'], ['Pinned_Apps', 'Pinned_Apps']]) {
+        p = planMigration(snap({'default-menu-view-runner': nick}));
+        assertEquals(v('runner-default-view'), want, nick);
+    }
+    p = planMigration(snap({'default-menu-view-runner': 'Nope', 'runner-hotkey': 'x'}));
+    assertEquals(p.skipped.map(s => s.key).sort(), ['default-menu-view-runner', 'runner-hotkey']);
+});
+
+test('runner: sizes outside the schema range are clamped with a warning', () => {
+    const p = planMigration(snap({'runner-menu-width': 5000, 'runner-menu-height': 100}));
+    const v = k => p.items.find(i => i.key === k).value;
+    assertEquals([v('runner-menu-width'), v('runner-menu-height')], [2000, 300]);
+    assertEquals(p.warnings.length, 2);
+});
+
+test('runner: keys without an equivalent are skipped with a runner-specific reason', () => {
+    const p = planMigration(snap({
+        'runner-font-size': 14, 'runner-menu-height-static': true, 'runner-searchbar-location': 'Bottom',
+        'runner-search-display-style': 'Grid', 'runner-show-settings-button': false,
+        'runner-hotkey-overlay-key-enabled': true, 'runner-hotkey-open-primary-monitor': true,
+    }));
+    assertEquals(p.items.some(i => i.key.startsWith('runner-')), false);
+    assertEquals(p.skipped.length, 7);
+    for (const s of p.skipped)
+        assert(s.reason.length > 0 && !s.reason.includes('not part of v1'), `${s.key}: ${s.reason}`);
+});
+
 test('click actions: ArcMenu -> Menu, ContextMenu -> ContextMenu, None -> None', () => {
     const p = planMigration(snap({
         'menu-button-left-click-action': 'ArcMenu',

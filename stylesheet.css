@@ -638,3 +638,34 @@
     border-color: rgba(0, 0, 0, 0.12);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
+
+/* ---- standalone runner (ui/runner.ts) ----
+ * A PopupMenu on the shell's dummy cursor, tagged .spawn-popup too so the theme module's colours
+ * apply. Same tokens as the menu: 8 px popup padding, 8 px row radius, 34 px search box, accent for
+ * focus / the first result. */
+
+/* the dummy cursor has no extent, so the boxpointer arrow would point at nothing */
+.spawn-runner {
+    -arrow-rise: 0px;
+}
+
+.spawn-runner-content {
+    spacing: 0;
+}
+
+.spawn-runner-search {
+    margin: 0;
+}
+
+.spawn-runner-scroll {
+    margin-top: 8px;
+}
+
+.spawn-runner .spawn-result-row:selected {
+    background-color: st-transparentize(-st-accent-color, 0.6);
+    color: white;
+}
+
+.spawn-light.spawn-runner .spawn-result-row:selected {
+    color: rgba(0, 0, 0, 0.87);
+}
