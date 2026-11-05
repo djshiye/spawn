@@ -1,0 +1,19 @@
+{
+  // Static compat check against the GNOME Shell 49 typings: `tools/compat-typecheck.sh 49` (needs
+  // `npm run compat:install` once). The typings live in an isolated tree (tools/compat/49); the paths
+  // below redirect the entry points src/env.d.ts imports, everything else is resolved from inside that
+  // tree. tools/compat-typecheck.sh fails if any declaration of the main (51) tree still gets loaded.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@girs/gnome-shell/extensions/global": ["./tools/compat/49/node_modules/@girs/gnome-shell/dist/extensions/global.d.ts"],
+      "@girs/gnome-shell/ambient": ["./tools/compat/49/node_modules/@girs/gnome-shell/dist/index-ambient.d.ts"],
+      "@girs/gnome-shell/extensions/extension/ambient": ["./tools/compat/49/node_modules/@girs/gnome-shell/dist/extensions/extension-ambient.d.ts"],
+      "@girs/gnome-shell/extensions/prefs/ambient": ["./tools/compat/49/node_modules/@girs/gnome-shell/dist/extensions/prefs-ambient.d.ts"],
+      "@girs/gjs": ["./tools/compat/49/node_modules/@girs/gjs/index.d.ts"],
+      "@girs/gjs/dom": ["./tools/compat/49/node_modules/@girs/gjs/dom.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "tools/compat/49/ambient.d.ts"]
+}

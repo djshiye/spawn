@@ -1,0 +1,9 @@
+{
+  "name": "spawn-compat-50",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GNOME Shell 50 typings for tsconfig.compat-50.json (isolated from the main tree: the ambient gi:// modules of two releases must not meet in one program)",
+  "devDependencies": {
+    "@girs/gnome-shell": "50.0.4"
+  }
+}
