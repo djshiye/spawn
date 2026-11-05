@@ -120,6 +120,31 @@ ArcMenu runner keys that are read but have no equivalent (listed as skipped in t
 | `application-shortcuts` | aa{ss} | `[ Spawn_Software, org.gnome.Settings.desktop, org.gnome.Ptyxis.desktop, Spawn_ActivitiesOverview ]` | `application-shortcuts`  (ArcMenu_ ids -> Spawn_) |
 | `power-options` | a(ib) | `[(0, true), (1, true), (2, true), (3, true), (4, false), ...` | `power-options` |
 | `power-display-style` | enum power-display-style | `'Default'` | `power-display-style` |
+| `show-external-devices` | b | `false` | `show-external-devices`. Mounted local devices and network locations (a Gio.VolumeMonitor walk like GNOME's Places extension, live on mount / unmount) between the folder and the application shortcuts, with an Eject / Unmount button on removable ones |
+| `show-bookmarks` | b | `false` | `show-bookmarks`. The bookmarks of `~/.config/gtk-3.0/bookmarks` (Files sidebar; watched, so a change shows up at once; missing local folders are skipped) after the devices |
+
+A short rule separates the groups (folder shortcuts, devices + network, bookmarks, application shortcuts) when
+neighbouring groups are not empty, like ArcMenu's short separators (ArcMenu also decides from the settings and the
+bookmarks file, Spawn only from what is actually shown, so no rule appears next to nothing).
+
+### Category quick links
+
+Rows on the start view that open another view in one click (ArcMenu's "Category Quick Links" of the arcmenu layout).
+Shown only on the start view (`default-menu-view`), never for the category list, never for the start view itself
+(Pinned for Pinned_Apps / Pinned_And_Frequent_Apps, Frequent for Frequent_Apps / Pinned_And_Frequent_Apps, All Apps
+for All_Programs), and the box is hidden when no link remains. Menu page: "Category quick links".
+
+| Key | Type | Default | Migrates from (ArcMenu) |
+|---|---|---|---|
+| `arcmenu-extra-categories-links` | a(ib) | `[(0, false), (1, false), (2, false), (3, false), (4, false)]` | `arcmenu-extra-categories-links`  (same ids and order: 0 Favorites = GNOME Shell's dash favourites, 1 Frequent Apps, 2 All Apps, 3 Pinned Apps = Spawn's pinned view, 4 Recent Files). ArcMenu only builds a link for a category that is also enabled in its `extra-categories` (default: Pinned and All Programs only); Spawn has no such second list, so the migration switches a link off whose category is off there (with a warning) |
+| `arcmenu-extra-categories-links-location` | enum menuitem-location | `'Bottom'` | `arcmenu-extra-categories-links-location`  (Bottom, Top). Top: above the list; Bottom: below it, above the Back / All Apps button |
+
+Recent Files: the newest 25 live files of `recently-used.xbel` (the cache of the recent-files search provider, which
+works without `search-provider-recent-files`), name + folder, opened with the default application; "More Recent
+Files..." (older ones exist) opens `recent:///`. `show-hidden-recent-files` applies. When GNOME's File History switch
+(`org.gnome.desktop.privacy remember-recent-files`) is off the view is empty and says so. Favorites lists
+`org.gnome.shell favorite-apps`. The extra categories as rows of the category column (`extra-categories`) are not
+supported; the quick links are the way into these views.
 
 ## Search
 
@@ -185,8 +210,11 @@ installed ArcMenu is newer, because keys added since then are not read.
 
 Other layouts' keys (`*-layout-*`, `raven-*`, `default-menu-view-<layout>` except the runner's, ...), `menu-layout` (only read to derive `pinned-apps-display`),
 `force-menu-location`, `menu-position-alignment`, `menu-arrow-rise`, `menu-themes`,
-`extra-categories*`, `recently-installed-apps`, `show-recently-installed-apps`, update-notifier keys,
+`extra-categories` (only read to migrate the quick links), `recently-installed-apps`, `show-recently-installed-apps`, update-notifier keys,
 `settings-width/height`, `prefs-visible-page`, `hide-overview-*`, `enable-horizontal-flip`, `dash-to-panel-standalone`, `pop-*`,
-`hotkey-open-primary-monitor`, `activate-on-hover`, `show-category-sub-menus`,
-`group-apps-alphabetically-*`, `show-external-devices`, `show-bookmarks`, `enable-activities-shortcut`,
+`hotkey-open-primary-monitor`, `activate-on-hover`,
+`show-category-sub-menus` (ArcMenu groups a category's sub-folders into expanders inside its app list; Spawn lists every
+app of a category flat in one alphabetical list, sub-folders merged into their category, so there is nothing to
+expand and the key is reported as skipped),
+`group-apps-alphabetically-*`, `enable-activities-shortcut`,
 `searchbar-default-top-location`, `icon-size` for removed layouts.

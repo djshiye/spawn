@@ -14,6 +14,7 @@
 //   index.get(id: string): Shell.App | null lookup by desktop id ("org.gnome.Nautilus.desktop")
 //   index.categories(): AppCategory[]       ordered; apps inside are sorted by name
 //   index.frequent(limit: number): Shell.App[]
+//   index.favorites(): Shell.App[]          GNOME Shell's favourites (dash), in order (read live; the "Favorites" quick link)
 //   index.setFrequentOverride(ids: string[] | null)   dev hook (Ui.SetFrequent): these apps ARE the most used; null = real usage
 //   index.usageScore(id: string): number  0..1 from Shell.AppUsage's ordering (1 = most used, 0 =
 //                                           unknown / usage tracking off); the ordering is re-read
@@ -163,6 +164,20 @@ export class AppIndex {
                 break;
         }
         return out;
+    }
+
+    /** GNOME Shell's own favourites (the dash; org.gnome.shell favorite-apps), in order, installed apps only. */
+    favorites(): Shell.App[] {
+        this.build();
+        let ids: string[] = [];
+        try {
+            const source = Gio.SettingsSchemaSource.get_default();
+            if (source?.lookup('org.gnome.shell', true))
+                ids = new Gio.Settings({schema_id: 'org.gnome.shell'}).get_strv('favorite-apps');
+        } catch (e) {
+            warn(`AppIndex: cannot read the GNOME favourites: ${e}`);
+        }
+        return ids.map(id => this.get(id)).filter((a): a is Shell.App => a !== null && Boolean(a.get_app_info()?.should_show()));
     }
 
     /** Usage as 0..1 (most used app 1, linearly down; 0 = unknown). Empty when usage tracking is off. */

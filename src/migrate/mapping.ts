@@ -91,6 +91,7 @@ const AVATAR = ['Round', 'Square'] as const;
 const ICON_STYLE = ['Full_Color', 'Symbolic'] as const;
 const POWER_STYLE = ['Default', 'In_Line', 'Menu'] as const;
 const SEARCHBAR = ['Bottom', 'Top'] as const;
+const LOCATION = ['Bottom', 'Top'] as const;
 const RUNNER_POSITION = ['Top', 'Centered'] as const;
 /** ArcMenu's `default-menu-view-runner` nicks -> Spawn's `runner-default-view` ("Frequent Apps" has a space in ArcMenu). */
 const RUNNER_VIEW: Readonly<Record<string, 'Default' | 'Pinned_Apps' | 'Frequent_Apps'>> = {
@@ -148,6 +149,10 @@ const SAME_NAME: ReadonlyArray<readonly [SettingKey, Kind]> = [
     ['runner-position', RUNNER_POSITION],
     ['runner-menu-width', 'i'],
     ['runner-menu-height', 'i'],
+    // sidebar extras (the category quick links are derived in planMigration: they also depend on extra-categories)
+    ['arcmenu-extra-categories-links-location', LOCATION],
+    ['show-external-devices', 'b'],
+    ['show-bookmarks', 'b'],
     ['search-hidden', 'b'],
     ['max-search-results', 'i'],
     ['highlight-search-result-terms', 'b'],
@@ -229,9 +234,7 @@ const SKIP_EXACT: Readonly<Record<string, string>> = {
     'menu-position-alignment': 'not supported in v1',
     'menu-arrow-rise': 'menu arrow is not used',
     'menu-themes': 'theme presets are not part of v1',
-    'extra-categories': 'extra categories are not part of v1',
-    'arcmenu-extra-categories-links': 'extra categories are not part of v1',
-    'arcmenu-extra-categories-links-location': 'extra categories are not part of v1',
+    'extra-categories': 'only used to decide which category quick links ArcMenu really shows; Spawn has no extra category rows',
     'recently-installed-apps': 'ArcMenu internal state',
     'show-recently-installed-apps': 'not part of v1',
     'update-notifier-project-version': 'ArcMenu internal state',
@@ -249,11 +252,9 @@ const SKIP_EXACT: Readonly<Record<string, string>> = {
     'runner-search-display-style': 'runner results are always a list',
     'runner-show-settings-button': 'the runner has no settings button',
     'activate-on-hover': 'not supported in v1',
-    'show-category-sub-menus': 'not supported in v1',
+    'show-category-sub-menus': 'not supported: Spawn lists the apps of a category flat (sub-folders are merged into their category)',
     'group-apps-alphabetically-list-layouts': 'not part of v1',
     'group-apps-alphabetically-grid-layouts': 'not part of v1',
-    'show-external-devices': 'not part of v1',
-    'show-bookmarks': 'not part of v1',
     'enable-activities-shortcut': 'not part of v1',
     'searchbar-default-top-location': 'only the bottom-location key is read',
     'hide-overview-on-startup': 'not part of v1',
@@ -467,6 +468,26 @@ export function planMigration(snapshot: ArcMenuSnapshot, spawnDefaults?: Partial
             add('search-entry-location', 'searchbar-default-bottom-location', v);
         else
             skip('searchbar-default-bottom-location', 'unexpected value format');
+    }
+
+    // Category quick links: ArcMenu only builds a link for a category that is ALSO enabled in `extra-categories`
+    // (default: Pinned and All Programs on, Favorites / Frequent / Recent off), so a link switched on without its
+    // category never showed. Spawn has no `extra-categories`: the effective value is migrated.
+    if (isSet('arcmenu-extra-categories-links')) {
+        const links = values['arcmenu-extra-categories-links'];
+        const categories = effective('extra-categories');
+        if (!validKind('a(ib)', links)) {
+            skip('arcmenu-extra-categories-links', 'unexpected value format');
+        } else {
+            const shown = validKind('a(ib)', categories)
+                ? new Set((categories as Array<[number, boolean]>).filter(([, on]) => on).map(([id]) => id))
+                : null;
+            const merged = (links as Array<[number, boolean]>).map(([id, on]): [number, boolean] => [id, on && (shown === null || shown.has(id))]);
+            const hidden = merged.filter(([, on], i) => !on && (links as Array<[number, boolean]>)[i]?.[1]).length;
+            if (hidden > 0)
+                plan.warnings.push(`arcmenu-extra-categories-links: ${hidden} quick link(s) were on but their category is off in ArcMenu's extra-categories, so ArcMenu never showed them; they stay off`);
+            add('arcmenu-extra-categories-links', 'arcmenu-extra-categories-links, extra-categories', merged);
+        }
     }
 
     // Activities button: ArcMenu hides it by default, so migrate the effective value.

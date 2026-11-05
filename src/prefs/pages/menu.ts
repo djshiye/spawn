@@ -6,8 +6,10 @@
 
 import Adw from 'gi://Adw';
 
+import {CategoryLink} from '../../core/constants.js';
 import type {SettingKey} from '../../core/settings.js';
 import type {PrefsContext} from '../context.js';
+import {toggleListGroup} from '../toggleList.js';
 import {
     enumRow,
     group,
@@ -20,6 +22,14 @@ import {
 } from '../widgets.js';
 
 const ICON_STYLE: readonly Option[] = [['Symbolic', 'Symbolic'], ['Full_Color', 'Full colour']];
+
+const LINKS: ReadonlyArray<readonly [number, string, string]> = [
+    [CategoryLink.FAVORITES, 'Favorites', 'emote-love-symbolic'],
+    [CategoryLink.FREQUENT, 'Frequent Apps', 'user-bookmarks-symbolic'],
+    [CategoryLink.ALL_PROGRAMS, 'All Apps', 'view-app-grid-symbolic'],
+    [CategoryLink.PINNED, 'Pinned Apps', 'view-pin-symbolic'],
+    [CategoryLink.RECENT_FILES, 'Recent Files', 'document-open-recent-symbolic'],
+];
 
 const GRID_PARTS = [
     ['size', 'Icon size'],
@@ -81,6 +91,22 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
         ]),
         spinRow(ctx, 'max-frequent-apps', 'Frequent apps to show', 1, 50),
     ], {reset: viewKeys}));
+
+    page.add(toggleListGroup(ctx, {
+        key: 'arcmenu-extra-categories-links',
+        title: 'Category quick links',
+        description: 'Shortcuts to other views on the start view. The link of the start view itself is never shown, and the category list has none.',
+        items: LINKS,
+        fallbackIcon: 'view-more-symbolic',
+        resetKeys: ['arcmenu-extra-categories-links', 'arcmenu-extra-categories-links-location'],
+        resetMessage: 'Category quick links reset to defaults',
+    }));
+    page.add(group(ctx, '', [
+        enumRow(ctx, 'arcmenu-extra-categories-links-location', 'Quick links position', [
+            ['Bottom', 'Below the list'],
+            ['Top', 'Above the list'],
+        ]),
+    ]));
 
     const sizeKeys: SettingKey[] = ['menu-height', 'left-panel-width', 'right-panel-width', 'menu-width-adjustment'];
     page.add(group(ctx, 'Size', [

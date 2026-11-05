@@ -922,3 +922,48 @@
 .spawn-light .spawn-undo-label {
     color: rgba(0, 0, 0, 0.87);
 }
+
+/* ---- category quick links (ui/widgets/categoryLinks.ts) ----
+ * Rows of the start view's left pane: ordinary .spawn-list-row buttons (the rows own the pane's 8 px at both
+ * edges and 1 px of pitch below them), with a rule on the list's side. */
+.spawn-left-pane .spawn-links .spawn-list-row {
+    padding: 0 8px 1px 8px;
+}
+
+.spawn-left-pane .spawn-links .spawn-separator {
+    margin: 2px 16px 6px 16px;
+}
+
+/* ---- eject / unmount button of a device row (ui/widgets/placeRow.ts) ----
+ * Sits inside the row's face; hover and focus draw on the button itself (the row's face is styled by the
+ * row button's own state). */
+.spawn-eject-button {
+    padding: 0 4px;
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.7);
+    transition-duration: 120ms;
+}
+
+.spawn-eject-button:hover {
+    background-color: rgba(255, 255, 255, 0.14);
+    color: white;
+}
+
+.spawn-eject-button:focus {
+    background-color: st-transparentize(-st-accent-color, 0.7);
+    box-shadow: inset 0 0 0 2px -st-accent-color;
+    color: white;
+}
+
+.spawn-light .spawn-eject-button {
+    color: rgba(0, 0, 0, 0.6);
+}
+
+.spawn-light .spawn-eject-button:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+    color: rgba(0, 0, 0, 0.87);
+}
+
+.spawn-light .spawn-eject-button:focus {
+    color: rgba(0, 0, 0, 0.87);
+}

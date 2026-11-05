@@ -555,6 +555,37 @@ test('SpawnSettings.folder rejects invalid ids; set() reports rejected values', 
     assertEquals(settings.set('spawn-hotkey', ['<Super>space']), true);
 });
 
+test('category quick links need their category in extra-categories (ArcMenu never showed them otherwise)', () => {
+    const links = [[0, true], [1, true], [2, true], [3, true], [4, true]];
+    // extra-categories default: Pinned (3) and All Programs (2) on, Favorites / Frequent / Recent off
+    const p = planMigration(snap({'arcmenu-extra-categories-links': links}));
+    const it = p.items.find(i => i.key === 'arcmenu-extra-categories-links');
+    assertEquals(it.value, [[0, false], [1, false], [2, true], [3, true], [4, false]]);
+    assertEquals(it.from, 'arcmenu-extra-categories-links, extra-categories');
+    assert(p.warnings.some(w => w.includes('3 quick link')), 'three links were dropped: warn');
+    assertEquals(p.skipped, []);
+    // with every category enabled the list is copied as is
+    const all = planMigration(snap({'arcmenu-extra-categories-links': links, 'extra-categories': [[3, true], [2, true], [0, true], [1, true], [4, true]]}));
+    assertEquals(all.items.find(i => i.key === 'arcmenu-extra-categories-links').value, links);
+    assertEquals(all.warnings, []);
+    assertEquals(all.skipped, []);
+    assertEquals(planMigration(snap({'arcmenu-extra-categories-links': 'x'})).skipped.map(s => s.key), ['arcmenu-extra-categories-links']);
+});
+
+test('quick link position, external devices and bookmarks migrate 1:1', () => {
+    const p = planMigration(snap({'arcmenu-extra-categories-links-location': 'Top', 'show-external-devices': true, 'show-bookmarks': true}));
+    const got = Object.fromEntries(p.items.filter(i => i.key !== 'hide-activities-button').map(i => [i.key, i.value]));
+    assertEquals(got, {'arcmenu-extra-categories-links-location': 'Top', 'show-external-devices': true, 'show-bookmarks': true});
+    assertEquals(p.skipped, []);
+    assertEquals(planMigration(snap({'arcmenu-extra-categories-links-location': 'Middle'})).skipped.length, 1);
+});
+
+test('show-category-sub-menus stays skipped, with the reason', () => {
+    const p = planMigration(snap({'show-category-sub-menus': true}));
+    assertEquals(p.skipped.map(s => s.key), ['show-category-sub-menus']);
+    assert(p.skipped[0].reason.includes('flat'));
+});
+
 test('disableArcMenu is exported (not invoked: would talk to a real shell)', () => {
     assert(typeof disableArcMenu === 'function');
 });
