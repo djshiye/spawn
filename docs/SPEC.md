@@ -41,7 +41,12 @@ your area before writing code.
   - App context menu: open windows, new window, desktop actions, pin/unpin,
     add to folder, app details (Software), quit.
   - Keyboard: arrows/Tab/Return/Escape, Menu or Shift+F10 = context menu, typing
-    anywhere goes to search, mouse button 8 = back.
+    anywhere goes to search, mouse button 8 = back. Ctrl+Up/Down/Left/Right and Ctrl+Home/End on a
+    focused pinned entry (top level or inside an open folder) move it (List: Up/Down one position;
+    Grid: Left/Right one position, Up/Down one row; no-op at the edges); the focus stays on the entry.
+  - Delete Folder (its apps move to the top level) shows an in-menu banner "Folder “X” deleted [Undo]"
+    for 8 s (Tab-reachable, Ctrl+Z too); Undo restores the folder exactly (uuid, name, apps, slot).
+    The banner ends when the menu closes or the pinned list changes otherwise.
 - Search: apps (own index, ranked prefix > word-prefix > substring > fuzzy), open
   windows, recent files (cached, refreshed on change), GNOME Shell search
   providers (optional). Debounce 80 ms, cancel stale queries, results streamed

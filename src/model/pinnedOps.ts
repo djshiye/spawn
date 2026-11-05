@@ -228,6 +228,20 @@ export function dissolveFolder(s: PinnedSnapshot, uuid: string): PinnedSnapshot 
     return m;
 }
 
+/** Reorder inside folder `uuid`: remove at `from`, insert at `to` (same contract as `move`). Out-of-range `from` is a no-op. */
+export function moveInFolder(s: PinnedSnapshot, uuid: string, from: number, to: number): PinnedSnapshot {
+    const list = s.folders[uuid];
+    if (!list || from < 0 || from >= list.length)
+        return s;
+    const dest = clamp(to, list.length - 1);
+    if (dest === from)
+        return s;
+    const m = mutable(s);
+    const [e] = m.folders[uuid].splice(from, 1);
+    m.folders[uuid].splice(dest, 0, e);
+    return m;
+}
+
 /** Move `id` (from the top level, another folder, or unpinned) into folder `uuid` at `index` (default end). */
 export function addToFolder(s: PinnedSnapshot, uuid: string, id: string, index?: number): PinnedSnapshot {
     if (!id || topIndexOfFolder(s.top, uuid) < 0 || !(uuid in s.folders) || topIndexOfFolder(s.top, id) >= 0)

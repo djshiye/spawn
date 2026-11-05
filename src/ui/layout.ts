@@ -19,7 +19,12 @@
 //   layout.showView(id): void          'pinned' | 'frequent' | 'categories' | 'all' | 'results' | 'default'
 //   layout.debugState(): object        view, focus, counts (dev hook)
 //   LayoutHost                         what the layout may ask of the popup:
-//                                      {close(), openFolder?(uuid), renameFolder?(uuid)}
+//                                      {close(), openFolder?(uuid), renameFolder?(uuid), deleteFolder?(uuid)}
+//
+// Keyboard (besides arrows / Tab): Ctrl+Up/Down/Left/Right and Ctrl+Home/End on a focused pinned entry (top
+// level or inside an open folder) move it (model/reorder.ts decides where, PinnedStore writes it, the focus
+// stays on the entry). "Delete Folder" shows an in-menu banner "Folder \u201cX\u201d deleted [Undo]" for 8 s
+// (UndoBanner; Ctrl+Z too); it ends when the menu closes or the pinned list changes otherwise.
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
@@ -35,7 +40,8 @@ import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
 import type {Entry, PinnedItemSize} from '../core/settings.js';
-import type {PinnedItem} from '../model/pinned.js';
+import type {FolderUndo, PinnedItem} from '../model/pinned.js';
+import {reorderTarget, type ReorderKey} from '../model/reorder.js';
 import type {SearchHandle, SearchResult} from '../search/engine.js';
 import {AppContextMenu} from './contextMenu.js';
 import {acceptDrops, enableDrag, rejectDrops} from './dnd.js';
@@ -52,6 +58,7 @@ import {SearchBox} from './widgets/searchBox.js';
 import {ShortcutRow, type ShortcutHost} from './widgets/shortcutRow.js';
 import {TileGrid} from './widgets/tileGrid.js';
 import {TooltipManager} from './widgets/tooltip.js';
+import {UndoBanner} from './widgets/undoBanner.js';
 import {UserCard} from './widgets/userCard.js';
 import {applyScrollSettings, displayName, iconSizeFor, launchApp, lookupApp, ownedScope, scrollIntoView} from './util.js';
 
@@ -62,6 +69,8 @@ export interface LayoutHost {
     openFolder?(uuid: string): void;
     /** Open a pinned folder and start renaming it. */
     renameFolder?(uuid: string): void;
+    /** Delete a pinned folder (its apps move to the top level) and offer Undo. */
+    deleteFolder?(uuid: string): void;
 }
 
 export type ViewId = 'pinned' | 'frequent' | 'categories' | 'all' | 'folder' | 'results';
@@ -107,6 +116,14 @@ const SCROLL_KEYS = ['scrollview-fade-effect', 'scrollbars-visible', 'scrollbars
 const INSTALLED_COALESCE_MS = 300;
 /** How long a Return that found no result yet keeps waiting for the first batch. */
 const ACTIVATE_WAIT_MS = 1000;
+/** How long the "Folder deleted - Undo" banner stays (it also goes when the menu closes). */
+const UNDO_MS = 8000;
+
+/** Ctrl+<key> reorders the focused pinned entry. */
+const REORDER_KEYS = new Map<number, ReorderKey>([
+    [Clutter.KEY_Up, 'up'], [Clutter.KEY_Down, 'down'], [Clutter.KEY_Left, 'left'], [Clutter.KEY_Right, 'right'],
+    [Clutter.KEY_Home, 'first'], [Clutter.KEY_End, 'last'],
+]);
 
 const RIGHT_KEYS = [
     'directory-shortcuts', 'application-shortcuts', 'icon-size-shortcuts', 'icon-style-shortcuts',
@@ -145,6 +162,9 @@ export class SpawnLayout implements ShortcutHost {
     private readonly _vsep: St.Widget;
     private readonly _stack: St.BoxLayout;
     private readonly _nav: St.BoxLayout;
+    private readonly _undoBanner: UndoBanner;
+    private _undo: FolderUndo | null = null;
+    private _cancelUndoTimer: (() => void) | null = null;
     private readonly _backButton: St.Button;
     private readonly _allAppsButton: St.Button;
     private readonly _search: SearchBox;
@@ -238,6 +258,7 @@ export class SpawnLayout implements ShortcutHost {
             openFolder: uuid => {
                 this._scope.idle(() => this._showFolder(uuid));
             },
+            deleteFolder: uuid => this._deleteFolder(uuid),
             renameFolder: uuid => {
                 this._scope.idle(() => {
                     this._showFolder(uuid);
@@ -276,6 +297,14 @@ export class SpawnLayout implements ShortcutHost {
         this._allAppsButton = this._navButton('view-app-grid-symbolic', _('All Apps'), () => this._openAllApps());
         this._nav.add_child(this._backButton);
         this._nav.add_child(this._allAppsButton);
+
+        this._undoBanner = new UndoBanner(() => this._undoDelete());
+        scope.add(() => this._cancelUndoTimer?.(), 'undo timer');
+        // Any other change of the pinned list ends the undo window (restoring would clobber it).
+        services.pinned.onChanged(scope, () => {
+            if (this._undo && !services.pinned.isUnchangedSince(this._undo))
+                this._dismissUndo();
+        });
 
         this._rightScope = scope.child('right pane');
         this._arrangeLeft();
@@ -333,6 +362,7 @@ export class SpawnLayout implements ShortcutHost {
             error('layout warm-up failed', e);
         }
         try {
+            this._dismissUndo();
             this._context.close();
             this._search.setSilently('');
             this._cancelSearch();
@@ -356,6 +386,7 @@ export class SpawnLayout implements ShortcutHost {
     onClosed(): void {
         this._isOpen = false;
         try {
+            this._dismissUndo();
             this._context.close();
             this._tooltips.hide();
             this._cancelSearch();
@@ -590,7 +621,7 @@ export class SpawnLayout implements ShortcutHost {
     private _arrangeLeft(): void {
         const top = this._searchOnTop();
         this._searchTop = top;
-        for (const c of [this._search.actor, this._stack, this._nav]) {
+        for (const c of [this._search.actor, this._stack, this._undoBanner.actor, this._nav]) {
             if (c.get_parent() === this._left)
                 this._left.remove_child(c);
         }
@@ -600,10 +631,12 @@ export class SpawnLayout implements ShortcutHost {
             this._search.actor.add_style_class_name('spawn-search-top');
             this._left.add_child(this._search.actor);
             this._left.add_child(this._stack);
+            this._left.add_child(this._undoBanner.actor);
             this._left.add_child(this._nav);
         } else {
             this._search.actor.add_style_class_name('spawn-search-bottom');
             this._left.add_child(this._stack);
+            this._left.add_child(this._undoBanner.actor);
             this._left.add_child(this._nav);
             this._left.add_child(this._search.actor);
         }
@@ -1070,6 +1103,95 @@ export class SpawnLayout implements ShortcutHost {
             (first ?? fv.headerButtons()[0]).grab_key_focus();
     }
 
+    // ---- delete folder + undo ----
+
+    /** "Delete Folder": the apps move to the top level; the banner offers to put the folder back. */
+    private _deleteFolder(uuid: string): void {
+        const store = this._services.pinned;
+        const undo = store.captureFolder(uuid);
+        store.dissolveFolder(uuid);
+        if (!undo)
+            return;
+        store.markDissolved(undo);
+        this._dismissUndo();
+        this._undo = undo;
+        this._undoBanner.show(_('Folder \u201c%s\u201d deleted').format(undo.name));
+        this._cancelUndoTimer = this._scope.timeout(UNDO_MS, () => this._dismissUndo());
+    }
+
+    private _dismissUndo(): void {
+        this._cancelUndoTimer?.();
+        this._cancelUndoTimer = null;
+        this._undo = null;
+        this._undoBanner.hide();
+    }
+
+    private _undoDelete(): void {
+        const undo = this._undo;
+        this._dismissUndo();
+        if (!undo || this._destroyed)
+            return;
+        try {
+            if (!this._services.pinned.restoreFolder(undo))
+                return;
+        } catch (e) {
+            error('undo of folder delete failed', e);
+            return;
+        }
+        // The banner (and its focus) is gone: put the keyboard on the folder that came back.
+        if (this._isOpen && this._view === 'pinned') {
+            this._syncPinnedIfNeeded();
+            const widget = this._tileEntries.get(`f:${undo.uuid}`)?.widget;
+            if (widget)
+                widget.grab_key_focus();
+            else
+                this._focusMain();
+        }
+    }
+
+    // ---- keyboard reordering (Ctrl+arrows / Ctrl+Home / Ctrl+End) ----
+
+    /** True when the focus is on a reorderable pinned entry (the key is then consumed, even at an edge). */
+    private _reorderFocused(key: ReorderKey): boolean {
+        const focus = global.stage.key_focus as Clutter.Actor | null;
+        if (!focus || this._destroyed)
+            return false;
+        const store = this._services.pinned;
+        if (this._view === 'pinned') {
+            const tiles = this._grid.tiles();
+            const loc = this._locate([{id: 'tiles', items: tiles, cols: this._grid.columns}], focus);
+            if (!loc)
+                return false;
+            const to = reorderTarget(loc.index, tiles.length, this._grid.columns, key);
+            if (to !== null) {
+                const widget = tiles[loc.index];
+                this._tooltips.hide();
+                store.moveShown(loc.index, to);
+                // The store notified the layout synchronously: the rows are rebuilt around the same widgets.
+                this._syncPinnedIfNeeded();
+                widget.grab_key_focus();
+            }
+            return true;
+        }
+        const fv = this._view === 'folder' ? this._folderView : null;
+        if (fv?.uuid) {
+            const tiles = fv.tiles();
+            const cols = this._listMode() ? 1 : this._cols;
+            const loc = this._locate([{id: 'folder', items: tiles, cols}], focus);
+            if (!loc)
+                return false;
+            const to = reorderTarget(loc.index, tiles.length, cols, key);
+            if (to !== null) {
+                this._tooltips.hide();
+                store.moveInFolder(fv.uuid, loc.index, to);
+                // FolderView rebuilt its tiles: the moved entry is a new actor at `to`.
+                fv.tiles()[to]?.grab_key_focus();
+            }
+            return true;
+        }
+        return false;
+    }
+
     // ---- launching ----
 
     private _launch(app: Shell.App, ctrl: boolean): void {
@@ -1249,6 +1371,10 @@ export class SpawnLayout implements ShortcutHost {
         return items.length ? {id: 'nav', items, cols: items.length} : null;
     }
 
+    private _undoGroup(): Group | null {
+        return this._undoBanner.visible ? {id: 'undo', items: [this._undoBanner.button], cols: 1} : null;
+    }
+
     private _rightGroups(): Group[] {
         const items: Clutter.Actor[] = [];
         if (this._userCard?.actor.visible)
@@ -1276,6 +1402,9 @@ export class SpawnLayout implements ShortcutHost {
         if (search && top)
             out.push(search);
         out.push(...this._mainGroups().filter(g => g.items.length > 0));
+        const undo = this._undoGroup();
+        if (undo)
+            out.push(undo);
         const nav = this._navGroup();
         if (nav)
             out.push(nav);
@@ -1399,7 +1528,7 @@ export class SpawnLayout implements ShortcutHost {
             }
             if (delta > 0) {
                 // By rank among the non-search groups: the search entry on top must not shift the mapping.
-                const rank = leftCol.filter(g => g.id !== 'search').indexOf(group);
+                const rank = leftCol.filter(g => g.id !== 'search' && g.id !== 'undo').indexOf(group);
                 return this._focusItem(rightCol[Math.min(Math.max(rank, 0), rightCol.length - 1)] ?? rightCol[0], 'first');
             }
             if (cats && group.id === 'apps')
@@ -1434,6 +1563,8 @@ export class SpawnLayout implements ShortcutHost {
         add(cats, 'first');
         for (const g of main)
             add(g);
+        const undo = this._undoGroup();
+        add(undo);
         add(nav);
         if (search && !top)
             add(search);
@@ -1441,7 +1572,7 @@ export class SpawnLayout implements ShortcutHost {
             add(g);
 
         // Which pane holds the focus?
-        const all: Array<Group | null> = [search && top ? search : null, cats, ...main, nav, search && !top ? search : null, ...right];
+        const all: Array<Group | null> = [search && top ? search : null, cats, ...main, undo, nav, search && !top ? search : null, ...right];
         const groups = all.filter((g): g is Group => Boolean(g && g.items.length));
         const loc = this._locate(groups, focus);
         const current = loc ? groups.indexOf(loc.group) : -1;
@@ -1459,6 +1590,17 @@ export class SpawnLayout implements ShortcutHost {
         const sym = event.get_key_symbol();
         const state = event.get_state();
         const ctrl = Boolean(state & (Clutter.ModifierType.CONTROL_MASK | Clutter.ModifierType.MOD1_MASK));
+
+        // Ctrl+arrows / Home / End on a pinned entry or a folder's app reorder it; Ctrl+Z undoes a folder delete.
+        if ((state & Clutter.ModifierType.CONTROL_MASK) && !(state & (Clutter.ModifierType.SHIFT_MASK | Clutter.ModifierType.MOD1_MASK))) {
+            const reorder = REORDER_KEYS.get(sym);
+            if (reorder && this._reorderFocused(reorder))
+                return Clutter.EVENT_STOP;
+            if ((sym === Clutter.KEY_z || sym === Clutter.KEY_Z) && this._undo) {
+                this._undoDelete();
+                return Clutter.EVENT_STOP;
+            }
+        }
 
         switch (sym) {
         case Clutter.KEY_Tab:
