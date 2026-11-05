@@ -15,6 +15,9 @@
 //
 // Multi-word queries: the whole phrase is tried as a contiguous match first; otherwise every
 // term must match on its own (AND) and the worst term decides, discounted by 10 %.
+// The query separators - _ . count as spaces too: when a candidate scores below the substring
+// band with the query as typed, it is rescored with them replaced by spaces ("fl-studio",
+// "proton-up", "fl_studio").
 //
 // Public API:
 //   normalize(s): string                  lower-case + fold diacritics + collapse whitespace
@@ -31,10 +34,22 @@
 //   scoreKeys(q, name, keys, keyWeight): number  best of `name` (raw, full weight) and `keys`
 //                                          (already normalised, scaled by keyWeight)
 //   scoreDescription(q, text): number     word-level match of a (normalised) description:
-//                                          every term of q (>= 3 chars) must be a whole word,
+//                                          every term of q (>= 3 chars; stop words such as
+//                                          "the" / "and" / "for" are ignored, a query of only
+//                                          stop words matches nothing) must be a whole word,
 //                                          word prefix or substring of a word; never acronym /
-//                                          fuzzy. Result is already scaled by DESCRIPTION_WEIGHT
-//   scoreApp(q, name, keys, description): number  scoreKeys (0.7) combined with the description
+//                                          fuzzy. Result is already scaled by DESCRIPTION_WEIGHT,
+//                                          so it stays <= 380, below the name-substring band
+//   scoreApp(q, name, keys, keyWeight, description): number  scoreKeys combined with the description;
+//                                          a multi-word query that no single key matches is
+//                                          retried with every term matched over name + keys
+//                                          (worst term * 0.8, "file manager", "minecraft launcher")
+//   applyRelativeCutoff(ranked, strong?, ratio?): Ranked<T>[]  when the best score is >= 800, drop
+//                                          results scoring below 25 % of it (fuzzy junk behind a
+//                                          strong match); never applied when the best is weak;
+//                                          always keeps the first result
+//   rankApps(query, items, limit?)        rankItemsBy + scoreApp (APP_KEY_WEIGHT) + the cutoff:
+//                                          what AppsProvider runs; items need {name, keys, description}
 //   hasAlnum(query): boolean              false for punctuation-only queries ("." "-"), which
 //                                          providers should not rank at all
 
@@ -215,8 +230,29 @@ function scoreOne(q: string, folded: string, lower: string, boundary: boolean[],
     return 0;
 }
 
+const SEPARATORS = /[-_.]/;
+const SEPARATORS_ALL = /[-_.]+/g;
+const SUBSTRING_BAND = 400;
+const FUZZY_MAX = 300;
+const ACROSS_KEYS_FACTOR = 0.8;
+/** Weight of every non-name key (generic name, keywords, executable, id) against the display name. */
+export const APP_KEY_WEIGHT = 0.6;
+
+/** `q` with the separators - _ . turned into spaces (and collapsed); '' when nothing is left. */
+function spaceSeparators(q: string): string {
+    return q.replace(SEPARATORS_ALL, ' ').replace(/\s+/g, ' ').trim();
+}
+
 /** `q` must already be normalised; `candidate` may be raw (case gives camelCase boundaries). */
 export function scoreNormalized(q: string, candidate: string): number {
+    const s = scoreAsTyped(q, candidate);
+    if (s >= SUBSTRING_BAND || !SEPARATORS.test(q))
+        return s;
+    const spaced = spaceSeparators(q);
+    return spaced && spaced !== q ? Math.max(s, scoreAsTyped(spaced, candidate)) : s;
+}
+
+function scoreAsTyped(q: string, candidate: string): number {
     if (!q || !candidate)
         return 0;
     const folded = fold(candidate);
@@ -247,8 +283,9 @@ export function scoreNormalized(q: string, candidate: string): number {
     return Math.max(phrase, Math.round(terms * 0.9));
 }
 
-export const DESCRIPTION_WEIGHT = 0.4;
+export const DESCRIPTION_WEIGHT = 0.38;
 const MIN_DESCRIPTION_TERM = 3;
+const STOP_WORDS = new Set(['the', 'and', 'for', 'a', 'an', 'of', 'to', 'in', 'with', 'your', 'you']);
 
 /** Word-level score of one term against the words of a description (raw 0..1000). */
 function scoreTermInWords(term: string, words: readonly string[]): number {
@@ -270,7 +307,7 @@ function scoreTermInWords(term: string, words: readonly string[]): number {
 export function scoreDescription(q: string, description: string): number {
     if (!description)
         return 0;
-    const terms = q.split(' ').filter(t => t.length > 0);
+    const terms = q.split(' ').filter(t => t.length > 0 && !STOP_WORDS.has(t));
     if (terms.length === 0 || terms.some(t => t.length < MIN_DESCRIPTION_TERM))
         return 0;
     const words = description.split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 0);
@@ -284,9 +321,31 @@ export function scoreDescription(q: string, description: string): number {
     return Math.round(worst * DESCRIPTION_WEIGHT * (terms.length > 1 ? 0.9 : 1));
 }
 
-/** Name (raw) at full weight, other keys at `keyWeight`, description word by word at 0.4. */
+/** Name (raw) at full weight, other keys at `keyWeight`, description word by word at DESCRIPTION_WEIGHT. */
 export function scoreApp(q: string, name: string, keys: readonly string[], keyWeight: number, description: string): number {
-    return Math.max(scoreKeys(q, name, keys, keyWeight), scoreDescription(q, description));
+    let s = scoreKeys(q, name, keys, keyWeight);
+    if (s < SUBSTRING_BAND)
+        s = Math.max(s, scoreAcrossKeys(q, name, keys, keyWeight));
+    return Math.max(s, scoreDescription(q, description));
+}
+
+/**
+ * Multi-word query whose terms are spread over different keys (name "Prism Launcher" + keyword
+ * "minecraft"): every term (>= 2 chars) must match name or a key above the fuzzy band; the worst
+ * decides.
+ */
+function scoreAcrossKeys(q: string, name: string, keys: readonly string[], keyWeight: number): number {
+    const terms = spaceSeparators(q).split(' ');
+    if (terms.length < 2 || terms.some(t => t.length < 2))
+        return 0; // a lone letter matches too much to be a cross-key term ("fl s" is a plain name match)
+    let worst = Infinity;
+    for (const term of terms) {
+        const s = scoreKeys(term, name, keys, keyWeight);
+        if (s <= FUZZY_MAX)
+            return 0;
+        worst = Math.min(worst, s);
+    }
+    return Math.round(worst * ACROSS_KEYS_FACTOR);
 }
 
 /** Best score of the display name (full weight) and secondary keys (scaled by `keyWeight`). */
@@ -330,4 +389,30 @@ export function rankItems<T>(query: string, items: readonly T[], keysOf: (item: 
         }
         return best;
     }, limit);
+}
+
+const STRONG_SCORE = 800;
+const CUTOFF_RATIO = 0.25;
+
+/** `ranked` must be sorted best first (rankItemsBy). See the header. */
+export function applyRelativeCutoff<T>(ranked: Ranked<T>[], strong = STRONG_SCORE, ratio = CUTOFF_RATIO): Ranked<T>[] {
+    if (ranked.length < 2 || ranked[0].score < strong)
+        return ranked;
+    const floor = ranked[0].score * ratio;
+    let n = 1;
+    while (n < ranked.length && ranked[n].score >= floor)
+        n++;
+    return n === ranked.length ? ranked : ranked.slice(0, n);
+}
+
+export interface AppRankable {
+    name: string;
+    keys: readonly string[];
+    description: string;
+}
+
+export function rankApps<T extends AppRankable>(query: string, items: readonly T[], limit?: number): Ranked<T>[] {
+    const ranked = rankItemsBy(query, items, (item, q) => scoreApp(q, item.name, item.keys, APP_KEY_WEIGHT, item.description));
+    const cut = applyRelativeCutoff(ranked);
+    return limit !== undefined && limit >= 0 ? cut.slice(0, limit) : cut;
 }

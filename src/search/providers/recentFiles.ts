@@ -112,9 +112,9 @@ export class RecentFilesProvider implements SearchProvider {
             const present = this._isPresent(item, now, budget > 0);
             if (present === null)
                 break; // out of stat budget
-            if (present === 'stat')
-                budget--;
-            if (present === false)
+            if (present === 'stat' || present === 'dead')
+                budget--; // every fresh stat is charged, dead files too (a slow mount blocks the same)
+            if (present === false || present === 'dead')
                 continue;
             results.push({
                 id: item.uri,
@@ -130,8 +130,11 @@ export class RecentFilesProvider implements SearchProvider {
         return results;
     }
 
-    /** true / false from the cache or a stat; 'stat' when it had to stat and the file exists; null: no budget. */
-    private _isPresent(item: RecentItem, now: number, canStat: boolean): boolean | 'stat' | null {
+    /**
+     * true / false from the cache or a non-local uri; 'stat' / 'dead' when it had to stat and the
+     * file exists / is missing (both cost budget); null: no budget left.
+     */
+    private _isPresent(item: RecentItem, now: number, canStat: boolean): boolean | 'stat' | 'dead' | null {
         if (!item.path || item.path.includes('/gvfs/'))
             return true; // non-local uri: cannot check cheaply (a stat could block), keep it
         const known = this._exists.get(item.uri);
@@ -141,7 +144,7 @@ export class RecentFilesProvider implements SearchProvider {
             return null;
         const present = GLib.file_test(item.path, GLib.FileTest.EXISTS);
         this._exists.set(item.uri, {present, at: now});
-        return present ? 'stat' : false;
+        return present ? 'stat' : 'dead';
     }
 
     private _open(item: RecentItem): void {
@@ -194,8 +197,7 @@ export class RecentFilesProvider implements SearchProvider {
         if (parsed) {
             this._items = parsed;
         } else {
-            this._items = [];
-            this._dirty = true;
+            this._dirty = true; // keep the previous list while the retry window runs
             this._retryAt = now + RETRY_US;
         }
     }

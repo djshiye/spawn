@@ -28,7 +28,7 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 
 import type {Scope} from '../../core/scope.js';
 import type {Services} from '../../core/services.js';
-import {acceptDrops, enableDrag} from '../dnd.js';
+import {acceptDrops, enableDrag, rejectDrops} from '../dnd.js';
 import {applyScrollSettings, displayName, lookupApp} from '../util.js';
 import {ActionRow, AppRow} from './appRow.js';
 import {ActionTile, AppTile, type TileHost} from './appTile.js';
@@ -211,6 +211,7 @@ export class FolderView {
         const ghost = view.actor;
         ghost.add_style_class_name('spawn-tile-missing');
         ghost.opacity = 130;
+        rejectDrops(this._tileScope, ghost);
         this._host.tooltips?.attach(ghost, null, () => _('%s (not installed)').format(name));
         return ghost;
     }

@@ -150,6 +150,7 @@ function flatButton(icon: string, tooltip: string, name = tooltip): Gtk.Button {
 export function promptText(ctx: PrefsContext, heading: string, initial: string, accept: string, cb: (text: string) => void): void {
     const dialog = new Adw.AlertDialog({heading});
     const entry = new Gtk.Entry({text: initial, activates_default: true});
+    label(entry, heading);
     dialog.set_extra_child(entry);
     dialog.add_response('cancel', 'Cancel');
     dialog.add_response('ok', accept);
@@ -237,6 +238,8 @@ function promptCommand(ctx: PrefsContext, cb: (name: string, command: string) =>
     const box = new Gtk.Box({orientation: Gtk.Orientation.VERTICAL, spacing: 6});
     const name = new Gtk.Entry({placeholder_text: 'Name'});
     const command = new Gtk.Entry({placeholder_text: 'Command, e.g. gnome-calculator', activates_default: true});
+    label(name, 'Name');
+    label(command, 'Command');
     box.append(name);
     box.append(command);
     dialog.set_extra_child(box);
@@ -371,7 +374,7 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
 
             if (entry.isFolder === 'true' && !damaged) {
                 const contents = flatButton('view-list-symbolic', 'Edit apps in this folder', `Edit apps in ${entry.name || 'this folder'}`);
-                contents.connect('clicked', () => openFolderEditor(ctx, entry.id, entry.name ?? ''));
+                contents.connect('clicked', () => openFolderEditor(ctx, entry.id, entry.name ?? '', build));
                 const rename = flatButton('document-edit-symbolic', 'Rename folder', `Rename ${entry.name || 'folder'}`);
                 rename.connect('clicked', () => promptText(ctx, 'Rename Folder', entry.name ?? '', 'Rename', name => {
                     const next = items();
@@ -418,8 +421,13 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
     // Observe the settings behind the list so edits made elsewhere show up.
     const raw = source.folder ? source.folder.raw : ctx.settings.raw;
     const watchKeys = source.keys ?? ['pinned-apps'];
-    const dispose = connectDisposable(raw, source.folder ? [['changed', build]] : watchKeys.map(k => [`changed::${k}`, build] as const));
-    onWindowClose(ctx, dispose);
+    const disposeSignals = connectDisposable(raw, source.folder ? [['changed', build]] : watchKeys.map(k => [`changed::${k}`, build] as const));
+    // A list in a dialog is dropped (and no longer kept alive by the window) when its dialog closes.
+    const unregister = onWindowClose(ctx, disposeSignals);
+    const dispose = (): void => {
+        disposeSignals();
+        unregister();
+    };
     group.connect('destroy', dispose);
     opts.lifetime?.connect('closed', dispose);
 
@@ -484,7 +492,8 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
     return group;
 }
 
-export function openFolderEditor(ctx: PrefsContext, uuid: string, name: string): void {
+/** Folder contents dialog; `onClosed` lets the list that opened it refresh its "N apps" subtitle. */
+export function openFolderEditor(ctx: PrefsContext, uuid: string, name: string, onClosed?: () => void): void {
     if (!isValidFolderId(uuid)) {
         toast(ctx, 'This folder entry is damaged');
         return;
@@ -502,5 +511,7 @@ export function openFolderEditor(ctx: PrefsContext, uuid: string, name: string):
     }));
     toolbar.set_content(page);
     dialog.set_child(toolbar);
+    if (onClosed)
+        dialog.connect('closed', onClosed);
     dialog.present(ctx.window);
 }

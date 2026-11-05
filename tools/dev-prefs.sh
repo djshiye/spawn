@@ -6,8 +6,8 @@
 #   pages        page indices to capture (default: 0 1 2 3 4 5 6 = General..About)
 #   --tall       use a 1600x2600 virtual monitor and stretch the prefs window to nearly full
 #                height, so whole pages fit in one screenshot
-#   --apply-import  run the real migration against the sandbox dconf (tools/dev-prefs-import.js)
-#                and print the resulting spawn dconf dump before opening the prefs
+#   --apply-import  run the real migration against the sandbox dconf (tools/dev-prefs-import.js), check that
+#                Reset / Undo / Import leave the settings writable (tools/dev-prefs-reset.js), and print the resulting spawn dconf dump before opening the prefs
 #   --dialogs    also screenshot the standalone dialogs (icon picker, app list, folder editor,
 #                shortcut capture, rename prompt) as dialog-<name>.png
 #   --no-arcmenu do not load docs/research/user-arcmenu-settings.ini into the sandbox dconf
@@ -19,7 +19,7 @@ set -euo pipefail
 [ -n "${SPAWN_TRACE:-}" ] && set -x
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-dev="${SPAWN_DEV_DIR:-$root/.dev/prefs}"
+dev="$(realpath -m "${SPAWN_DEV_DIR:-$root/.dev/prefs}")" # resolves '..', so the check below cannot be bypassed
 case "$dev" in "$root"/.dev/*) ;; *) echo "SPAWN_DEV_DIR must be under $root/.dev/" >&2; exit 2 ;; esac
 
 if [ "${1:-}" != "--inner" ]; then
@@ -142,6 +142,8 @@ prefs_pid() {
 
 if [ "$SPAWN_APPLY_IMPORT" = 1 ]; then
     gjs -m "$root/tools/dev-prefs-import.js" "$dev/build" 2>&1 | grep -v 'a11y'
+    echo "---- Reset / Undo / Import must leave the prefs settings writable (separate-process dconf read) ----"
+    gjs -m "$root/tools/dev-prefs-reset.js" "$dev/build" 2>&1 | grep -v 'a11y' || status=1
     echo "---- DisableExtension on the sandbox shell (ArcMenu is not installed there: expect (false,)) ----"
     gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
         --method org.gnome.Shell.Extensions.DisableExtension 'arcmenu@arcmenu.com' 2>&1 | head -3

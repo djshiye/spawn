@@ -19,6 +19,7 @@
 //                                 (bypasses mutter's keybinding filter: use Ui.Key Super_L for a real press)
 //   SendKeys(s spec)              virtual-keyboard events, e.g. "+Super_L +space -space -Super_L"
 //                                 ('+' press, '-' release, Clutter.KEY_* names); chords for accelerators
+//   ActivateWorkspace(i i)        switch to workspace i (Show Desktop per-workspace tests)
 //   FocusButton()                 give the panel button the key focus (keyboard activation tests)
 //
 // Every handler checks that the service is alive and never throws into GDBus.
@@ -51,6 +52,7 @@ export interface MenuController {
     hotkeyStatus?(): string;
     emitOverlayKey?(): void;
     focusButton?(): void;
+    activateWorkspace?(index: number): void;
     sendKeys?(spec: string): void;
     benchmark?(sections: string): Promise<string>;
 }
@@ -73,6 +75,7 @@ const DEV_IFACE = `
     <method name="HotkeyStatus"><arg type="s" direction="out" name="json"/></method>
     <method name="EmitOverlayKey"/>
     <method name="FocusButton"/>
+    <method name="ActivateWorkspace"><arg type="i" direction="in" name="index"/></method>
     <method name="SendKeys"><arg type="s" direction="in" name="spec"/></method>
     <method name="Benchmark"><arg type="s" direction="in" name="sections"/><arg type="s" direction="out" name="json"/></method>
   </interface>
@@ -217,6 +220,9 @@ export class DBusService {
             },
             FocusButtonAsync: (_params: unknown[], invocation: Invocation) => {
                 this._call(invocation, () => this._controller.focusButton?.());
+            },
+            ActivateWorkspaceAsync: ([index]: [number], invocation: Invocation) => {
+                this._call(invocation, () => this._controller.activateWorkspace?.(index));
             },
             SendKeysAsync: ([spec]: [string], invocation: Invocation) => {
                 this._call(invocation, () => this._controller.sendKeys?.(spec));

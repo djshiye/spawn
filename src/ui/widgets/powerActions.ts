@@ -92,6 +92,8 @@ interface SysActions {
     activateLockScreen(): void;
     activateSwitchUser(): void;
     activateLogout(): void;
+    /** Re-reads the Polkit-dependent availability (no change notifications exist for it). */
+    forceUpdate?(): void;
     connect(signal: string, cb: () => void): number;
     disconnect(id: number): void;
 }

@@ -21,8 +21,10 @@
 //   list.beginQuery(): void             a new query starts: keep old rows dimmed, see above
 //   list.reset(): void                  hard clear (menu closed / view left): rows gone now
 //   list.addBatch(batch: SearchBatch): void   empty batches are ignored
-//   list.rows(): St.Widget[]            visible rows in display order (keyboard nav; includes
-//                                       stale rows)
+//   list.rows(): St.Widget[]            rows of the CURRENT query in display order (keyboard
+//                                       nav); [] while stale. Stale rows are also made
+//                                       non-reactive / non-focusable, so neither the keyboard
+//                                       nor the mouse can activate a result of an old query
 //   list.first(): St.Widget | null      first row of the CURRENT query; null while stale
 //   list.activateFirst(): boolean       activate the selected (first) result
 //   list.setSelectionVisible(v)          show/hide the :selected marker on the first row
@@ -127,8 +129,13 @@ export class ResultList {
         if (this._stale)
             return; // already waiting; the drop timer keeps its original deadline
         this._stale = true;
-        for (const s of this._sections)
+        for (const s of this._sections) {
             s.box.opacity = STALE_OPACITY;
+            for (const row of s.rows) {
+                row.reactive = false;
+                row.can_focus = false;
+            }
+        }
         this._updateSelection();
         this._cancelStale = this._scope.timeout(STALE_MS, () => {
             this._cancelStale = null;
@@ -178,6 +185,8 @@ export class ResultList {
     }
 
     rows(): St.Widget[] {
+        if (this._stale)
+            return [];
         return this._sections.flatMap(s => s.rows);
     }
 
@@ -265,6 +274,8 @@ export class ResultList {
     }
 
     private _activate(result: SearchResult): void {
+        if (this._stale)
+            return; // a row of the previous query (cannot normally be reached: see beginQuery)
         this._host.close();
         try {
             result.activate();
@@ -298,7 +309,10 @@ export class ResultList {
         this._host.tooltips?.attach(button, title, result.description ? () => `${result.title}\n${result.description}` : undefined);
         wireItem(button, {
             activate: () => this._activate(result),
-            context: this._host.openResultContext ? () => this._host.openResultContext?.(button, result) : undefined,
+            context: this._host.openResultContext ? () => {
+                if (!this._stale)
+                    this._host.openResultContext?.(button, result);
+            } : undefined,
         });
         return button;
     }

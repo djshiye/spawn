@@ -14,8 +14,13 @@
 //   s.folder(uuid)                     FolderSettings for folders/<uuid>/ (throws on an invalid id)
 //   s.deleteFolder(uuid)               resets the folder's keys (removes dconf entries)
 //   s.snapshot(keys, folderIds?)       remembers the user values of keys / folders (for Undo)
-//   s.restore(snapshot)                writes a snapshot back in one batch (unset values are reset)
-//   s.raw                              the underlying Gio.Settings (prefs bindings only)
+//   s.restore(snapshot)                writes a snapshot back (unset values are reset)
+//   s.batch(fn)                        runs fn(tx) on a THROWAWAY Gio.Settings in delay()/apply() mode:
+//                                      tx.set(key, value) (false when rejected) / tx.reset(key); applied
+//                                      together, or reverted when fn throws (which is rethrown)
+//   s.raw                              the underlying Gio.Settings (prefs bindings only). It must NEVER be
+//                                      put into delay()/apply() mode: GSettings has no "undelay", so every
+//                                      later write would stay pending and never reach dconf. Use batch().
 //
 // FolderSettings: { uuid, name (get/set), pinnedApps (get/set), onChanged(scope, cb), raw }
 //
@@ -193,6 +198,28 @@ export class FolderSettings {
     }
 }
 
+/** Writes inside SpawnSettings.batch(); mirrors set()/reset() on the throwaway instance. */
+export class SettingsBatch {
+    constructor(private readonly _raw: Gio.Settings) {}
+
+    /** Returns false when GSettings rejects the value (out of range / not an enum nick). */
+    set<K extends SettingKey>(key: K, value: SettingsMap[K]): boolean {
+        return this._raw.set_value(key, pack(typeOf(this._raw, key), value));
+    }
+
+    reset(key: SettingKey): void {
+        this._raw.reset(key);
+    }
+
+    /** Puts a user value back (see snapshot()); null resets the key. */
+    setVariant(key: SettingKey, value: GLib.Variant | null): void {
+        if (value === null)
+            this._raw.reset(key);
+        else
+            this._raw.set_value(key, value);
+    }
+}
+
 export class SpawnSettings {
     private readonly _schemaSource: Gio.SettingsSchemaSource;
     readonly raw: Gio.Settings;
@@ -226,7 +253,7 @@ export class SpawnSettings {
         if (!schema)
             throw new Error(`schema ${FOLDER_SCHEMA_ID} not found`);
         const path = `${this.raw.path}folders/${uuid}/`;
-        return new FolderSettings(uuid, Gio.Settings.new_full(schema, null, path));
+        return new FolderSettings(uuid, Gio.Settings.new_full(schema, this.raw.backend, path));
     }
 
     deleteFolder(uuid: string): void {
@@ -248,6 +275,25 @@ export class SpawnSettings {
         return snap;
     }
 
+    /**
+     * All-or-nothing writes on a throwaway Gio.Settings (same schema, backend and path as `raw`).
+     * `raw` itself is never delayed, because GSettings cannot leave delay-apply mode again.
+     */
+    batch(fn: (tx: SettingsBatch) => void): void {
+        const schema = this.raw.settings_schema;
+        if (!schema)
+            throw new Error('settings have no schema');
+        const raw = Gio.Settings.new_full(schema, this.raw.backend, this.raw.path);
+        raw.delay();
+        try {
+            fn(new SettingsBatch(raw));
+        } catch (e) {
+            raw.revert();
+            throw e;
+        }
+        raw.apply();
+    }
+
     restore(snap: SettingsSnapshot): void {
         const write = (raw: Gio.Settings, key: string, value: GLib.Variant | null): void => {
             if (value === null)
@@ -255,16 +301,15 @@ export class SpawnSettings {
             else
                 raw.set_value(key, value);
         };
+        // Folder instances are throwaway; their two keys are written as they come.
         for (const [id, saved] of snap.folders) {
             const raw = this.folder(id).raw;
-            raw.delay();
             write(raw, 'name', saved.name);
             write(raw, 'pinned-apps', saved.pinnedApps);
-            raw.apply();
         }
-        this.raw.delay();
-        for (const [key, value] of snap.keys)
-            write(this.raw, key, value);
-        this.raw.apply();
+        this.batch(tx => {
+            for (const [key, value] of snap.keys)
+                tx.setVariant(key, value);
+        });
     }
 }

@@ -6,7 +6,7 @@ export const DBUS_NAME = 'io.github.djshiye.Spawn';
 export const DBUS_PATH = '/io/github/djshiye/Spawn';
 
 export const DTP_UUID = 'dash-to-panel@jderose9.github.com';
-export const AZ_TASKBAR_UUID = 'azTaskbar@azaech';
+export const AZ_TASKBAR_UUID = 'aztaskbar@aztaskbar.gitlab.com';
 
 /** Ids stored in `power-options` (a(ib)); identical to ArcMenu's PowerType. */
 export const PowerType = {

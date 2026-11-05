@@ -4,7 +4,7 @@
 // Public API (re-exported by migrate/arcmenu.ts):
 //   ArcMenuSnapshot, MigrationItem, SkippedItem, FolderPlan, MigrationPlan
 //   planMigration(snapshot, spawnDefaults?, env?): MigrationPlan, PlanEnv, INT_RANGES
-//   describeItem(item): string, describePlan(plan): string[]
+//   describeItem(item): string, describePlan(plan): string[], customisedKeys(snapshot): string[]
 //
 // Rules: only keys the user actually changed in ArcMenu (`snapshot.values`) are migrated, so
 // every other setting keeps Spawn's own default. Every user-set key ends up either in
@@ -73,6 +73,7 @@ export const INT_RANGES: Readonly<Record<string, readonly [min: number, max: num
     'menu-width-adjustment': [-350, 800],
     'left-panel-width': [420, 1200],
     'right-panel-width': [180, 600],
+    'max-frequent-apps': [1, 50],
 };
 
 // ------------------------------------------------------------------------------------------
@@ -258,6 +259,21 @@ const SKIP_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
     [/^pop-/, NO_LAYOUT],
 ];
 
+/** ArcMenu bookkeeping keys every ArcMenu user has; they are not "customised settings" the user made. */
+const BOOKKEEPING_KEYS: ReadonlySet<string> = new Set([
+    'prefs-visible-page',
+    'recently-installed-apps',
+    'update-notifier-project-version',
+    'update-notifier-enabled',
+    'settings-width',
+    'settings-height',
+]);
+
+/** Keys of `snapshot.values` the user really customised (without ArcMenu's own bookkeeping). */
+export function customisedKeys(snapshot: ArcMenuSnapshot): string[] {
+    return Object.keys(snapshot.values).filter(key => !BOOKKEEPING_KEYS.has(key));
+}
+
 function skipReason(key: string): string {
     return SKIP_EXACT[key] ?? SKIP_PATTERNS.find(([re]) => re.test(key))?.[1] ?? 'no equivalent in Spawn v1';
 }
@@ -421,9 +437,14 @@ export function planMigration(snapshot: ArcMenuSnapshot, spawnDefaults?: Partial
     // Renamed keys.
     if (isSet('arcmenu-layout-max-frequent-apps')) {
         const v = values['arcmenu-layout-max-frequent-apps'];
-        if (isInt(v))
-            add('max-frequent-apps', 'arcmenu-layout-max-frequent-apps', v);
-        else
+        if (isInt(v)) {
+            // ArcMenu allows 0 ("no limit"); Spawn needs 1..50 (INT_RANGES), so 0 becomes the maximum.
+            const [min, max] = INT_RANGES['max-frequent-apps'] as readonly [number, number];
+            const clamped = v === 0 ? max : Math.min(Math.max(v, min), max);
+            if (clamped !== v)
+                plan.warnings.push(`max-frequent-apps: ${v} is outside Spawn's range ${min}..${max}; using ${clamped}`);
+            add('max-frequent-apps', 'arcmenu-layout-max-frequent-apps', clamped);
+        } else
             skip('arcmenu-layout-max-frequent-apps', 'unexpected value format');
     }
     if (isSet('searchbar-default-bottom-location')) {

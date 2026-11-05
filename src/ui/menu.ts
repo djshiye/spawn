@@ -31,7 +31,6 @@
 import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 
-import {PopupAnimation} from 'resource:///org/gnome/shell/ui/boxpointer.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
@@ -41,6 +40,7 @@ import type {Scope} from '../core/scope.js';
 import {isActorAlive} from '../panel/validate.js';
 import {installUiDevHooks} from './devHooks.js';
 import {SpawnLayout} from './layout.js';
+import {closeMenu, openMenu} from './menuParams.js';
 import {applyTone, ownedScope} from './util.js';
 
 type OpenListener = (open: boolean, anchor: St.Widget | null) => void;
@@ -146,7 +146,8 @@ export class SpawnPopup {
                 return;
             if (this._anchor !== anchor || this._side !== this._sideOf(anchor))
                 this._attach(anchor);
-            this._menu?.open(PopupAnimation.FULL);
+            if (this._menu)
+                openMenu(this._menu);
         } catch (e) {
             error('popup open failed', e);
         }
@@ -154,7 +155,8 @@ export class SpawnPopup {
 
     close(): void {
         try {
-            this._menu?.close(PopupAnimation.FULL);
+            if (this._menu)
+                closeMenu(this._menu);
         } catch (e) {
             error('popup close failed', e);
         }
@@ -189,6 +191,10 @@ export class SpawnPopup {
         const anchorScope = anchorOwned.scope;
         const menu = new PopupMenu.PopupMenu(anchor, 0.5, side);
         const manager = new PopupMenu.PopupMenuManager(anchor);
+        // The shell's PopupMenu adds its own key controller to the anchor (Return / Space / arrow
+        // toggles the menu), which would bypass the click-action settings (button.ts handles those
+        // keys). Disabled rather than removed: destroy() removes it from the anchor itself.
+        (menu as unknown as {_keyController?: Clutter.ActorMeta})._keyController?.set_enabled(false);
 
         Main.uiGroup.add_child(menu.actor);
         menu.actor.hide();
@@ -219,7 +225,7 @@ export class SpawnPopup {
             if (layout.actor.get_parent())
                 layout.actor.get_parent()?.remove_child(layout.actor);
             manager.removeMenu(menu);
-            menu.close(PopupAnimation.NONE);
+            closeMenu(menu, false);
             menu.destroy();
         }, 'popup menu');
 

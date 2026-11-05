@@ -38,7 +38,7 @@ import type {Entry} from '../core/settings.js';
 import type {PinnedItem} from '../model/pinned.js';
 import type {SearchHandle, SearchResult} from '../search/engine.js';
 import {AppContextMenu} from './contextMenu.js';
-import {acceptDrops, enableDrag} from './dnd.js';
+import {acceptDrops, enableDrag, rejectDrops} from './dnd.js';
 import {ActionRow, AppRow, DEFAULT_ROW_ICON_SIZE} from './widgets/appRow.js';
 import {ActionTile, AppTile, DEFAULT_TILE_ICON_SIZE, type TileHost} from './widgets/appTile.js';
 import {CategoryList} from './widgets/categoryList.js';
@@ -87,26 +87,30 @@ const SCREEN_MARGIN = 8;
 const PANE_GAP = 4;
 const SEPARATOR_W = 13;
 
+/** Sizes and arrangement: re-derive the metrics and rebuild the pinned view. Disjoint from the other key sets (one handler per key). */
 const RELAYOUT_KEYS = [
     'menu-height', 'menu-width-adjustment', 'left-panel-width', 'right-panel-width',
     'icon-size-grid', 'default-menu-view', 'vert-separator', 'search-entry-location', 'search-hidden',
-    'multi-lined-labels', 'apps-show-generic-names', 'max-frequent-apps', 'pinned-apps-display',
+    'multi-lined-labels', 'pinned-apps-display',
 ] as const;
 
-/** Read once when a view is built: a change rebuilds the lists / re-applies scroll behaviour. */
+/** Read once when a view is built: a change rebuilds the lists. */
 const VIEW_KEYS = [
-    'scrollview-fade-effect', 'scrollbars-visible', 'scrollbars-overlay',
     'icon-size-apps', 'apps-show-extra-details', 'apps-show-generic-names', 'max-frequent-apps',
     'icon-size-categories', 'icon-style-categories',
 ] as const;
 
+/** Scroll bar behaviour: only re-applied to the existing scroll views, nothing is rebuilt. */
+const SCROLL_KEYS = ['scrollview-fade-effect', 'scrollbars-visible', 'scrollbars-overlay'] as const;
+
 /** installed-changed bursts (a package transaction) are coalesced into one refresh. */
 const INSTALLED_COALESCE_MS = 300;
+/** How long a Return that found no result yet keeps waiting for the first batch. */
+const ACTIVATE_WAIT_MS = 1000;
 
 const RIGHT_KEYS = [
     'directory-shortcuts', 'application-shortcuts', 'icon-size-shortcuts', 'icon-style-shortcuts',
-    'right-panel-width', 'show-user-avatar',
-    'scrollview-fade-effect', 'scrollbars-visible', 'scrollbars-overlay',
+    'show-user-avatar',
 ] as const;
 
 type Dir = 'up' | 'down' | 'left' | 'right';
@@ -152,6 +156,7 @@ export class SpawnLayout implements ShortcutHost {
     private _userCard: UserCard | null = null;
     private _shortcutRows: ShortcutRow[] = [];
     private _powerBar: PowerBar | null = null;
+    private _shortcutScroll: St.ScrollView | null = null;
 
     // lazily built views
     private _pinnedScroll: St.ScrollView | null = null;
@@ -183,6 +188,9 @@ export class SpawnLayout implements ShortcutHost {
     private _searchTop = false;
     /** Return was pressed before the first batch of the query arrived: activate it when it does. */
     private _activateWhenReady = false;
+    private _cancelActivateWait: (() => void) | null = null;
+    /** cols|tile width|icon size of the last `_applyMetrics`: a change means the pinned tiles are stale. */
+    private _metricsSig = '';
     private readonly _scrolls: St.ScrollView[] = [];
     private _destroyed = false;
 
@@ -223,7 +231,21 @@ export class SpawnLayout implements ShortcutHost {
                     this._context.open(row, {kind: 'app', app});
             },
         };
-        this._context = new AppContextMenu(scope, services, host);
+        // The folder context menu (Open / Rename) needs the layout, not just the popup. Deferred to an
+        // idle: the menu is still closing (and restoring the focus) when its item activates.
+        this._context = new AppContextMenu(scope, services, {
+            close: () => host.close(),
+            openFolder: uuid => {
+                this._scope.idle(() => this._showFolder(uuid));
+            },
+            renameFolder: uuid => {
+                this._scope.idle(() => {
+                    this._showFolder(uuid);
+                    if (this._view === 'folder' && this._folderView?.uuid === uuid)
+                        this._folderView.startRename();
+                });
+            },
+        });
 
         this.actor = new St.BoxLayout({
             style_class: 'spawn-layout',
@@ -278,6 +300,7 @@ export class SpawnLayout implements ShortcutHost {
 
         settings.onChanged(scope, [...RELAYOUT_KEYS], () => this._relayout());
         settings.onChanged(scope, [...RIGHT_KEYS], () => this._buildRight());
+        settings.onChanged(scope, [...SCROLL_KEYS], () => this._onScrollSettings());
         settings.onChanged(scope, [...VIEW_KEYS], () => this._onViewSettings());
 
         // Apps installed / removed while the shell runs: pinned tiles (and ghosts) follow. AppIndex
@@ -313,7 +336,10 @@ export class SpawnLayout implements ShortcutHost {
             this._context.close();
             this._search.setSilently('');
             this._cancelSearch();
-            this._applyMetrics();
+            // The popup may open on another monitor / work area than last time: new columns or tile
+            // widths make the cached pinned tiles stale.
+            if (this._applyMetrics())
+                this._pinnedDirty = true;
             if (this._searchOnTop() !== this._searchTop)
                 this._arrangeLeft();
             this._setView(this._defaultView());
@@ -333,7 +359,7 @@ export class SpawnLayout implements ShortcutHost {
             this._context.close();
             this._tooltips.hide();
             this._cancelSearch();
-            this._activateWhenReady = false;
+            this._setActivateWhenReady(false);
             this._search.setSilently('');
             this._results?.reset();
             this._services.search.cancel();
@@ -393,6 +419,9 @@ export class SpawnLayout implements ShortcutHost {
 
     debugState(): Record<string, unknown> {
         const focus = global.stage.key_focus as Clutter.Actor | null;
+        // Reading sizes of a layout that is not parented to the stage yet (prebuilt, never opened)
+        // asks for a preferred size -> theme node of an unstaged widget -> St critical.
+        const staged = this.actor.get_stage() !== null;
         const focusName = focus ? `${focus.constructor.name}.${(focus as St.Widget).style_class ?? ''}` : null;
         return {
             view: this._view,
@@ -409,12 +438,15 @@ export class SpawnLayout implements ShortcutHost {
             results: this._results?.rows().length ?? 0,
             tooltip: this._tooltips.debugText(),
             columns: this._cols,
-            size: [this.actor.width, this.actor.height],
+            size: staged ? [this.actor.width, this.actor.height] : [0, 0],
             searchTop: this._searchTop,
             side: this._side,
             tileWidth: this._tileWidth,
-            leftWidth: this._left.width,
-            rightWidth: this._right.width,
+            leftWidth: staged ? this._left.width : 0,
+            rightWidth: staged ? this._right.width : 0,
+            renaming: this._folderView?.renaming ?? false,
+            pinnedScroll: this._pinnedScroll?.vadjustment.value ?? 0,
+            ghosts: [...this._tileEntries.keys()].filter(k => k.startsWith('m:')).length,
         };
     }
 
@@ -437,7 +469,7 @@ export class SpawnLayout implements ShortcutHost {
      * monitor: the left pane shrinks first (never below MIN_LEFT_WIDTH), then the right pane (never
      * below MIN_RIGHT_WIDTH); the height never exceeds the work area minus the popup frame.
      */
-    private _applyMetrics(): void {
+    private _applyMetrics(): boolean {
         const s = this._services.settings;
         let left = Math.max(MIN_LEFT_WIDTH, s.get('left-panel-width') + s.get('menu-width-adjustment'));
         let right = Math.max(MIN_RIGHT_WIDTH, s.get('right-panel-width'));
@@ -467,6 +499,11 @@ export class SpawnLayout implements ShortcutHost {
         const grid = s.get('icon-size-grid');
         const size = grid?.size ?? -1;
         this._tileIconSize = size > 0 ? size : DEFAULT_TILE_ICON_SIZE;
+
+        const sig = `${this._cols}|${this._tileWidth}|${this._tileIconSize}`;
+        const changed = this._metricsSig !== '' && sig !== this._metricsSig;
+        this._metricsSig = sig;
+        return changed;
     }
 
     private _relayout(): void {
@@ -486,15 +523,27 @@ export class SpawnLayout implements ShortcutHost {
     private _onViewSettings(): void {
         if (this._destroyed)
             return;
-        const s = this._services.settings;
-        for (const scroll of [...this._scrolls, this._categories?.appScroll(), this._categories?.columnScroll(), this._folderView?.scroll])
-            if (scroll) applyScrollSettings(scroll, s);
         this._categories?.refresh();
         this._pinnedDirty = true;
         if (this._isOpen)
             this._setView(this._view);
         if (this._view === 'folder')
             this._folderView?.refresh();
+    }
+
+    /** Scroll bar settings: re-apply to every existing scroll view; no rebuild. */
+    private _onScrollSettings(): void {
+        if (this._destroyed)
+            return;
+        const s = this._services.settings;
+        const scrolls = [
+            ...this._scrolls, this._shortcutScroll,
+            this._categories?.appScroll(), this._categories?.columnScroll(), this._folderView?.scroll,
+        ];
+        for (const scroll of scrolls) {
+            if (scroll)
+                applyScrollSettings(scroll, s);
+        }
     }
 
     private _onInstalledChanged(): void {
@@ -565,6 +614,7 @@ export class SpawnLayout implements ShortcutHost {
         this._userCard = null;
         this._shortcutRows = [];
         this._powerBar = null;
+        this._shortcutScroll = null;
         for (const c of this._right.get_children())
             c.destroy();
 
@@ -577,6 +627,7 @@ export class SpawnLayout implements ShortcutHost {
 
         const shortcutsBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-shortcuts-box'});
         const scroll = this._makeScroll(shortcutsBox, 'spawn-shortcuts', false);
+        this._shortcutScroll = scroll;
         const iconSize = iconSizeFor(s, 'icon-size-shortcuts', 16);
         const symbolic = s.get('icon-style-shortcuts') === 'Symbolic';
 
@@ -654,8 +705,13 @@ export class SpawnLayout implements ShortcutHost {
             return;
         }
         this._setView(this._defaultView());
-        if (this._isOpen)
-            this._search.focus();
+        if (this._isOpen) {
+            // `search-hidden`: the entry is out of sight, so focus the list (typing reveals the entry).
+            if (this._search.actor.visible)
+                this._search.focus();
+            else
+                this._focusMain();
+        }
     }
 
     private _openAllApps(): void {
@@ -893,6 +949,9 @@ export class SpawnLayout implements ShortcutHost {
                 : new ActionTile(name, 'application-x-executable', open, undefined, {...tileOpts, context: open});
             tile.actor.add_style_class_name('spawn-tile-missing');
             tile.actor.opacity = 130;
+            // Not part of the store's visible index: refuse drops instead of letting them fall through
+            // to the list's append-at-end target.
+            rejectDrops(scope, tile.actor);
             this._tooltips.attach(tile.actor, null, () => _('%s (not installed)').format(name));
             return {scope, release, widget: tile.actor};
         };
@@ -1026,8 +1085,10 @@ export class SpawnLayout implements ShortcutHost {
             return;
         const query = text.trim();
         this._cancelSearch();
-        this._activateWhenReady = false;
+        this._setActivateWhenReady(false);
         if (query.length === 0) {
+            // Drop the old rows now: the next query must not flash them (dimmed) or let Down focus them.
+            this._results?.reset();
             if (this._view === 'results')
                 this._setView(this._defaultView());
             if (this._services.settings.get('search-hidden') && this._search.actor.visible) {
@@ -1049,7 +1110,7 @@ export class SpawnLayout implements ShortcutHost {
                     return;
                 results.addBatch(batch);
                 if (this._activateWhenReady && results.first()) {
-                    this._activateWhenReady = false;
+                    this._setActivateWhenReady(false);
                     results.activateFirst();
                 }
             });
@@ -1076,12 +1137,34 @@ export class SpawnLayout implements ShortcutHost {
             error('search flush failed', e);
         }
         if (!results.activateFirst())
-            this._activateWhenReady = true;
+            this._setActivateWhenReady(true);
+    }
+
+    /**
+     * "Return was pressed before the first row arrived". Expires after ACTIVATE_WAIT_MS: a provider
+     * answering long after "No results" showed must not launch something the user never saw.
+     */
+    private _setActivateWhenReady(on: boolean): void {
+        this._cancelActivateWait?.();
+        this._cancelActivateWait = null;
+        this._activateWhenReady = on;
+        if (on)
+            this._cancelActivateWait = this._scope.timeout(ACTIVATE_WAIT_MS, () => {
+                this._cancelActivateWait = null;
+                this._activateWhenReady = false;
+            });
     }
 
     private _onSearchKey(key: number, shift: boolean): boolean {
         switch (key) {
         case Clutter.KEY_Down:
+            // Deliver the synchronous batches of the pending query first: the rows we focus must
+            // belong to what the entry says now, not to the previous keystroke.
+            try {
+                this._searchHandle?.flush();
+            } catch (e) {
+                error('search flush failed', e);
+            }
             this._focusMain();
             return true;
         case Clutter.KEY_Up:
@@ -1139,7 +1222,8 @@ export class SpawnLayout implements ShortcutHost {
             ];
         }
         case 'results':
-            return [{id: 'results', items: this._results?.rows() ?? [], cols: 1}];
+            // Rows of a superseded query (stale, dimmed) are never keyboard targets.
+            return [{id: 'results', items: this._results?.hasResults ? this._results.rows() : [], cols: 1}];
         }
     }
 
@@ -1302,8 +1386,11 @@ export class SpawnLayout implements ShortcutHost {
                 }
                 return true;
             }
-            if (delta > 0)
-                return this._focusItem(rightCol[Math.min(groupIdx, rightCol.length - 1)] ?? rightCol[0], 'first');
+            if (delta > 0) {
+                // By rank among the non-search groups: the search entry on top must not shift the mapping.
+                const rank = leftCol.filter(g => g.id !== 'search').indexOf(group);
+                return this._focusItem(rightCol[Math.min(Math.max(rank, 0), rightCol.length - 1)] ?? rightCol[0], 'first');
+            }
             if (cats && group.id === 'apps')
                 return this._focusItem(cats, Math.max(0, cats.items.findIndex(c => (c as St.Widget).has_style_pseudo_class('checked'))));
             return true;

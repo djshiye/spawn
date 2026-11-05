@@ -15,6 +15,7 @@ import Gio from 'gi://Gio';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
+import {DesktopMemory} from './core/desktopToggle.js';
 import {error, log} from './core/log.js';
 import {Scope} from './core/scope.js';
 import {type ExtensionInfo, Services} from './core/services.js';
@@ -33,6 +34,12 @@ import {SpawnPopup} from './ui/menu.js';
 
 export default class SpawnExtension extends Extension {
     private _root: Scope | null = null;
+    /**
+     * Show Desktop's remembered windows (ids only, no GObject). GNOME keeps this instance across
+     * disable/enable (lock screen, panel rebuilds), so the memory survives them; ui/showDesktop.ts finds
+     * it through Extension.lookupByUUID.
+     */
+    readonly desktopMemory = new DesktopMemory();
     /** enable() timing, kept for the dev benchmark (Dev.Benchmark). */
     private _enableMs = 0;
     private _startMs: Record<string, number> = {};
@@ -117,7 +124,15 @@ export default class SpawnExtension extends Extension {
                     settings,
                     iconDir: info.iconDir,
                     popup: popup ?? {isOpen: false, toggle: () => {}, open: () => {}, close: () => {}},
-                    openPreferences: () => this.openPreferences(),
+                    // openPreferences() is async and rejects with "Already showing a prefs
+                    // dialog" when a prefs window is already open; that rejection is
+                    // expected and must not become an unhandled error.
+                    openPreferences: () => {
+                        Promise.resolve(this.openPreferences()).catch((e: unknown) => {
+                            if (!String(e).includes('Already showing'))
+                                error('openPreferences failed', e);
+                        });
+                    },
                 }),
             });
             attacher.start();
@@ -173,6 +188,12 @@ export default class SpawnExtension extends Extension {
                     enable: {totalMs: this._enableMs, subsystems: this._startMs},
                 }, sections);
                 return result.then(r => JSON.stringify(r)).finally(() => bench.dispose());
+            },
+            activateWorkspace: index => {
+                const ws = global.workspace_manager.get_workspace_by_index(index);
+                if (!ws)
+                    throw new Error(`no workspace ${index}`);
+                ws.activate(global.get_current_time());
             },
             attachmentStatus: () => JSON.stringify(attacher?.status() ?? {attachments: [], pending: false, pendingForMs: 0}),
         };

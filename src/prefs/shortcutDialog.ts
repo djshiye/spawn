@@ -74,8 +74,9 @@ export function captureShortcut(parent: Gtk.Widget, current: string): Promise<st
                 return true;
             }
             const lower = Gdk.keyval_to_lower(keyval);
-            if (!Gtk.accelerator_valid(lower, mask) || mask === 0)
-                return true; // modifier-only or unmodified keys are not accepted
+            // Modifier-only keys are invalid; an unmodified key is only accepted when isAllowed() (F1-F12, Menu).
+            if (!Gtk.accelerator_valid(lower, mask))
+                return true;
             if (!isAllowed(lower, mask)) {
                 warning.set_visible(true);
                 return true;

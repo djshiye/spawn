@@ -95,7 +95,7 @@ export SPAWN_REAL_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 export SPAWN_REAL_DCONF="${XDG_CONFIG_HOME:-$HOME/.config}/dconf/user"
 
 rm -rf "$dev/config" "$dev/cache" "$dev/runtime" "$dev/data"
-mkdir -p "$dev/config" "$dev/data" "$dev/cache" "$dev/runtime" "$dev/shots"
+mkdir -p "$dev/config" "$dev/data" "$dev/cache" "$dev/runtime" "$dev/shots" "$dev/ux"
 chmod 700 "$dev/runtime"
 
 export XDG_CONFIG_HOME="$dev/config"

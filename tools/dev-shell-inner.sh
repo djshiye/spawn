@@ -272,6 +272,8 @@ fi
 # ---------------------------------------------------------------- install
 ext_dir="$XDG_DATA_HOME/gnome-shell/extensions"
 mkdir -p "$ext_dir"
+# scenario scratch dir for measurements (ux-measure / ui-fixes dump JSON there); a fresh .dev has none
+mkdir -p "$dev/ux"
 # the sandbox applications dir must exist BEFORE the shell starts so GAppInfoMonitor watches it
 # (scenarios create / remove test .desktop files there and expect installed-changed)
 mkdir -p "$XDG_DATA_HOME/applications"

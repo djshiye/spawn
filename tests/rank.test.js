@@ -114,4 +114,13 @@ test('rankItems takes the best key, is stable and honours the limit', () => {
     assertEquals(rankItems('alp', items, i => i.keys, 0), []);
 });
 
+test('- _ . in the query are word breaks when the candidate does not match as typed', () => {
+    assert(scoreMatch('fl-studio', 'FL Studio') >= 800, String(scoreMatch('fl-studio', 'FL Studio')));
+    assert(scoreMatch('fl_studio', 'FL Studio') >= 800);
+    assert(scoreMatch('proton-up', 'ProtonUp-Qt') > 600);
+    assertEquals(scoreMatch('gnome-terminal', 'gnome-terminal'), 1000); // as typed still wins
+    assertEquals(scoreMatch('-', 'FL Studio'), 0);
+    assertEquals(scoreMatch('_._', 'FL Studio'), 0);
+});
+
 run();

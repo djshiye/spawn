@@ -14,6 +14,7 @@ import {
     applyMigration,
     type ArcMenuStatus,
     BUNDLED_ARCMENU_VERSION,
+    customisedKeys,
     describeValue,
     disableArcMenu,
     type DisableResult,
@@ -25,7 +26,7 @@ import {
     spawnDefaults,
 } from '../../migrate/arcmenu.js';
 import type {PrefsContext} from '../context.js';
-import {toast} from '../widgets.js';
+import {onWindowClose, toast} from '../widgets.js';
 
 function appTitle(id: string): string {
     return GioUnix.DesktopAppInfo.new(id)?.get_display_name() ?? id;
@@ -86,6 +87,13 @@ export function createImportPage(ctx: PrefsContext): Adw.PreferencesPage {
     let imported = false;
     let arcStatus: ArcMenuStatus | null = null;
     let checking = false;
+    let busy = false;
+    let closed = false;
+    onWindowClose(ctx, () => {
+        closed = true;
+    });
+    /** Buttons that start an import; disabled while one runs. */
+    let importButtons: Gtk.Button[] = [];
 
     const addGroup = (g: Adw.PreferencesGroup): void => {
         groups.push(g);
@@ -99,6 +107,8 @@ export function createImportPage(ctx: PrefsContext): Adw.PreferencesPage {
         checking = true;
         void queryArcMenu().then(status => {
             checking = false;
+            if (closed)
+                return;
             arcStatus = status;
             build();
         });
@@ -143,6 +153,8 @@ export function createImportPage(ctx: PrefsContext): Adw.PreferencesPage {
         button.connect('clicked', () => {
             button.set_sensitive(false);
             void disableArcMenu().then(result => {
+                if (closed)
+                    return;
                 toast(ctx, DISABLE_MESSAGE[result]);
                 if (result === 'failed')
                     button.set_sensitive(true);
@@ -155,35 +167,67 @@ export function createImportPage(ctx: PrefsContext): Adw.PreferencesPage {
         return g;
     };
 
-    const runImport = async (plan: MigrationPlan, alsoDisable: boolean): Promise<void> => {
-        let result: ReturnType<typeof applyMigration>;
-        try {
-            result = applyMigration(plan, ctx.settings);
-        } catch (e) {
-            toast(ctx, `Import failed, nothing was changed: ${(e as Error).message}`);
+    /** Reads ArcMenu's settings now and plans the import (null when the bundled schema cannot be read). */
+    const makePlan = (snapshot: ReturnType<typeof readArcMenuSnapshot>): MigrationPlan | null =>
+        snapshot ? planMigration(snapshot, spawnDefaults(ctx.settings), {iconExists: v => iconInstalled(ctx.extensionDir, v)}) : null;
+
+    const runImport = async (alsoDisable: boolean): Promise<void> => {
+        if (busy)
             return;
-        }
-        imported = true;
-        let message = `Imported ${result.written + result.reset} settings and ${plan.folders.length} folders`;
-        if (result.failed.length > 0)
-            message += `; ${result.failed.length} could not be applied (${result.failed.join(', ')})`;
-        if (alsoDisable) {
-            const disabled = await disableArcMenu();
-            message += disabled === 'disabled' ? '. ArcMenu has been disabled' : `. ${DISABLE_MESSAGE[disabled]}`;
-        }
-        build();
-        toast(ctx, message, () => {
-            ctx.settings.restore(result.undo);
-            imported = false;
+        busy = true;
+        for (const button of importButtons)
+            button.set_sensitive(false);
+        try {
+            // Plan again now: ArcMenu may have changed since the page was drawn.
+            const plan = makePlan(readArcMenuSnapshot(ctx.extensionDir));
+            if (!plan) {
+                toast(ctx, 'Import failed, nothing was changed: the ArcMenu settings could not be read');
+                return;
+            }
+            let disabled: DisableResult | null = null;
+            if (alsoDisable) {
+                // Disable first: ArcMenu gives the Activities button back when it is disabled, so Spawn
+                // must hide it (hide-activities-button, written below) after that, not before.
+                disabled = await disableArcMenu();
+                if (closed)
+                    return;
+            }
+            let result: ReturnType<typeof applyMigration>;
+            try {
+                result = applyMigration(plan, ctx.settings);
+            } catch (e) {
+                const note = disabled === 'disabled' ? '; ArcMenu was already disabled, enable it again in Extensions if you want it back' : '';
+                toast(ctx, `Import failed, nothing was changed: ${(e as Error).message}${note}`);
+                return;
+            }
+            imported = true;
+            let message = `Imported ${result.written + result.reset} settings and ${plan.folders.length} folders`;
+            if (result.failed.length > 0)
+                message += `; ${result.failed.length} could not be applied (${result.failed.join(', ')})`;
+            if (disabled !== null)
+                message += disabled === 'disabled' ? '. ArcMenu has been disabled' : `. ${DISABLE_MESSAGE[disabled]}`;
+            if (closed)
+                return;
             build();
-        });
-        refreshStatus();
+            toast(ctx, message, () => {
+                ctx.settings.restore(result.undo);
+                imported = false;
+                build();
+            });
+            refreshStatus();
+        } finally {
+            busy = false;
+            // build() re-created the buttons after a success; after a failure they are still the old ones.
+            for (const button of importButtons)
+                button.set_sensitive(true);
+        }
     };
 
     const build = (): void => {
         for (const g of groups)
             page.remove(g);
         groups = [];
+        importButtons = [];
 
         const snapshot = readArcMenuSnapshot(ctx.extensionDir);
         const head = new Adw.PreferencesGroup({title: 'Import from ArcMenu'});
@@ -204,7 +248,8 @@ export function createImportPage(ctx: PrefsContext): Adw.PreferencesPage {
 
         // ArcMenu hides the Activities button by default, so even an untouched but enabled ArcMenu has
         // something to import (hide-activities-button); without ArcMenu and without stored values it has not.
-        const hasValues = snapshot !== null && Object.keys(snapshot.values).length > 0;
+        const customised = snapshot ? customisedKeys(snapshot).length : 0;
+        const hasValues = customised > 0;
         if (!snapshot || (!hasValues && !arcStatus?.enabled)) {
             const status = new Adw.StatusPage({
                 icon_name: 'emblem-important-symbolic',
@@ -219,13 +264,12 @@ export function createImportPage(ctx: PrefsContext): Adw.PreferencesPage {
             return;
         }
 
-        const defaults = spawnDefaults(ctx.settings);
-        const plan: MigrationPlan = planMigration(snapshot, defaults, {iconExists: v => iconInstalled(ctx.extensionDir, v)});
+        const plan = makePlan(snapshot) as MigrationPlan;
         const changed = plan.items.filter(i => i.differsFromDefault);
         const same = plan.items.filter(i => !i.differsFromDefault);
 
         head.set_description(
-            `Found ${Object.keys(snapshot.values).length} customised ArcMenu settings. ` +
+            `Found ${customised} customised ArcMenu settings. ` +
             'Nothing is changed until you press Import, and ArcMenu itself is never modified. An Undo button appears afterwards.',
         );
         const doImport = new Adw.ActionRow({
@@ -239,7 +283,8 @@ export function createImportPage(ctx: PrefsContext): Adw.PreferencesPage {
             valign: Gtk.Align.CENTER,
             css_classes: imported || arcStatus?.enabled ? [] : ['suggested-action'],
         });
-        importButton.connect('clicked', () => void runImport(plan, false));
+        importButtons.push(importButton);
+        importButton.connect('clicked', () => void runImport(false));
         if (arcStatus?.enabled) {
             const both = new Gtk.Button({
                 label: 'Import and Disable ArcMenu',
@@ -247,7 +292,8 @@ export function createImportPage(ctx: PrefsContext): Adw.PreferencesPage {
                 css_classes: ['suggested-action'],
                 tooltip_text: 'Import, then turn the ArcMenu extension off (its settings stay untouched)',
             });
-            both.connect('clicked', () => void runImport(plan, true));
+            importButtons.push(both);
+            both.connect('clicked', () => void runImport(true));
             doImport.add_suffix(importButton);
             doImport.add_suffix(both);
         } else {

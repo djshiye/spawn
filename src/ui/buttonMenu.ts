@@ -8,7 +8,8 @@
 //   * Spawn_PanelExtensionSettings   preferences of the ACTIVE panel extension (Dash to Panel, else
 //                             App Icons Taskbar); no row when neither is active
 //   * Spawn_ShowDesktop       toggle: minimize every normal window of the current workspace, the next
-//                             activation restores exactly those windows
+//                             activation restores exactly those windows (ui/showDesktop.ts, shared with the
+//                             right-pane shortcut; the memory outlives this menu, a lock/unlock and rebuilds)
 //   * Spawn_PowerOptions      submenu with the power actions, severity order (POWER_RANK), only the
 //                             available ones (SystemActions / logind probe, like the power bar)
 //   * Spawn_ActivitiesOverview, Spawn_ShowAllApplications, Spawn_RunCommand, Spawn_Software,
@@ -35,29 +36,31 @@
 //   PopupControl: {isOpen, open(anchor), close(), showAllApps?()}   (SpawnPopup)
 
 import Gio from 'gi://Gio';
-import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
-import {PopupAnimation} from 'resource:///org/gnome/shell/ui/boxpointer.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-import {AZ_TASKBAR_UUID, ContextMenuId, DTP_UUID, ShortcutId, SPAWN_ICON} from '../core/constants.js';
+import {AZ_TASKBAR_UUID, ContextMenuId, DTP_UUID, PowerType, ShortcutId, SPAWN_ICON} from '../core/constants.js';
 import {resolveButtonIcon} from '../core/icons.js';
 import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {Entry, SpawnSettings} from '../core/settings.js';
 import {ExtState} from '../panel/validate.js';
 import {launchApp, applyTone, ownedScope} from './util.js';
+import {toggleShowDesktop} from './showDesktop.js';
 import {
-    isPowerAvailable, type LogindInfo, POWER_INFO, POWER_RANK, POWER_SHORTCUTS, probeLogind, runPowerAction,
+    isPowerAvailable, type LogindInfo, POWER_INFO, POWER_RANK, POWER_SHORTCUTS, probeLogind, runPowerAction, systemActions,
 } from './widgets/powerActions.js';
 import {resolveShortcut, type ShortcutHost} from './widgets/shortcutRow.js';
+import {closeMenu, openMenu} from './menuParams.js';
 
 export interface PopupControl {
     readonly isOpen: boolean;
+    /** The button the popup is attached to (SpawnPopup); keeps `active` correct with several buttons. */
+    readonly anchor?: St.Widget | null;
     open(anchor: St.Widget): void;
     close(): void;
     showAllApps?(): void;
@@ -98,14 +101,14 @@ export class ButtonMenu {
     private _logind: LogindInfo | null = null;
     private _probing = false;
     private _refreshers: Array<() => void> = [];
-    /** Windows minimized by Show Desktop, restored by the next activation. */
-    private _hidden: Meta.Window[] = [];
 
     constructor(scope: Scope, button: ButtonMenuAnchor, deps: ButtonMenuDeps) {
         this._scope = scope;
         this._button = button;
         this._deps = deps;
         scope.add(() => this._teardown(), 'ButtonMenu');
+        // Probe early: by the first right click the Hibernate / Hybrid Sleep answer is usually known.
+        this._probeLogind();
         // An edit of the item list (or of the icon 'Spawn_SpawnIcon' stands for) while the menu is open: close it.
         deps.settings.onChanged(scope, ['context-menu-items', 'menu-button-icon'], () => {
             if (this.isOpen)
@@ -129,6 +132,8 @@ export class ButtonMenu {
             this._teardown();
             this._deps.popup.close();
             this._probeLogind();
+            // Availability depends on Polkit, which sends no change notifications.
+            systemActions()?.forceUpdate?.();
 
             const owned = ownedScope(this._scope, 'button menu');
             const scope = owned.scope;
@@ -159,7 +164,7 @@ export class ButtonMenu {
                     button.add_style_pseudo_class('active');
                     return;
                 }
-                button.remove_style_pseudo_class('active');
+                this._clearActive();
                 // Escape or an outside click after a keyboard open: the focus belongs on the button.
                 if (fromKeyboard && !activated)
                     this._scope.idle(() => this._focusButton());
@@ -169,13 +174,13 @@ export class ButtonMenu {
                         this._teardown();
                 });
             });
-            scope.add(() => button.remove_style_pseudo_class('active'), 'button menu active class');
+            scope.add(() => this._clearActive(), 'button menu active class');
 
             if (menu.isEmpty()) {
                 this._teardown();
                 return;
             }
-            menu.open(PopupAnimation.FULL);
+            openMenu(menu);
             if (fromKeyboard)
                 menu.actor.navigate_focus(null, St.DirectionType.TAB_FORWARD, false);
         } catch (e) {
@@ -186,11 +191,24 @@ export class ButtonMenu {
 
     close(): void {
         try {
-            this._menu?.close(PopupAnimation.NONE);
+            if (this._menu)
+                closeMenu(this._menu, false);
         } catch (e) {
             error('button menu close failed', e);
         }
         this._teardown();
+    }
+
+    /** Drops the :active look, unless the Spawn popup is open on this button (it set the class itself). */
+    private _clearActive(): void {
+        try {
+            const popup = this._deps.popup;
+            if (popup.isOpen && (popup.anchor === undefined || popup.anchor === this._button))
+                return;
+            this._button.remove_style_pseudo_class('active');
+        } catch {
+            // button already gone
+        }
     }
 
     private _focusButton(): void {
@@ -211,7 +229,7 @@ export class ButtonMenu {
     }
 
     private _probeLogind(): void {
-        if (this._logind || this._probing)
+        if (this._probing)
             return;
         this._probing = true;
         probeLogind().then(info => {
@@ -224,11 +242,18 @@ export class ButtonMenu {
         });
     }
 
+    /** Until the first logind answer arrives, Hibernate / Hybrid Sleep count as available (no empty first menu). */
+    private _powerAvailable(type: number): boolean {
+        if (this._logind === null && (type === PowerType.HIBERNATE || type === PowerType.HYBRID_SLEEP))
+            return true;
+        return isPowerAvailable(type, this._logind);
+    }
+
     // ---- building ----
 
     private _populate(menu: PopupMenu.PopupMenu, scope: Scope): void {
         const rows = this._rows(this._deps.settings.get('context-menu-items'));
-        const close = () => menu.close(PopupAnimation.NONE);
+        const close = () => closeMenu(menu, false);
         for (const row of rows)
             menu.addMenuItem(this._item(row, close, scope));
     }
@@ -350,7 +375,7 @@ export class ButtonMenu {
                 icon: this._icon(entry, 'computer-symbolic'),
                 run: close => {
                     close();
-                    this._toggleDesktop();
+                    toggleShowDesktop();
                 },
             };
         case ShortcutId.POWER_OPTIONS:
@@ -361,7 +386,7 @@ export class ButtonMenu {
                 icon: this._icon(entry, 'view-fullscreen-symbolic'),
                 run: close => {
                     close();
-                    Main.overview.toggle();
+                    Main.overview.show();
                 },
             };
         }
@@ -371,7 +396,7 @@ export class ButtonMenu {
             return {
                 label: entry.name || power.name,
                 icon: this._icon(entry, power.icon),
-                visible: () => isPowerAvailable(power.type, this._logind),
+                visible: () => this._powerAvailable(power.type),
                 run: close => runPowerAction(power.type, {close}, this._scope),
             };
         }
@@ -379,18 +404,22 @@ export class ButtonMenu {
         const resolved = resolveShortcut(entry);
         if (!resolved)
             return null;
-        const host: ShortcutHost = {
-            close: () => this.close(),
-            showAllApps: () => {
-                this.close();
-                this._scope.idle(() => this._showAllApps());
-            },
-        };
         const icon = resolved.icon;
         return {
             label: resolved.name,
             icon: typeof icon === 'string' ? iconFrom(icon) : icon,
-            run: () => resolved.run(host, this._scope),
+            // Close through the menu (the teardown is deferred): destroying it from inside the item's
+            // own activation would use the disposed items afterwards.
+            run: close => {
+                const host: ShortcutHost = {
+                    close,
+                    showAllApps: () => {
+                        close();
+                        this._scope.idle(() => this._showAllApps());
+                    },
+                };
+                resolved.run(host, this._scope);
+            },
         };
     }
 
@@ -402,7 +431,7 @@ export class ButtonMenu {
             submenu: types.map((type): Row => ({
                 label: POWER_INFO[type]?.name ?? '',
                 icon: POWER_INFO[type]?.icon ?? null,
-                visible: () => isPowerAvailable(type, this._logind),
+                visible: () => this._powerAvailable(type),
                 run: close => runPowerAction(type, {close}, this._scope),
             })),
         };
@@ -415,33 +444,6 @@ export class ButtonMenu {
         popup.open(this._button);
         popup.showAllApps?.();
     }
-
-    /** Show Desktop: minimize the normal windows of the workspace; activating it again restores them. */
-    private _toggleDesktop(): void {
-        const workspace = global.workspace_manager.get_active_workspace();
-        const onWorkspace = workspace.list_windows();
-
-        const restorable = this._hidden.filter(w => onWorkspace.includes(w) && w.minimized);
-        this._hidden = [];
-        if (restorable.length > 0) {
-            // Bottom of the stack first, so the stacking order the user had comes back.
-            for (const w of global.display.sort_windows_by_stacking(restorable))
-                w.unminimize();
-            return;
-        }
-
-        const windows = onWorkspace.filter(w => !w.minimized && w.showing_on_its_workspace() && isDesktopToggleable(w));
-        this._hidden = global.display.sort_windows_by_stacking(windows);
-        for (const w of this._hidden)
-            w.minimize();
-    }
-}
-
-function isDesktopToggleable(w: Meta.Window): boolean {
-    if (w.skip_taskbar)
-        return false;
-    const type = w.window_type;
-    return type !== Meta.WindowType.DESKTOP && type !== Meta.WindowType.DOCK && type !== Meta.WindowType.SPLASHSCREEN;
 }
 
 /** Dash to Panel, else App Icons Taskbar, whichever is ACTIVE right now. */

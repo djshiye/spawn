@@ -22,7 +22,7 @@ const root = GLib.path_get_dirname(GLib.path_get_dirname(import.meta.url.replace
 const {planMigration, describePlan, convertEntries, convertButtonIcon} = await import('../build/migrate/mapping.js');
 const {applyMigration, readArcMenuSnapshot, disableArcMenu, spawnDefaults, iconInstalled} = await import('../build/migrate/arcmenu.js');
 const {SpawnSettings, FolderSettings, FOLDER_SCHEMA_ID, isValidFolderId} = await import('../build/core/settings.js');
-const {planMigration: planFromMapping, INT_RANGES} = await import('../build/migrate/mapping.js');
+const {planMigration: planFromMapping, INT_RANGES, customisedKeys} = await import('../build/migrate/mapping.js');
 
 function loadFixture() {
     const [, bytes] = Gio.File.new_for_path(`${root}/tests/fixtures/arcmenu-user.json`).load_contents(null);
@@ -334,6 +334,23 @@ test('INT_RANGES matches the <range> of the compiled schema', () => {
         assertEquals(type, 'range', key);
         assertEquals(range.deepUnpack(), [min, max], key);
     }
+});
+
+test('arcmenu-layout-max-frequent-apps: 0 (no limit) becomes 50, out-of-range values are clamped, with a warning', () => {
+    const frequent = v => {
+        const p = planMigration(snap({'arcmenu-layout-max-frequent-apps': v}));
+        return [p.items.find(i => i.key === 'max-frequent-apps').value, p.warnings.length];
+    };
+    assertEquals(frequent(12), [12, 0]);
+    assertEquals(frequent(0), [50, 1]);
+    assertEquals(frequent(80), [50, 1]);
+    assertEquals(frequent(-3), [1, 1]);
+});
+
+test('customisedKeys leaves out ArcMenu bookkeeping keys', () => {
+    assertEquals(customisedKeys(snap({'prefs-visible-page': 2, 'recently-installed-apps': [], 'update-notifier-project-version': 70})), []);
+    assertEquals(customisedKeys(snap({'prefs-visible-page': 2, 'menu-height': 700})), ['menu-height']);
+    assertEquals(customisedKeys(fixture).length, 35);
 });
 
 test('invalid folder ids are dropped with a warning, duplicate folders kept once', () => {

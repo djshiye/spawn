@@ -28,6 +28,7 @@ import {ShortcutId} from '../../core/constants.js';
 import {error} from '../../core/log.js';
 import type {Scope} from '../../core/scope.js';
 import type {Entry} from '../../core/settings.js';
+import {toggleShowDesktop} from '../showDesktop.js';
 import {symbolicGIcon} from '../util.js';
 import {makeItemButton, wireItem} from './interact.js';
 import {POWER_SHORTCUTS, runPowerAction} from './powerActions.js';
@@ -143,8 +144,7 @@ export function resolveShortcut(entry: Entry): ResolvedShortcut | null {
             icon: icon ?? 'computer-symbolic',
             run: host => {
                 host.close();
-                for (const w of global.workspace_manager.get_active_workspace().list_windows())
-                    w.minimize();
+                toggleShowDesktop();
             },
         };
     case ShortcutId.FOLDER:

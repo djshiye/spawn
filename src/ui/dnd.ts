@@ -23,10 +23,16 @@
 //     {kind: 'folder'; uuid}                              a folder tile
 //     {kind: 'unfolder'; folderUuid}                      "take the app out of its folder" zone
 //                                                         (folderUuid '' = whichever folder the app came from)
+//   rejectDrops(scope, target: St.Widget): void
+//        the target (a ghost row / tile of a missing app) shows "no drop" and swallows a drop on it
+//        (does nothing), so it does not bubble to the list's append-at-end target
 //   uniqueFolderName(store): string
+//
+// While a drag is held within AUTOSCROLL_EDGE px of the top / bottom edge of the St.ScrollView under the
+// pointer, that view scrolls (GNOME's DND grabs the pointer, so the wheel does not work mid-drag).
 
 import Clutter from 'gi://Clutter';
-import type St from 'gi://St';
+import St from 'gi://St';
 
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
@@ -59,6 +65,11 @@ interface Delegate {
     handleDragOver?: (source: Delegate, actor: Clutter.Actor, x: number, y: number) => number;
     acceptDrop?: (source: Delegate, actor: Clutter.Actor, x: number, y: number) => boolean;
 }
+
+/** Distance from a scroll view's top / bottom edge where a drag starts scrolling it, and the speed. */
+const AUTOSCROLL_EDGE = 28;
+const AUTOSCROLL_STEP = 14;
+const AUTOSCROLL_TICK_MS = 40;
 
 const DROP_CLASSES = ['spawn-drop-target', 'spawn-drop-before', 'spawn-drop-after'];
 
@@ -116,10 +127,58 @@ export function enableDrag(scope: Scope, tile: St.Widget, payload: DragPayload):
     let dead = false;
     const draggable = DND.makeDraggable(tile, {timeoutThreshold: 200});
     let highlighted: St.Widget | null = null;
+    let scrolling: {view: St.ScrollView; dir: number} | null = null;
+    let cancelScroll: (() => void) | null = null;
+    const stopScroll = () => {
+        scrolling = null;
+        cancelScroll?.();
+        cancelScroll = null;
+    };
+    const nudge = (view: St.ScrollView, dir: number) => {
+        const adj = view.vadjustment;
+        adj.value = Math.max(adj.lower, Math.min(adj.upper - adj.page_size, adj.value + dir * AUTOSCROLL_STEP));
+    };
+    // Scroll the view under the pointer while it sits in the edge band; keeps going without motion.
+    const updateScroll = (event: DND.DragEvent) => {
+        let view: St.ScrollView | null = null;
+        for (let a: Clutter.Actor | null = event.targetActor; a && !view; a = a.get_parent()) {
+            if (a instanceof St.ScrollView)
+                view = a;
+        }
+        let dir = 0;
+        if (view) {
+            const [, top] = view.get_transformed_position();
+            const [, height] = view.get_transformed_size();
+            if (event.y < top + AUTOSCROLL_EDGE)
+                dir = -1;
+            else if (event.y > top + height - AUTOSCROLL_EDGE)
+                dir = 1;
+        }
+        if (!view || dir === 0) {
+            stopScroll();
+            return;
+        }
+        scrolling = {view, dir};
+        nudge(view, dir);
+        cancelScroll ??= scope.interval(AUTOSCROLL_TICK_MS, () => {
+            if (!scrolling || dead) {
+                cancelScroll = null;
+                return false;
+            }
+            nudge(scrolling.view, scrolling.dir);
+            return true;
+        });
+    };
     const monitor: DND.DragMonitor = {
         dragMotion: event => {
             clearDropClasses(highlighted);
             highlighted = null;
+            try {
+                updateScroll(event);
+            } catch (e) {
+                error('drag auto-scroll failed', e);
+                stopScroll();
+            }
             let a: Clutter.Actor | null = event.targetActor;
             while (a) {
                 if ((a as unknown as {_delegate?: Delegate})._delegate?.acceptDrop) {
@@ -136,6 +195,7 @@ export function enableDrag(scope: Scope, tile: St.Widget, payload: DragPayload):
         if (monitoring)
             DND.removeDragMonitor(monitor);
         monitoring = false;
+        stopScroll();
         clearDropClasses(highlighted);
         highlighted = null;
     };
@@ -248,6 +308,29 @@ export function acceptDrops(scope: Scope, target: St.Widget, store: PinnedStore,
         delegate.handleDragOver = undefined;
         delegate.acceptDrop = undefined;
     }, 'drop target');
+}
+
+/**
+ * A target that refuses every drop. Ghost rows (pinned apps that are no longer installed) use it:
+ * they are not part of the store's visible index, so letting the drag fall through to the list's
+ * "append at the end" target would silently move the dragged app to the end. The shell's DND only
+ * stops at the first ancestor whose acceptDrop returns true (false means "try the parent"), so the
+ * drop is claimed and then ignored.
+ */
+export function rejectDrops(scope: Scope, target: St.Widget): void {
+    const delegate = delegateOf(target);
+    delegate.handleDragOver = () => {
+        clearDropClasses(target);
+        return DND.DragMotionResult.NO_DROP;
+    };
+    delegate.acceptDrop = () => {
+        clearDropClasses(target);
+        return true;
+    };
+    scope.add(() => {
+        delegate.handleDragOver = undefined;
+        delegate.acceptDrop = undefined;
+    }, 'reject drops');
 }
 
 /** Index in the (visible) top-level list to insert at for a drop next to `refIndex`. */

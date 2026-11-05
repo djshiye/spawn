@@ -8,7 +8,7 @@
 //   switchRow / spinRow / enumRow / entryRow / colorRow
 //   optionalColorRow / optionalSpinRow  rows for the (bs) / (bi) override keys
 //   group(title, rows, {description?, reset?})   PreferencesGroup with an optional Reset button
-//   resetKeys(ctx, keys)               resets keys in a single delay()/apply() batch
+//   resetKeys(ctx, keys)               resets keys (one SpawnSettings.batch(); ctx.settings.raw is never delayed)
 //   resetWithUndo(ctx, keys, message)  resetKeys + a toast whose Undo button restores the old values
 //   toast(ctx, message, undo?)         plain-text toast; with `undo` it shows an Undo button (8 s)
 
@@ -27,8 +27,8 @@ export type Option = readonly [nick: string, label: string];
 // disposed with the window (close-request), which is also where stale callbacks would hurt.
 const closers = new WeakMap<Gtk.Window, Array<() => void>>();
 
-/** Runs `fn` once when the prefs window closes. */
-export function onWindowClose(ctx: PrefsContext, fn: () => void): void {
+/** Runs `fn` once when the prefs window closes; the returned function drops it again. */
+export function onWindowClose(ctx: PrefsContext, fn: () => void): () => void {
     let list = closers.get(ctx.window);
     if (!list) {
         const fresh: Array<() => void> = [];
@@ -40,7 +40,13 @@ export function onWindowClose(ctx: PrefsContext, fn: () => void): void {
             return false;
         });
     }
-    list.push(fn);
+    const registered = list;
+    registered.push(fn);
+    return () => {
+        const at = registered.indexOf(fn);
+        if (at >= 0)
+            registered.splice(at, 1);
+    };
 }
 
 /** Connects `raw` signals and disconnects them when `dispose` runs; safe to call dispose twice. */
@@ -78,11 +84,11 @@ export function toast(ctx: PrefsContext, message: string, undo?: () => void): vo
 }
 
 export function resetKeys(ctx: PrefsContext, keys: readonly SettingKey[]): void {
-    const raw = ctx.settings.raw;
-    raw.delay();
-    for (const key of keys)
-        raw.reset(key);
-    raw.apply();
+    // Not ctx.settings.raw.delay(): GSettings cannot leave delay mode, so later writes would stay pending.
+    ctx.settings.batch(tx => {
+        for (const key of keys)
+            tx.reset(key);
+    });
 }
 
 /** Resets `keys` (and the listed folders) and offers to bring the previous values back. */

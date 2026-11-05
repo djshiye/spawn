@@ -54,6 +54,7 @@ function hotkeyGroup(ctx: PrefsContext): Adw.PreferencesGroup {
             });
             const shown = new Gtk.ShortcutLabel({accelerator: accel, valign: Gtk.Align.CENTER});
             const change = new Gtk.Button({label: 'Change', valign: Gtk.Align.CENTER});
+            label(change, `Change shortcut ${accel}`);
             change.connect('clicked', () => capture(index));
             const remove = new Gtk.Button({
                 icon_name: 'edit-delete-symbolic',

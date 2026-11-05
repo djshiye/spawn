@@ -1,10 +1,11 @@
 // AppsProvider: searches AppIndex.searchEntries() with rank.ts; id 'apps'.
 //
 // The display name is scored on its raw form (camelCase word boundaries, e.g. "LibreOffice
-// Writer"); the other keys (generic name, full name, keywords, executable, id) count at 70 % and the
-// description (Comment=) only as whole words / word prefixes / substrings of a word at 40 %, so an
-// app whose NAME matches always beats one that only matches a keyword. Punctuation-only
-// queries match nothing.
+// Writer"); the other keys (generic name, full name, keywords, executable, id) count at 60 % and
+// the description (Comment=) only as whole words / word prefixes / substrings of a word at 38 %
+// (at most 380, below the name-substring band), so an app whose NAME matches always beats one
+// that only matches a keyword. Punctuation-only queries match nothing. When the best hit is
+// strong (>= 800), results below 25 % of it are dropped (rank.ts rankApps).
 //
 // Public API:
 //   new AppsProvider(index: AppIndex, settings: SpawnSettings, options?: {max?: number})
@@ -14,12 +15,10 @@
 
 import {error} from '../../core/log.js';
 import type {SpawnSettings} from '../../core/settings.js';
-import type {AppIndex, AppSearchEntry} from '../../model/appIndex.js';
+import type {AppIndex} from '../../model/appIndex.js';
 import {launchApp} from '../../ui/util.js';
 import type {CancelToken, SearchProvider, SearchResult} from '../engine.js';
-import {hasAlnum, rankItemsBy, scoreApp} from '../rank.js';
-
-const KEY_WEIGHT = 0.7;
+import {hasAlnum, rankApps} from '../rank.js';
 
 export interface AppsProviderOptions {
     max?: number;
@@ -49,9 +48,7 @@ export class AppsProvider implements SearchProvider {
         if (!this._index.built)
             this._index.build();
 
-        const ranked = rankItemsBy(query, this._index.searchEntries(),
-            (entry: AppSearchEntry, q) => scoreApp(q, entry.name, entry.keys, KEY_WEIGHT, entry.description),
-            this._max ?? this._settings.get('max-search-results'));
+        const ranked = rankApps(query, this._index.searchEntries(), this._max ?? this._settings.get('max-search-results'));
         if (token.cancelled)
             return [];
 

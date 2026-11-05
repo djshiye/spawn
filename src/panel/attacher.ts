@@ -9,8 +9,9 @@
 //     a panel extension is active but has no valid panel yet. After GIVE_UP_MS (10 s) it falls
 //     back to Main.panel.
 //   * Every removal is guarded (`?.`, try/catch); one failing removal never blocks the rest.
-//   * Hiding the Activities button remembers the PREVIOUS visibility and restores exactly that
-//     (on setting off, on dispose, and for panels that went away).
+//   * Hiding the Activities button (panel/activities.ts) remembers the PREVIOUS visibility and restores
+//     exactly that (on setting off, on dispose, and for panels that went away); it re-hides the button
+//     when something else (ArcMenu being disabled) shows it while the setting is on.
 //   * RE-KEYING: when a target's key changes but the underlying panel object is the same (e.g.
 //     Dash to Panel's primary wrapper `.panel === Main.panel`, so 'main' becomes 'dtp:0'), the
 //     existing attachment is moved to the new key instead of destroying and recreating the
@@ -36,6 +37,7 @@ import {error, log, warn} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {SettingKey, SpawnSettings} from '../core/settings.js';
 import type {MenuButton} from '../ui/button.js';
+import {ActivitiesHider} from './activities.js';
 import type {PanelTargets} from './targets.js';
 import {
     type ActorLike,
@@ -67,6 +69,8 @@ export interface AttachmentInfo {
     side: PanelSide;
     /** What the button's icon currently shows (dev status / tests); null if unreadable. */
     icon: {iconName: string | null; file: string | null} | null;
+    /** The button carries the :active pseudo class (a menu is open on it); dev status / tests. */
+    active: boolean;
 }
 
 export interface AttachmentStatus {
@@ -87,51 +91,6 @@ const REPOSITION_KEYS: SettingKey[] = ['position-in-panel', 'menu-button-positio
 const REFRESH_KEYS: SettingKey[] = [
     'menu-button-appearance', 'menu-button-text', 'menu-button-icon', 'menu-button-icon-size', 'menu-button-padding',
 ];
-
-interface ActivitiesActor extends ActorLike {
-    visible?: boolean;
-}
-
-/** Hides the Activities button and restores the visibility it had before we touched it. */
-class ActivitiesHider {
-    private readonly _saved = new Map<ActivitiesActor, boolean>();
-
-    apply(hide: boolean, panels: Array<PanelLike | null | undefined>): void {
-        if (!hide) {
-            this.restore();
-            return;
-        }
-        for (const [actor] of this._saved) {
-            if (!isActorAlive(actor))
-                this._saved.delete(actor);
-        }
-        for (const panel of panels) {
-            try {
-                const actor = panel?.statusArea?.['activities'] as ActivitiesActor | undefined;
-                if (!actor || !isActorAlive(actor))
-                    continue;
-                if (!this._saved.has(actor))
-                    this._saved.set(actor, actor.visible !== false);
-                if (actor.visible !== false)
-                    actor.visible = false;
-            } catch (e) {
-                warn('cannot hide Activities button', e);
-            }
-        }
-    }
-
-    restore(): void {
-        for (const [actor, wasVisible] of this._saved) {
-            try {
-                if (isActorAlive(actor))
-                    actor.visible = wasVisible;
-            } catch (e) {
-                warn('cannot restore Activities button', e);
-            }
-        }
-        this._saved.clear();
-    }
-}
 
 export class ButtonAttacher {
     private readonly _scope: Scope;
@@ -190,6 +149,7 @@ export class ButtonAttacher {
                 fallback: a.fallback,
                 side: this._sideOf(a),
                 icon: this._iconOf(a),
+                active: this._activeOf(a),
             })),
             pending: this._pendingSince !== null,
             pendingForMs: this._pendingSince === null ? 0 : this._now() - this._pendingSince,
@@ -370,6 +330,14 @@ export class ButtonAttacher {
             return a.button.iconDebug();
         } catch {
             return null;
+        }
+    }
+
+    private _activeOf(a: Attachment): boolean {
+        try {
+            return a.button.has_style_pseudo_class('active');
+        } catch {
+            return false;
         }
     }
 

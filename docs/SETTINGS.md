@@ -10,8 +10,11 @@ main schema: code opens it by path (`SpawnSettings.folder(id)`), and the id must
 Conventions: enum keys store the nick string; `(bs)`/`(bi)` are `(enabled, value)` overrides
 (value ignored when `enabled` is false); built-in shortcut ids use the prefix `Spawn_`
 (ArcMenu's `ArcMenu_` prefix is rewritten by the migration).
+Writes: single settings are written immediately. Multi-key operations (group Reset, Undo, the ArcMenu import) go
+through `SpawnSettings.batch()`, which delays and applies on a throwaway `Gio.Settings`; the prefs' own `settings.raw`
+(every row is bound to it) is never put in delay mode, because GSettings has no way back and later writes would stay pending.
 Integer keys with a `<range>` in the schema: `menu-height` 360..1600, `left-panel-width` 420..1200,
-`right-panel-width` 180..600, `menu-width-adjustment` -350..800 (the UI floors are 360 / 420 / 180; the migration
+`right-panel-width` 180..600, `menu-width-adjustment` -350..800, `max-frequent-apps` 1..50 (the UI floors are 360 / 420 / 180; the migration
 clamps ArcMenu values into these ranges and warns). GSettings rejects anything outside, so `SpawnSettings.set()`
 returns false for it.
 The ArcMenu import never writes a value equal to Spawn's default (it resets the key instead), so a later change of
@@ -64,7 +67,7 @@ Enum differences from ArcMenu: `menu-button-*-click-action` is `Menu|None|Contex
 | `default-menu-view` | enum default-menu-view | `'Pinned_Apps'` | `default-menu-view` |
 | `all-apps-button-action` | enum all-apps-button-action | `'Categories_List'` | `all-apps-button-action` |
 | `pinned-apps-display` | enum pinned-apps-display | `'List'` | derived from `menu-layout`: the layouts whose constructor passes `DisplayType.LIST` (arcmenu, brisk, budgie, gnome-menu, mint, whisker, plasma, tognee, windows, zest, runner) give `'List'`, the grid ones (11, az, enterprise, insider, pop, redmond, sleek, unity, chromebook, elementary, raven) `'Grid'`; unknown layouts keep the default. Pinned apps and folders (and folder contents) as rows or as an icon grid |
-| `max-frequent-apps` | i | `8` | `arcmenu-layout-max-frequent-apps` |
+| `max-frequent-apps` | i | `8` | `arcmenu-layout-max-frequent-apps`  (clamped to 1..50; ArcMenu's 0 = "no limit" becomes 50) |
 | `menu-height` | i | `600` | `menu-height`  (clamped to 360..1600) |
 | `menu-width-adjustment` | i | `0` | `menu-width-adjustment`  (clamped to -350..800) |
 | `left-panel-width` | i | `420` | `left-panel-width`  (clamped to 420..1200; ArcMenu's default is 290) |

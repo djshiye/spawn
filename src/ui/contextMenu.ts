@@ -22,7 +22,6 @@ import St from 'gi://St';
 import type Shell from 'gi://Shell';
 
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
-import {PopupAnimation} from 'resource:///org/gnome/shell/ui/boxpointer.js';
 import {AppMenu} from 'resource:///org/gnome/shell/ui/appMenu.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
@@ -33,6 +32,7 @@ import type {Services} from '../core/services.js';
 import {uniqueFolderName} from './dnd.js';
 import type {LayoutHost} from './layout.js';
 import {applyTone, ownedScope} from './util.js';
+import {closeMenu, openMenu} from './menuParams.js';
 
 export type ContextTarget =
     | {kind: 'app'; app: Shell.App; folderUuid?: string}
@@ -95,7 +95,7 @@ export class AppContextMenu {
                 if (!item._spawnKeepOpen)
                     this._scope.idle(() => this._host.close());
             });
-            menu.open(PopupAnimation.FULL);
+            openMenu(menu);
         } catch (e) {
             error('context menu failed', e);
             this._teardown();
@@ -104,7 +104,7 @@ export class AppContextMenu {
 
     close(): void {
         try {
-            this._menu?.close(PopupAnimation.NONE);
+            if (this._menu) closeMenu(this._menu, false);
         } catch (e) {
             error('context menu close failed', e);
         }

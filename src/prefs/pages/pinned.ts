@@ -35,7 +35,7 @@ function powerGroup(ctx: PrefsContext): Adw.PreferencesGroup {
     });
     let rows: Adw.ActionRow[] = [];
     // Rows are rebuilt on every change; remember which button to focus again afterwards.
-    const buttons = new Map<string, Gtk.Button>();
+    const buttons = new Map<string, Gtk.Widget>();
     let pendingFocus: string[] | null = null;
 
     const build = (): void => {
@@ -52,8 +52,10 @@ function powerGroup(ctx: PrefsContext): Adw.PreferencesGroup {
             label(toggle, `Show ${row.title}`);
             toggle.connect('notify::active', () => {
                 const next = ctx.settings.get('power-options').map(([i, e]): [number, boolean] => (i === id ? [i, toggle.active] : [i, e]));
-                if (JSON.stringify(next) !== JSON.stringify(ctx.settings.get('power-options')))
+                if (JSON.stringify(next) !== JSON.stringify(ctx.settings.get('power-options'))) {
+                    pendingFocus = [`sw:${index}`]; // the rebuild below replaces this very switch
                     ctx.settings.set('power-options', next);
+                }
             });
             const move = (delta: number): void => {
                 const next = ctx.settings.get('power-options');
@@ -70,6 +72,7 @@ function powerGroup(ctx: PrefsContext): Adw.PreferencesGroup {
             down.connect('clicked', () => move(1));
             buttons.set(`up:${index}`, up);
             buttons.set(`down:${index}`, down);
+            buttons.set(`sw:${index}`, toggle);
             row.add_suffix(up);
             row.add_suffix(down);
             row.add_suffix(toggle);

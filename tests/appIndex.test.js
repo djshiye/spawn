@@ -42,6 +42,14 @@ test('appKeys ignores generic launcher executables (flatpak, env, ...)', () => {
     assertEquals(appKeys({name: 'Foo', fullName: 'GNOME Foo', executable: 'foo'}), ['foo', 'gnome foo']);
 });
 
+test('appKeys strips quotes from the executable and skips wrappers / AppImages', () => {
+    assertEquals(appKeys({name: 'SPT', executable: '/opt/spt/launcher.sh"'}), ['spt', 'launcher.sh']);
+    assertEquals(appKeys({name: 'Maps', executable: 'gapplication', id: 'org.gnome.Maps.desktop'}), ['maps']);
+    assertEquals(appKeys({name: 'CRD', executable: '/home/u/helium.AppImage'}), ['crd']);
+    assertEquals(appKeys({name: 'Foo', executable: 'python3.13'}), ['foo']);
+    assertEquals(appKeys({id: 'page.codeberg.Foo.desktop'}), ['foo']);
+});
+
 test('appKeys handles missing parts', () => {
     assertEquals(appKeys({}), []);
     assertEquals(appKeys({id: 'foo'}), ['foo']);

@@ -11,7 +11,11 @@
 // query that arrives before it finished AWAITS it (ready() returns a promise, capped at 5 s
 // by the loader) instead of silently skipping the shell providers. When installed apps or the
 // GNOME search settings change, the previous provider list is KEPT and used until the reload
-// (started by the next ready() / warmUp()) has replaced it.
+// (started by the next ready() / warmUp()) has replaced it. A TRANSIENT failure (the loader
+// timed out, threw or rejected: slow session start, bus not ready) is not cached as "ready,
+// empty": the state stays idle and the load is retried by the next ready() / warmUp() after
+// 30 s (or at once when installed apps / the GNOME search settings change). A missing module
+// or loader (this shell has none) is permanent until such a change.
 //
 // Public API:
 //   new ShellProviders(scope: Scope, settings: SpawnSettings)   does no work at construction
@@ -25,6 +29,7 @@
 //                                         open; no-op when search-provider-shell is off
 
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import Shell from 'gi://Shell';
 
 import {error, warn} from '../../core/log.js';
@@ -35,6 +40,7 @@ import type {CancelToken, SearchProvider, SearchResult} from '../engine.js';
 const REMOTE_SEARCH_MODULE = 'resource:///org/gnome/shell/ui/remoteSearch.js';
 const GNOME_SEARCH_SCHEMA = 'org.gnome.desktop.search-providers';
 const LOAD_TIMEOUT_MS = 5000;
+const RETRY_AFTER_FAILURE_US = 30_000_000;
 const BASE_SCORE = 500;
 
 /** Duck-typed GNOME search provider (RemoteSearchProvider2). */
@@ -145,6 +151,8 @@ export class ShellProviders {
     private _providers: SearchProvider[] = [];
     private _loading: Promise<SearchProvider[]> | null = null;
     private _invalidatedWhileLoading = false;
+    private _transientFailure = false;
+    private _retryNotBefore = 0;
     private _warmQueued = false;
     private _generation = 0;
     private _watching = false;
@@ -157,6 +165,8 @@ export class ShellProviders {
             this._providers = [];
             this._loading = null;
             this._invalidatedWhileLoading = false;
+            this._transientFailure = false;
+            this._retryNotBefore = 0;
             this._warmQueued = false;
             this._state = 'idle';
             this._watching = false;
@@ -190,7 +200,7 @@ export class ShellProviders {
     }
 
     warmUp(): void {
-        if (this._state !== 'idle' || this._warmQueued || !this._isEnabled())
+        if (this._state !== 'idle' || this._warmQueued || this._inRetryWindow() || !this._isEnabled())
             return;
         this._warmQueued = true;
         this._scope.idle(() => {
@@ -202,14 +212,19 @@ export class ShellProviders {
 
     /** Start a load when idle; returns the load in flight (or null when ready). */
     private _ensureLoading(): Promise<SearchProvider[]> | null {
-        if (this._state === 'idle')
+        if (this._state === 'idle' && !this._inRetryWindow())
             this._startLoad();
         return this._state === 'loading' ? this._loading : null;
+    }
+
+    private _inRetryWindow(): boolean {
+        return GLib.get_monotonic_time() < this._retryNotBefore;
     }
 
     private _startLoad(): void {
         this._state = 'loading';
         this._invalidatedWhileLoading = false;
+        this._transientFailure = false;
         const generation = this._generation;
         this._watch();
         this._loading = this._load().then(
@@ -223,7 +238,13 @@ export class ShellProviders {
                 return [];
             this._providers = providers;
             this._loading = null;
-            this._state = this._invalidatedWhileLoading ? 'idle' : 'ready';
+            if (this._transientFailure && !this._invalidatedWhileLoading) {
+                this._state = 'idle';
+                this._retryNotBefore = GLib.get_monotonic_time() + RETRY_AFTER_FAILURE_US;
+            } else {
+                this._state = this._invalidatedWhileLoading ? 'idle' : 'ready';
+            }
+            this._transientFailure = false;
             this._invalidatedWhileLoading = false;
             return providers;
         });
@@ -231,6 +252,7 @@ export class ShellProviders {
 
     /** The list is out of date: reload on the next ready() / warmUp(), keep using the old one. */
     private _invalidate(): void {
+        this._retryNotBefore = 0;
         if (this._state === 'loading')
             this._invalidatedWhileLoading = true;
         else
@@ -262,8 +284,13 @@ export class ShellProviders {
         const remotes = await new Promise<unknown[]>(resolve => {
             const release = this._scope.timeout(LOAD_TIMEOUT_MS, () => {
                 warn('loading shell search providers timed out');
+                this._transientFailure = true;
                 resolve([]);
             });
+            const fail = () => {
+                this._transientFailure = true;
+                finish([]);
+            };
             const finish = (list: unknown) => {
                 release();
                 resolve(Array.isArray(list) ? list : []);
@@ -273,10 +300,10 @@ export class ShellProviders {
                 if (Array.isArray(ret))
                     finish(ret);
                 else if (ret && typeof ret.then === 'function')
-                    ret.then(finish, () => finish([]));
+                    ret.then(finish, fail);
             } catch (e) {
                 error('loadRemoteSearchProviders threw', e);
-                finish([]);
+                fail();
             }
         });
 

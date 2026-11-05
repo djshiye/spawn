@@ -58,6 +58,7 @@ export {
     describeItem,
     describeValue,
     describePlan,
+    customisedKeys,
     type FolderPlan,
     INT_RANGES,
     type MigrationItem,
@@ -152,12 +153,12 @@ export function readArcMenuSnapshot(extensionDir: string): ArcMenuSnapshot | nul
 }
 
 /**
- * Writes the plan into our schema, all or nothing: the main keys go through one delay()/apply()
- * batch, and any exception reverts that batch and restores every folder it touched, then rethrows.
- * Items equal to Spawn's default are reset instead of written.
+ * Writes the plan into our schema, all or nothing: the main keys go through SpawnSettings.batch()
+ * (a throwaway Gio.Settings in delay()/apply() mode, so the prefs' own `settings.raw` never stays
+ * delayed), and any exception reverts that batch and restores every folder it touched, then
+ * rethrows. Items equal to Spawn's default are reset instead of written.
  */
 export function applyMigration(plan: MigrationPlan, settings: SpawnSettings): ApplyResult {
-    const raw = settings.raw;
     const oldFolders = settings.get('pinned-apps').filter(e => e.isFolder === 'true' && isValidFolderId(e.id)).map(e => e.id);
     const undo = settings.snapshot(
         [...plan.items.map(i => i.key), 'migration-done'],
@@ -165,38 +166,37 @@ export function applyMigration(plan: MigrationPlan, settings: SpawnSettings): Ap
     );
     const result: ApplyResult = {written: 0, reset: 0, failed: [], undo};
     const pinnedItem = plan.items.find(i => i.key === 'pinned-apps');
-    raw.delay();
     try {
-        for (const item of plan.items) {
-            if (item.differsFromDefault === false) {
-                raw.reset(item.key);
-                result.reset++;
-            } else if (settings.set(item.key, item.value as never)) {
-                result.written++;
-            } else {
-                result.failed.push(item.key);
+        settings.batch(tx => {
+            for (const item of plan.items) {
+                if (item.differsFromDefault === false) {
+                    tx.reset(item.key);
+                    result.reset++;
+                } else if (tx.set(item.key, item.value as never)) {
+                    result.written++;
+                } else {
+                    result.failed.push(item.key);
+                }
             }
-        }
-        if (!settings.set('migration-done', true))
-            throw new Error('could not record that the import was done');
-        if (pinnedItem && !result.failed.includes('pinned-apps')) {
-            // Folders of the previous pinned list that the import does not bring back are cleaned up.
-            const keep = new Set(plan.folders.map(f => f.uuid));
-            for (const id of oldFolders) {
-                if (!keep.has(id))
-                    settings.deleteFolder(id);
+            if (!tx.set('migration-done', true))
+                throw new Error('could not record that the import was done');
+            if (pinnedItem && !result.failed.includes('pinned-apps')) {
+                // Folders of the previous pinned list that the import does not bring back are cleaned up.
+                const keep = new Set(plan.folders.map(f => f.uuid));
+                for (const id of oldFolders) {
+                    if (!keep.has(id))
+                        settings.deleteFolder(id);
+                }
+                for (const pf of plan.folders) {
+                    const folder = settings.folder(pf.uuid);
+                    folder.raw.delay();
+                    folder.name = pf.name;
+                    folder.pinnedApps = pf.pinnedApps;
+                    folder.raw.apply();
+                }
             }
-            for (const pf of plan.folders) {
-                const folder = settings.folder(pf.uuid);
-                folder.raw.delay();
-                folder.name = pf.name;
-                folder.pinnedApps = pf.pinnedApps;
-                folder.raw.apply();
-            }
-        }
-        raw.apply();
+        });
     } catch (e) {
-        raw.revert();
         settings.restore(undo);
         throw e;
     }
