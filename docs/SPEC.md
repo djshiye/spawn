@@ -96,8 +96,8 @@ your area before writing code.
   `Screenshot(s path)` (uses Shell.Screenshot in-process), `Benchmark(s sections)` (in-shell timings, see README)
   for headless testing; plus a `.Ui` interface (src/ui/devHooks.ts) to drive the menu.
 
-Out of scope for v1 (later): the other 22 ArcMenu layouts,
-extra categories links, intellihide integration beyond showing the panel.
+Out of scope (later): the other 22 ArcMenu layouts, ArcMenu's `extra-categories` rows in the category column,
+`force-menu-location`, translations (English only), extensions.gnome.org (distributed through the DNF repo only).
 
 ## Tech
 - TypeScript (strict) compiled by `tsc` to ES modules for GJS; types from
