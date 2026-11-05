@@ -2,9 +2,9 @@
 // recreated, so a re-sync after a model change keeps focus-less state cheap.
 //
 // No dead zones: the container has no padding and no spacing. The gap between two tiles (and the
-// gutter at the left / right edge of the grid) is transparent padding of the tiles' own buttons
-// (stylesheet.css), so the whole grid belongs to some tile. The first / last column carry the 8 px
-// gutter as inline padding and are that much wider.
+// gutter at the left / right edge of the grid, the pane's 8 px edge included) is transparent padding of the
+// tiles' own buttons (stylesheet.css), so the whole grid belongs to some tile. The first / last column carry
+// the 16 px gutter as inline padding and are that much wider.
 //
 // Public API:
 //   new TileGrid()
@@ -23,8 +23,11 @@ import St from 'gi://St';
 import type {PinnedItemSize} from '../../core/settings.js';
 import {SIZE_CLASSES, sizeMetrics} from './pinnedSize.js';
 
-/** Transparent gutter at the left / right end of a grid row (padding of the first / last column's tile). */
-const GUTTER = 8;
+/**
+ * Transparent gutter at the left / right end of a grid row (padding of the first / last column's tile):
+ * the left pane has no padding of its own, so its 8 px edge + the 8 px grid gutter both belong to the tiles.
+ */
+const GUTTER = 16;
 
 export class TileGrid {
     readonly actor: St.BoxLayout;

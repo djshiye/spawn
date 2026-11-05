@@ -10,7 +10,8 @@
 //   row.app: Shell.App
 //   row.destroy()
 //   RowOptions: {iconSize?, description?: boolean, folderUuid?, symbolic?, name?, pinned?}
-//   A pinned row is an outer transparent button (`spawn-pinned-row`) around a `spawn-row-surface` that draws it.
+//   Every row is an outer transparent button (`spawn-pinned-row`, or `spawn-list-row` for a plain list) around a
+//   `spawn-row-surface` that draws it (see interact.ts).
 //   new ActionRow(name, icon, activate, host?, opts?)   arbitrary action; opts: {iconSize?, context?}
 
 import Clutter from 'gi://Clutter';
@@ -20,7 +21,7 @@ import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import type {TileHost} from './appTile.js';
-import {makeItemButton, wireItem} from './interact.js';
+import {makeFace, makeItemButton, wireItem} from './interact.js';
 import type {TooltipManager} from './tooltip.js';
 import {symbolicGIcon} from '../util.js';
 
@@ -41,6 +42,8 @@ export const DEFAULT_ROW_ICON_SIZE = 28;
 /** Outer button of a pinned list row (transparent, full hit area) and its visible face (see interact.ts). */
 export const PINNED_ROW_CLASS = 'spawn-pinned-row';
 export const PINNED_ROW_BOX = 'spawn-row-box spawn-surface spawn-row-surface';
+/** Outer button of a row of a plain list (Frequent, a category's apps, the runner): the same structure, its gap comes from `.spawn-list-row`. */
+export const LIST_ROW_CLASS = 'spawn-list-row';
 
 
 export class AppRow {
@@ -49,7 +52,7 @@ export class AppRow {
 
     constructor(app: Shell.App, host: TileHost, opts: RowOptions = {}) {
         this._app = app;
-        const button = makeItemButton(opts.pinned ? PINNED_ROW_CLASS : 'spawn-row');
+        const button = makeItemButton(opts.pinned ? PINNED_ROW_CLASS : LIST_ROW_CLASS);
         this.actor = button;
 
         const box = new St.BoxLayout({style_class: opts.pinned ? PINNED_ROW_BOX : 'spawn-row-box', x_expand: true});
@@ -78,7 +81,7 @@ export class AppRow {
             text.add_child(dl);
         }
         box.add_child(text);
-        button.set_child(box);
+        button.set_child(opts.pinned ? box : makeFace('spawn-row-surface', box));
 
         host.tooltips?.attach(button, label, desc ? () => `${app.get_name()}\n${desc}` : undefined);
         wireItem(button, {

@@ -50,7 +50,7 @@ import {ActionTile, AppTile, type TileHost} from './widgets/appTile.js';
 import {CategoryList} from './widgets/categoryList.js';
 import {FolderRow, FolderTile, type FolderHost} from './widgets/folderTile.js';
 import {FolderView} from './widgets/folderView.js';
-import {makeItemButton, wireItem} from './widgets/interact.js';
+import {makeFace, makeItemButton, wireItem} from './widgets/interact.js';
 import {sizeMetrics} from './widgets/pinnedSize.js';
 import {PowerBar} from './widgets/powerBar.js';
 import {ResultList, type ResultHost} from './widgets/resultList.js';
@@ -83,8 +83,9 @@ export const MIN_LEFT_WIDTH = 420;
 export const MIN_RIGHT_WIDTH = 180;
 const MIN_COLUMNS = 3;
 /**
- * Horizontal space used inside the left pane that tiles cannot use: its own 8 + 8 px padding and
- * the 8 + 8 px grid gutter (padding of the first / last column's tiles, which also absorbs a classic scrollbar).
+ * Horizontal space used inside the left pane that tiles cannot use: the 16 + 16 px gutter (the pane's 8 px
+ * edge plus the grid's 8 px; the left pane has no padding of its own, both are the padding of the first /
+ * last column's tiles, which also absorbs a classic scrollbar).
  */
 const LEFT_CHROME = 32;
 const MIN_HEIGHT = 360;
@@ -601,7 +602,7 @@ export class SpawnLayout implements ShortcutHost {
         const box = new St.BoxLayout({style_class: 'spawn-row-box'});
         box.add_child(new St.Icon({icon_name: iconName, icon_size: 16, y_align: Clutter.ActorAlign.CENTER}));
         box.add_child(new St.Label({text, y_align: Clutter.ActorAlign.CENTER}));
-        button.set_child(box);
+        button.set_child(makeFace('spawn-nav-surface', box));
         wireItem(button, {activate: () => cb()});
         return button;
     }
@@ -660,6 +661,10 @@ export class SpawnLayout implements ShortcutHost {
 
         this._userCard = new UserCard(scope, s, hostWithTips);
         this._right.add_child(this._userCard.actor);
+        if (s.get('show-user-avatar'))
+            this._right.remove_style_class_name('spawn-no-card');
+        else
+            this._right.add_style_class_name('spawn-no-card');
 
         const shortcutsBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-shortcuts-box'});
         const scroll = this._makeScroll(shortcutsBox, 'spawn-shortcuts', false);
@@ -877,6 +882,8 @@ export class SpawnLayout implements ShortcutHost {
         const apps = this._services.appIndex.frequent(this._frequentLimit());
         for (const app of apps)
             box.add_child(new AppRow(app, this._tileHostWithTips(), {...opts, name: displayName(app, s)}).actor);
+        // each row carries 1 px of the pitch below it: the last one has nothing to separate from (the scroll range)
+        (box.get_last_child() as St.Widget | null)?.set_style('padding-bottom: 0;');
         if (apps.length === 0) {
             box.add_child(new St.Label({
                 text: _('Nothing here yet'),

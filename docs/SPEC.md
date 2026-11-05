@@ -38,6 +38,17 @@ your area before writing code.
     neighbours (and the pane-edge gutter), and the visible row / tile is its `.spawn-surface` child,
     styled through the button's state. Drag & drop bands are fractions of the visible face.
     `tools/dev-shell.sh ui-hit-area` sweeps every pixel (`Ui.HitSweep`).
+  - No dead pixels anywhere else either (modern, forgiving click targets): the left pane has no
+    horizontal padding of its own, its 8 px at each edge are the padding of the rows / tiles (the
+    pointer at the menu's inner edge hits the nearest one); search results, the category column and a
+    category's apps, the Frequent lists, the shortcut rows, the user card, the nav buttons and the power
+    buttons are all a transparent outer button around a `.spawn-surface` face, with the 1 px pitch /
+    8 px pane inset as the button's padding (the right pane has no padding either; its divider above
+    the power buttons is its own widget). Dead on purpose: a section title / divider and the gap
+    beside it, the 1 px line between the category column and its apps, the flexible spacer between the
+    harmless and the destructive power buttons, and the folder header's side margins. Looks are pixel
+    identical to before. `tools/dev-shell.sh ui-hit-area2` sweeps each region in List and Grid
+    (`Ui.HitSweepIn`; `Ui.SetFrequent` fakes the usage history a sandboxed shell lacks).
   - App context menu: open windows, new window, desktop actions, pin/unpin,
     add to folder, app details (Software), quit.
   - Keyboard: arrows/Tab/Return/Escape, Menu or Shift+F10 = context menu, typing

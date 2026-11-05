@@ -3,8 +3,9 @@
 //
 // Buttons are ordered by severity (POWER_RANK: switch user, lock, log out, suspend, ..., restart,
 // power off), not by the stored order; a flexible spacer pushes the destructive pair (restart,
-// power off) to the far end so they are never next to the harmless ones. 40x32 targets, 8 px apart
-// (stylesheet.css). `icon-style-buttons` picks the symbolic or the full-colour icon.
+// power off) to the far end so they are never next to the harmless ones (that spacer is dead on purpose).
+// 40x32 targets, 8 px apart (stylesheet.css); every button is a transparent hit area (its padding is the
+// gap to its neighbours and the pane's edge) around a `spawn-power-surface` that draws it. `icon-style-buttons` picks the symbolic or the full-colour icon.
 //
 // Availability follows GNOME's SystemActions (can-* properties, live) and a one-off logind probe
 // for hibernate / hybrid sleep, so buttons the system cannot perform are hidden.
@@ -28,7 +29,7 @@ import {error} from '../../core/log.js';
 import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
 import {iconSizeFor} from '../util.js';
-import {makeItemButton, wireItem} from './interact.js';
+import {makeFace, makeItemButton, wireItem} from './interact.js';
 import {isDestructive, isPowerAvailable, type LogindInfo, POWER_INFO, POWER_RANK, powerSignalNames, probeLogind, runPowerAction, systemActions} from './powerActions.js';
 import type {ShortcutHost} from './shortcutRow.js';
 
@@ -42,6 +43,7 @@ interface PowerButton {
 
 export class PowerBar {
     readonly actor: St.BoxLayout;
+    private readonly _row: St.BoxLayout;
     private readonly _scope: Scope;
     private readonly _settings: SpawnSettings;
     private readonly _host: ShortcutHost;
@@ -56,7 +58,11 @@ export class PowerBar {
         this._scope = scope;
         this._settings = settings;
         this._host = host;
-        this.actor = new St.BoxLayout({style_class: 'spawn-power-bar', x_expand: true});
+        // the divider is its own widget: it keeps the pane's 8 px inset, the buttons below do not
+        this.actor = new St.BoxLayout({style_class: 'spawn-power-bar', orientation: Clutter.Orientation.VERTICAL, x_expand: true});
+        this.actor.add_child(new St.Widget({style_class: 'spawn-power-rule', x_expand: true}));
+        this._row = new St.BoxLayout({style_class: 'spawn-power-row', x_expand: true});
+        this.actor.add_child(this._row);
 
         this._build();
         const sa = systemActions();
@@ -116,7 +122,7 @@ export class PowerBar {
             return;
         this._teardownMenu();
         this._buttons.length = 0;
-        for (const c of this.actor.get_children())
+        for (const c of this._row.get_children())
             c.destroy();
 
         const style = this._settings.get('power-display-style');
@@ -132,18 +138,18 @@ export class PowerBar {
                 const destructive = isDestructive(type);
                 if (destructive && !spacer && this._buttons.length > 0) {
                     spacer = true;
-                    this.actor.add_child(new St.Widget({style_class: 'spawn-power-spacer', x_expand: true}));
+                    this._row.add_child(new St.Widget({style_class: 'spawn-power-spacer', x_expand: true}));
                 }
                 const button = makeItemButton(destructive ? 'spawn-power-button spawn-power-destructive' : 'spawn-power-button');
                 button.x_expand = false;
                 button.y_align = Clutter.ActorAlign.CENTER;
                 const icon = new St.Icon({icon_size: size, x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
                 this._setIcon(icon, info.icon);
-                button.set_child(icon);
+                button.set_child(makeFace('spawn-power-surface', icon));
                 button.accessible_name = info.name;
                 this._host.tooltips?.attach(button, null, () => info.name, {delay: TOOLTIP_DELAY_MS});
                 wireItem(button, {activate: () => runPowerAction(type, this._host, this._scope)});
-                this.actor.add_child(button);
+                this._row.add_child(button);
                 this._buttons.push({type, actor: button});
             }
         }
@@ -166,8 +172,8 @@ export class PowerBar {
         this._setIcon(menuIcon, POWER_INFO[PowerType.POWER_OFF].icon);
         box.add_child(menuIcon);
         box.add_child(new St.Label({text: _('Power Off'), y_align: Clutter.ActorAlign.CENTER}));
-        button.set_child(box);
-        this.actor.add_child(button);
+        button.set_child(makeFace('spawn-power-surface', box));
+        this._row.add_child(button);
         this._menuButton = button;
 
         const menu = new PopupMenu.PopupMenu(button, 0.5, St.Side.BOTTOM);
@@ -202,5 +208,13 @@ export class PowerBar {
             b.actor.visible = available(b.type);
         if (this._menuButton)
             this._menuButton.visible = this._enabledTypes().some(available);
+        // the pane's 8 px at the ends belong to the first / last visible button
+        const shown = this.buttons() as St.Button[];
+        for (const b of [...this._buttons.map(x => x.actor), ...(this._menuButton ? [this._menuButton] : [])]) {
+            b.remove_style_class_name('spawn-power-first');
+            b.remove_style_class_name('spawn-power-last');
+        }
+        shown[0]?.add_style_class_name('spawn-power-first');
+        shown[shown.length - 1]?.add_style_class_name('spawn-power-last');
     }
 }

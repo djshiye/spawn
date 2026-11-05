@@ -75,6 +75,11 @@ export function symbolicGIcon(icon: Gio.Icon | null): Gio.Icon | null {
 export function applyScrollSettings(scroll: St.ScrollView, settings: SpawnSettings): void {
     scroll.vscrollbar_policy = settings.get('scrollbars-visible') ? St.PolicyType.AUTOMATIC : St.PolicyType.EXTERNAL;
     scroll.overlay_scrollbars = settings.get('scrollbars-overlay');
+    // stylesheet.css keeps an overlay bar where it was now that the scroll view reaches the pane's edge
+    if (scroll.overlay_scrollbars)
+        scroll.add_style_class_name('spawn-scroll-overlay');
+    else
+        scroll.remove_style_class_name('spawn-scroll-overlay');
     if (settings.get('scrollview-fade-effect'))
         scroll.add_style_class_name('vfade');
     else

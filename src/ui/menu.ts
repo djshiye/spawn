@@ -63,7 +63,7 @@ export class SpawnPopup {
         this._services = services;
         scope.add(() => this._teardown(), 'SpawnPopup');
         try {
-            installUiDevHooks(scope.child('ui dev hooks'), services.settings, this);
+            installUiDevHooks(scope.child('ui dev hooks'), services.settings, this, services.appIndex);
         } catch (e) {
             error('ui dev hooks failed', e);
         }

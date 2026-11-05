@@ -356,6 +356,8 @@ export class SpawnRunner {
                 ui.defaultBox.add_child(row.actor);
                 this._defaultRows.push(row.actor);
             }
+            // each row carries 1 px of the pitch below it: the last one has nothing to separate from
+            this._defaultRows[this._defaultRows.length - 1]?.set_style('padding-bottom: 0;');
         }
         this._showView(ui, false);
     }

@@ -31,12 +31,21 @@
 //                            skipped, misses: [[x, y, picked]...]}.
 //                            Every pixel row; columns: the outer 12 px at each end, 6 px around every tile edge and every 5th between.
 //                            A grid's partly filled last row is only checked over its tiles' extent.
+//   HitSweepIn(s containerCls, s itemCls, s rangeCls) -> s
+//                            the same for a vertical list: `containerCls` is the first visible actor with that class (a scroll
+//                            view or its content box), clipped to its scroll view. Items are its visible descendants with `itemCls`
+//                            (several classes: `a|b`).
+//                            Every pixel row that belongs to an item is hit-tested across the whole width of `rangeCls` (the
+//                            pane, so its edge padding is covered; empty = the container's own width), and the bands BETWEEN
+//                            items must be empty (items touch) unless a `spawn-section-title` / `spawn-separator` lies in them:
+//                            {rect, range, items, contiguous, gaps: [[y0, y1]...], total, hit, skipped, misses}.
+//   SetFrequent(s ids)       the Frequent lists show these desktop ids (comma separated) as the most used apps; '' = real usage
 //   Dump() -> s              JSON: monitor, anchor, popup rect and every visible actor of the popup /
 //                            context menu / tooltip with allocation, padding, margin, colours, font
 //                            (the UX audit measurements; see tools/dev/scenarios/ui-ux-measure.sh)
 //
 // Public API:
-//   installUiDevHooks(scope, settings, popup): void
+//   installUiDevHooks(scope, settings, popup, appIndex): void
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
@@ -48,6 +57,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {SpawnSettings} from '../core/settings.js';
+import type {AppIndex} from '../model/appIndex.js';
 import type {SpawnPopup} from './menu.js';
 
 const PATH = '/io/github/djshiye/Spawn/Ui';
@@ -70,6 +80,8 @@ const IFACE = `
     <method name="Windows"><arg type="s" direction="out" name="json"/></method>
     <method name="FocusInfo"><arg type="s" direction="out" name="json"/></method>
     <method name="HitSweep"><arg type="s" direction="in" name="itemCls"/><arg type="s" direction="out" name="json"/></method>
+    <method name="HitSweepIn"><arg type="s" direction="in" name="containerCls"/><arg type="s" direction="in" name="itemCls"/><arg type="s" direction="in" name="rangeCls"/><arg type="s" direction="out" name="json"/></method>
+    <method name="SetFrequent"><arg type="s" direction="in" name="ids"/></method>
     <method name="Dump"><arg type="s" direction="out" name="json"/></method>
   </interface>
 </node>`;
@@ -82,7 +94,7 @@ const MODIFIERS: Record<string, number> = {
     Alt: Clutter.KEY_Alt_L,
 };
 
-export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: SpawnPopup): void {
+export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: SpawnPopup, appIndex: AppIndex): void {
     let exported: Gio.DBusExportedObject | null = null;
     let keyboard: Clutter.VirtualInputDevice | null = null;
     let pointer: Clutter.VirtualInputDevice | null = null;
@@ -262,6 +274,98 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
         return JSON.stringify({rect: [gx, gy, gw, gh], rows: rows.length, contiguous, total, hit, skipped, misses});
     };
 
+    const hitSweepIn = (containerCls: string, itemCls: string, rangeCls: string): string => {
+        const container = findAll(containerCls)[0];
+        if (!container)
+            throw new Error(`no visible ${containerCls}`);
+        const range = rangeCls ? findAll(rangeCls)[0] : container;
+        if (!range)
+            throw new Error(`no visible ${rangeCls}`);
+        const [rx, , rw] = rectOf(range);
+        const [cx, cy, cw, ch] = rectOf(container);
+        // the part of the container that is scrolled into view
+        let top = cy;
+        let bottom = cy + ch;
+        for (let a: Clutter.Actor | null = container; a; a = a.get_parent()) {
+            if (a instanceof St.ScrollView) {
+                const [, sy, , sh] = rectOf(a);
+                top = Math.max(top, sy);
+                bottom = Math.min(bottom, sy + sh);
+                break;
+            }
+        }
+        const itemClasses = itemCls.split('|');
+        const isItem = (a: Clutter.Actor): boolean => itemClasses.some(c => hasClass(a, c));
+        const items: number[][] = [];
+        const breaks: number[][] = [];
+        const walk = (a: Clutter.Actor) => {
+            if (!a.visible)
+                return;
+            if (isItem(a)) {
+                items.push(rectOf(a));
+                return;
+            }
+            if (hasClass(a, 'spawn-section-title') || hasClass(a, 'spawn-separator'))
+                breaks.push(rectOf(a));
+            for (const c of a.get_children())
+                walk(c);
+        };
+        walk(container);
+        // y bands covered by items, merged; a gap between two bands needs a title / separator in it
+        const bands: Array<[number, number]> = [];
+        for (const [, y, , h] of [...items].sort((a, b) => (a[1] as number) - (b[1] as number))) {
+            const y0 = y as number;
+            const y1 = y0 + (h as number);
+            const last = bands[bands.length - 1];
+            if (last && y0 <= last[1] + 0.5)
+                last[1] = Math.max(last[1], y1);
+            else
+                bands.push([y0, y1]);
+        }
+        const gaps: Array<[number, number]> = [];
+        for (let i = 1; i < bands.length; i++) {
+            const [g0, g1] = [bands[i - 1][1], bands[i][0]];
+            if (!breaks.some(b => (b[1] as number) >= g0 - 0.5 && (b[1] as number) + (b[3] as number) <= g1 + 0.5))
+                gaps.push([g0, g1]);
+        }
+        let total = 0;
+        let hit = 0;
+        let skipped = 0;
+        const misses: Array<[number, number, string]> = [];
+        const x0 = Math.ceil(rx);
+        const x1 = Math.floor(rx + rw);
+        for (let y = Math.ceil(top); y < Math.floor(bottom); y++) {
+            if (!bands.some(([b0, b1]) => y + 0.5 >= b0 && y + 0.5 < b1))
+                continue;
+            for (let x = x0; x < x1; x++) {
+                // dense at both ends of the pane (its edge padding is what is under test), strided between
+                if (x - x0 >= 16 && x1 - 1 - x >= 16 && (x - x0) % 5 !== 0)
+                    continue;
+                const picked = global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x + 0.5, y + 0.5) as Clutter.Actor | null;
+                let owner = false;
+                let bar = false;
+                for (let a: Clutter.Actor | null = picked; a; a = a.get_parent()) {
+                    if (a instanceof St.ScrollBar)
+                        bar = true;
+                    if (isItem(a)) {
+                        owner = true;
+                        break;
+                    }
+                }
+                if (bar && !owner) {
+                    skipped++;
+                    continue;
+                }
+                total++;
+                if (owner)
+                    hit++;
+                else if (misses.length < 20)
+                    misses.push([x, y, picked ? `${picked.constructor.name}.${(picked as St.Widget).style_class ?? ''}` : 'none']);
+            }
+        }
+        return JSON.stringify({rect: [cx, cy, cw, ch], range: [rx, rw], items: items.length, contiguous: gaps.length === 0, gaps, total, hit, skipped, misses});
+    };
+
     const dump = (): string => {
         const sides: St.Side[] = [St.Side.TOP, St.Side.RIGHT, St.Side.BOTTOM, St.Side.LEFT];
         const col = (c: {red: number; green: number; blue: number; alpha: number}) => [c.red, c.green, c.blue, c.alpha];
@@ -372,6 +476,9 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
             return new GLib.Variant('(s)', [JSON.stringify(info)]);
         }),
         HitSweepAsync: ([cls]: [string], inv: Invocation) => reply(inv, () => new GLib.Variant('(s)', [hitSweep(cls)])),
+        HitSweepInAsync: ([container, item, range]: [string, string, string], inv: Invocation) =>
+            reply(inv, () => new GLib.Variant('(s)', [hitSweepIn(container, item, range)])),
+        SetFrequentAsync: ([ids]: [string], inv: Invocation) => reply(inv, () => appIndex.setFrequentOverride(ids ? ids.split(',') : null)),
         DumpAsync: (_p: unknown[], inv: Invocation) => reply(inv, () => new GLib.Variant('(s)', [dump()])),
         SearchAsync: ([q]: [string], inv: Invocation) => reply(inv, () => popup.search(q)),
         ShowViewAsync: ([id]: [string], inv: Invocation) => reply(inv, () => popup.showView(id)),
