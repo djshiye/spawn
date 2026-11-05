@@ -96,6 +96,10 @@ toggle_runner 1.2
 open_menu 1.5
 expect "opening the main menu closed the runner" "$(rs open)" false
 expect "main menu is open" "$(rs popupOpen)" true
+key a 0.5
+expect_state "typing reaches the main menu after it displaced the runner" layout.search a
+key Escape 0.6   # clears the query; the menu stays open for the next check
+expect "main menu still open" "$(rs popupOpen)" true
 toggle_runner 1.5
 expect "opening the runner closed the main menu" "$(rs popupOpen)" false
 expect "runner is open" "$(rs open)" true
