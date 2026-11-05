@@ -1,0 +1,29 @@
+# Test image for tools/dev-shell-container.sh: a Fedora release with the GNOME Shell of that release
+# (43 = GNOME 49, 44 = GNOME 50, 45 = GNOME 51), everything the headless harness needs, software
+# rendering, and no extension version validation (Spawn's metadata.json only lists the current shell).
+# Build context is this directory only; the repo is bind-mounted at run time.
+ARG RELEASE=45
+FROM registry.fedoraproject.org/fedora:${RELEASE}
+
+RUN dnf install -y --setopt=install_weak_deps=False \
+        gnome-shell mutter mesa-dri-drivers mesa-libEGL mesa-libgbm \
+        dbus-daemon dbus-tools dconf glib2 glib2-devel python3 nodejs npm \
+        gjs gtk4 libadwaita adwaita-icon-theme gsettings-desktop-schemas gnome-menus accountsservice-libs \
+        default-fonts-core-sans default-fonts-core-mono adwaita-fonts-all \
+        procps-ng findutils which hostname xdg-user-dirs util-linux \
+    && dnf clean all \
+    && dbus-uuidgen --ensure=/etc/machine-id \
+    && mkdir -p /home/dev && chmod 0777 /home/dev
+
+# Load extensions regardless of their metadata.json shell-version (key of org.gnome.shell).
+RUN printf '[org.gnome.shell]\ndisable-extension-version-validation=true\n' \
+        >/usr/share/glib-2.0/schemas/zz-spawn-dev.gschema.override \
+    && glib-compile-schemas --strict /usr/share/glib-2.0/schemas \
+    && gsettings list-keys org.gnome.shell | grep -x disable-extension-version-validation
+
+# No systemd-logind in the container: without /run/systemd/seats the shell uses its dummy login manager
+# instead of failing to reach logind on the system bus.
+RUN rm -rf /run/systemd/seats
+
+RUN rpm -q gnome-shell mutter gtk4 libadwaita gjs glib2 | tee /etc/spawn-dev-versions
+ENV HOME=/home/dev
