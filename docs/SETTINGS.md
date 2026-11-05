@@ -20,7 +20,8 @@ returns false for it.
 The ArcMenu import never writes a value equal to Spawn's default (it resets the key instead), so a later change of
 a default still reaches imported setups.
 `menu-button-icon` is a bundled file name from `data/icons/`, an absolute path, or a
-themed icon name.
+themed icon name. The icon picker stores bundled icons (Spawn, Distros sources) as `icon-*.svg` / `distro-*.svg`,
+system icon-theme icons (System source) as their themed name (e.g. `start-here`) and chosen files as an absolute path.
 
 Enum differences from ArcMenu: `menu-button-*-click-action` is `Menu|None|ContextMenu` (ArcMenu:
 `ArcMenu|ContextMenu|None`; `ArcMenu` maps to `Menu`).

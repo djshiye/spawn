@@ -1,5 +1,5 @@
 // Opens one prefs dialog standalone (for screenshots) inside the dev-prefs sandbox.
-// Usage: gjs -m tools/dev-prefs-dialog.js <build dir> <icons|apps|folder|shortcut|prompt|new-folder>
+// Usage: gjs -m tools/dev-prefs-dialog.js <build dir> <icons|icons-system|apps|folder|shortcut|prompt|new-folder>
 import System from 'system';
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
@@ -24,6 +24,12 @@ app.connect('activate', () => {
     GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1500, () => {
         switch (which) {
         case 'icons': openIconPicker(ctx); break;
+        case 'icons-system': {
+            const picker = openIconPicker(ctx);
+            picker.sourceBox.selected = 3;
+            picker.search.text = 'start';
+            break;
+        }
         case 'apps': chooseApplication(ctx, new Set(), id => globalThis.print(`picked ${id}`)); break;
         case 'folder': openFolderEditor(ctx, '3c2219f1-a114-4e2e-a06c-51fdefa91991', 'Games'); break;
         case 'shortcut': void captureShortcut(window, '<Super>space'); break;

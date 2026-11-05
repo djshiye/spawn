@@ -19,8 +19,9 @@ your area before writing code.
    ArcMenu settings, pinned apps and pinned folders.
 
 ## v1 scope
-- Panel button (icon from bundled set incl. distro-fedora-symbolic, custom icon
-  path, size, padding, position left/center/right + offset), on Main.panel, Dash
+- Panel button (icon from the bundled Spawn/distro sets incl. distro-fedora-symbolic, any icon of the
+  system icon theme, or a custom icon path; the picker has an All/Spawn/Distros/System source filter, a
+  symbolic/full-colour filter and debounced search; size, padding, position left/center/right + offset), on Main.panel, Dash
   to Panel or App Icons Taskbar panels, optional multi-monitor.
 - Layout "spawn" = ArcMenu's "arcmenu" two-pane layout (see research/layout.md):
   - Left: search entry (top/bottom), main view = Pinned (default) / All apps

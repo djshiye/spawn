@@ -10,6 +10,8 @@
 #                Reset / Undo / Import leave the settings writable (tools/dev-prefs-reset.js), and print the resulting spawn dconf dump before opening the prefs
 #   --dialogs    also screenshot the standalone dialogs (icon picker, app list, folder editor,
 #                shortcut capture, rename prompt) as dialog-<name>.png
+#   --picker-test drive the icon picker like a user (System source, search, pick) and check the dconf value
+#                (tools/dev-prefs-picker.js); fails the run on any failed check
 #   --no-arcmenu do not load docs/research/user-arcmenu-settings.ini into the sandbox dconf
 #
 # It builds privately into .dev/prefs/build (so it never clobbers or depends on build/), loads
@@ -27,6 +29,7 @@ if [ "${1:-}" != "--inner" ]; then
     tall=0
     apply_import=0
     dialogs=0
+    picker_test=0
     pages=()
     for arg in "$@"; do
         case "$arg" in
@@ -34,6 +37,7 @@ if [ "${1:-}" != "--inner" ]; then
             --tall) tall=1 ;;
             --dialogs) dialogs=1 ;;
             --apply-import) apply_import=1 ;;
+            --picker-test) picker_test=1 ;;
             [0-9]*) pages+=("$arg") ;;
             *) echo "unknown argument: $arg" >&2; exit 2 ;;
         esac
@@ -59,7 +63,7 @@ if [ "${1:-}" != "--inner" ]; then
     export XDG_CACHE_HOME="$dev/cache"
     export XDG_RUNTIME_DIR="$dev/runtime"
     unset WAYLAND_DISPLAY DISPLAY DBUS_SESSION_BUS_ADDRESS
-    export SPAWN_DEV="$dev" SPAWN_ROOT="$root" SPAWN_LOAD_ARC="$load_arc" SPAWN_TALL="$tall" SPAWN_APPLY_IMPORT="$apply_import" SPAWN_DIALOGS="$dialogs" SPAWN_PAGES="${pages[*]}"
+    export SPAWN_DEV="$dev" SPAWN_ROOT="$root" SPAWN_LOAD_ARC="$load_arc" SPAWN_TALL="$tall" SPAWN_APPLY_IMPORT="$apply_import" SPAWN_DIALOGS="$dialogs" SPAWN_PICKER_TEST="$picker_test" SPAWN_PAGES="${pages[*]}"
     rc=0
     dbus-run-session -- "$root/tools/dev-prefs.sh" --inner 2>&1 | tee "$dev/run.log" || rc=$?
     # The prefs process logs to the session bus' stderr, which lands in run.log.
@@ -151,6 +155,11 @@ if [ "$SPAWN_APPLY_IMPORT" = 1 ]; then
     dconf dump /org/gnome/shell/extensions/spawn/ | cut -c1-200
 fi
 
+if [ "$SPAWN_PICKER_TEST" = 1 ]; then
+    echo "---- icon picker: System source, search, pick (separate-process dconf read) ----"
+    gjs -m "$root/tools/dev-prefs-picker.js" "$dev/build" 2>&1 | grep -v 'a11y' | tee -a "$plog" || status=1
+fi
+
 for page in $SPAWN_PAGES; do
     dconf write /org/gnome/shell/extensions/spawn/prefs-visible-page "$page"
     gnome-extensions prefs "$uuid" >>"$plog" 2>&1 || true
@@ -174,7 +183,7 @@ done
 
 if [ "$SPAWN_DIALOGS" = 1 ]; then
     # extensionDir for these standalone runs is the private build dir (it contains data/icons).
-    for d in icons apps folder shortcut prompt; do
+    for d in icons icons-system apps folder shortcut prompt; do
         gjs -m "$root/tools/dev-prefs-dialog.js" "$dev/build" "$d" >>"$plog" 2>&1 &
         dpid=$!
         sleep 4
