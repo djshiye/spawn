@@ -59,16 +59,17 @@ tools/dev-shell.sh dtp-toggle --with-dtp    # toggle Dash to Panel 10x (+ a rapi
 tools/dev-shell.sh dtp-open --with-dtp      # menu on Dash to Panel's bottom panel opens upward (arrow BOTTOM)
 tools/dev-shell.sh ui                       # all ui-* scenarios in one session (see below)
 tools/dev-shell.sh ui-dnd                   # a single ui scenario
+tools/dev-shell.sh runner                   # the standalone runner (ToggleRunner, runner-hotkey, search, Return, Escape)
 tools/dev-shell.sh shots                    # review screenshots -> .dev/shots/final/
 tools/dev-shell.sh bench                    # in-shell benchmark -> table, raw JSON in .dev/bench.json
 ```
 
-`all` runs smoke, lifecycle, hotkeys, theme, dtp-toggle, dtp-open, ui, shots and bench, prints a
+`all` runs smoke, lifecycle, hotkeys, theme, dtp-toggle, dtp-open, ui, runner, shots and bench, prints a
 PASS/FAIL summary and exits non-zero if any scenario failed or any `[spawn] ERROR:` /
 `JS ERROR` mentioning the extension showed up in a shell log. Per-scenario output and shell logs
 are kept in `.dev/logs/`.
 
-Seeded scenarios (`ui*`, `dtp-open`, `shots`, `bench`, or any scenario with `--seed`) load
+Seeded scenarios (`ui*`, `dtp-open`, `runner`, `shots`, `bench`, or any scenario with `--seed`) load
 `tools/dev/seed.ini` into the sandbox dconf: the user's pinned apps, three folders (one with
 only missing apps, to exercise the fallback icon), shortcuts, power buttons, the Fedora button icon,
 and the Orchis-Dark-Compact shell theme through the user-theme extension when both are installed.
@@ -82,7 +83,7 @@ sourced by `tools/dev-shell-inner.sh` and use its helpers (`open_menu`, `key`, `
 
 Dev-only D-Bus (exported only while the sandbox's `dev-mode` setting is true):
 `io.github.djshiye.Spawn.Dev` (`Open`, `Close`, `Search`, `Screenshot`, `AttachmentStatus`,
-`HotkeyStatus`, `EmitOverlayKey`, `Benchmark`) and `io.github.djshiye.Spawn.Ui` at
+`HotkeyStatus`, `OpenRunner`, `CloseRunner`, `RunnerState`, `EmitOverlayKey`, `Benchmark`) and `io.github.djshiye.Spawn.Ui` at
 `/io/github/djshiye/Spawn/Ui` (`Search`, `ShowView`, `OpenFolder`, `Key`, `Click`, `Move`, `Drag`,
 `Pick`, `State`; see `src/ui/devHooks.ts`).
 

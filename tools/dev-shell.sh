@@ -19,10 +19,12 @@
 #                  popup must open upward (arrow side BOTTOM); screenshot
 #     button-menu  seeded: the panel button context menu (right click / Menu key / Shift+F10, items, Power Options,
 #                  Show Desktop toggle, mutual exclusion with the Spawn popup; with --with-dtp also Panel Extension Settings)
+#     runner       seeded: the standalone runner (D-Bus ToggleRunner and the runner-hotkey accelerator, typing,
+#                  Return launches a probe app, Escape / outside click / main menu close it, disable while open); screenshot
 #     shots        seeded: the review screenshots into .dev/shots/final/
 #     bench        seeded: in-shell benchmark (Dev.Benchmark) -> table, raw JSON in .dev/bench.json
 #     all          smoke, lifecycle, hotkeys, theme, dtp-toggle (with DtP), dtp-open (with DtP),
-#                  ui, shots, bench; each in its own fresh shell; prints a summary and exits
+#                  ui, runner, shots, bench; each in its own fresh shell; prints a summary and exits
 #                  non-zero if any scenario failed or logged a spawn error
 #     <other>      any tools/dev/scenarios/<name>.sh is run as a scenario
 #   --seed       load tools/dev/seed.ini (the user's pinned apps, 3 folders, shortcuts, Orchis theme
@@ -58,12 +60,12 @@ case "$scenario" in
         fi
         ;;
 esac
-case "$scenario" in ui | ui-* | dtp-open | shots | bench | button-menu) seed=1 ;; esac
+case "$scenario" in ui | ui-* | dtp-open | shots | bench | button-menu | runner) seed=1 ;; esac
 
 if [ "$scenario" = "all" ]; then
     # Each scenario runs in its own fresh isolated shell (this script, recursively).
     mkdir -p "$dev/logs"
-    runs=("smoke" "lifecycle" "hotkeys" "theme" "dtp-toggle --with-dtp" "dtp-open --with-dtp" "ui" "shots" "bench")
+    runs=("smoke" "lifecycle" "hotkeys" "theme" "dtp-toggle --with-dtp" "dtp-open --with-dtp" "ui" "runner" "shots" "bench")
     summary=()
     failed=0
     for run in "${runs[@]}"; do
