@@ -21,4 +21,7 @@ cp -r data build/data
 rm -f "dist/${uuid}.shell-extension.zip"
 (cd build && zip -qr "../dist/${uuid}.shell-extension.zip" . -x '*.d.ts')
 
+# Stamp for tools/dev-shell.sh, which rebuilds when any source is newer than this.
+touch build/.built
+
 echo "built build/ and dist/${uuid}.shell-extension.zip"

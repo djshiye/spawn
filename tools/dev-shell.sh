@@ -40,6 +40,18 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 dev="${SPAWN_DEV_DIR:-$root/.dev}"; case "$dev" in "$root"/.dev*) ;; *) echo "SPAWN_DEV_DIR must be under $root/.dev" >&2; exit 2 ;; esac; mkdir -p "$dev"
 
+# Rebuild when build/ is missing or older than any source: the sandbox installs build/ as is, so a
+# stale build silently tests old code against new scenarios. SPAWN_NO_BUILD=1 skips this (e.g. when
+# several dev shells run in parallel from one checkout: build once first, then start them).
+if [ "${SPAWN_NO_BUILD:-0}" != 1 ]; then
+    stamp="$root/build/.built"
+    if [ ! -f "$stamp" ] || [ -n "$(find "$root/src" "$root/schemas" "$root/data" "$root/stylesheet.css" \
+            "$root/metadata.json" "$root/tsconfig.json" -newer "$stamp" -print -quit)" ]; then
+        echo "dev-shell: build/ is missing or stale, running tools/build.sh" >&2
+        "$root/tools/build.sh" >&2
+    fi
+fi
+
 scenario="${1:-smoke}"
 shift || true
 with_dtp=0
