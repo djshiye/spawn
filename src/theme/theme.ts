@@ -22,7 +22,7 @@
 //
 // Selectors styled (all through generated rules; stylesheet.css stays structural):
 //   Always (accent only):
-//     .spawn-tile / .spawn-row / .spawn-shortcut-row / .spawn-folder-tile
+//     .spawn-row / .spawn-shortcut-row / the faces of pinned entries (.spawn-tile:focus .spawn-tile-surface, .spawn-pinned-row:focus .spawn-row-surface)
 //        :focus  -> accent at 25 % alpha;  :active / :selected / :checked -> accent + white text
 //     .spawn-search-box:focus -> accent border
 //     .spawn-drop-target      -> accent border + accent 20 % background (drag & drop)

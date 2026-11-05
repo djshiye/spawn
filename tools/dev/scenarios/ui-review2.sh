@@ -119,7 +119,7 @@ sleep 1.2
 c1="$(state_get layout.columns)"; w1="$(state_get layout.tileWidth)"
 echo "columns/tile width: $c0/$w0 -> $c1/$w1"
 check "more columns or wider tiles with the wider pane" "$([ "$c1" -gt "$c0" ] || [ "$w1" -gt "$w0" ]; echo $?)"
-tw="$(rect spawn-tile 0 | python3 -c 'import json,sys; print(round(json.load(sys.stdin)[2]))')"
+tw="$(rect spawn-tile-surface 0 | python3 -c 'import json,sys; print(round(json.load(sys.stdin)[2]))')"
 expect "the visible tiles use the new tile width" "$tw" "$w1"
 set_display List
 

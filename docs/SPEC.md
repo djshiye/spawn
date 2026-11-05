@@ -31,6 +31,13 @@ your area before writing code.
     folder row with a chevron) or a grid (`pinned-apps-display`), with folders
     (open/rename/delete, drop app on app = new folder, drag reorder; in the list the
     top / middle / bottom band of a row means before / onto / after).
+  - Pinned hit areas: no dead zones and three sizes (`pinned-item-size`: Compact / Comfortable /
+    Large). St only hit-tests an actor's allocation (padding included, margins and container
+    spacing excluded), so the pinned list / grid and a folder's contents have no container padding or
+    spacing: each entry is a transparent outer `St.Button` whose padding carries the gap to its
+    neighbours (and the pane-edge gutter), and the visible row / tile is its `.spawn-surface` child,
+    styled through the button's state. Drag & drop bands are fractions of the visible face.
+    `tools/dev-shell.sh ui-hit-area` sweeps every pixel (`Ui.HitSweep`).
   - App context menu: open windows, new window, desktop actions, pin/unpin,
     add to folder, app details (Software), quit.
   - Keyboard: arrows/Tab/Return/Escape, Menu or Shift+F10 = context menu, typing

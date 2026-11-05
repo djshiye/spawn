@@ -16,6 +16,11 @@
     <value value="0" nick="List"/>
     <value value="1" nick="Grid"/>
   </enum>
+  <enum id="org.gnome.shell.extensions.spawn.pinned-item-size">
+    <value value="0" nick="Compact"/>
+    <value value="1" nick="Comfortable"/>
+    <value value="2" nick="Large"/>
+  </enum>
   <enum id="org.gnome.shell.extensions.spawn.menu-button-appearance">
     <value value="0" nick="Icon"/>
     <value value="1" nick="Text"/>
@@ -186,6 +191,11 @@
       <default>'List'</default>
       <summary>Pinned apps view</summary>
       <description>Show pinned apps and folders as a list (ArcMenu style) or as an icon grid</description>
+    </key>
+    <key name="pinned-item-size" enum="org.gnome.shell.extensions.spawn.pinned-item-size">
+      <default>'Compact'</default>
+      <summary>Pinned item size</summary>
+      <description>Size of the pinned apps and folders (and the contents of an open folder): Compact (40 px list rows), Comfortable (48 px) or Large (56 px); the grid tiles scale the same way. The whole row or tile, including the space between items, is clickable</description>
     </key>
     <key name="context-menu-items" type="aa{ss}">
       <default>[

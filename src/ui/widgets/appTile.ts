@@ -25,7 +25,7 @@ import type Shell from 'gi://Shell';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
-import {makeItemButton, wireItem} from './interact.js';
+import {makeItemButton, makeSurface, wireItem} from './interact.js';
 import type {TooltipManager} from './tooltip.js';
 
 export interface TileHost {
@@ -137,7 +137,9 @@ export function buildTileContent(button: St.Button, name: string, icon: Gio.Icon
     styleTileLabel(label, multiLine);
     box.add_child(iconActor);
     box.add_child(label);
-    button.set_child(box);
+    const surface = makeSurface('spawn-tile-surface');
+    surface.set_child(box);
+    button.set_child(surface);
     tooltips?.attach(button, label);
     return {icon: iconActor, label};
 }
