@@ -57,6 +57,10 @@
     <value value="0" nick="Full_Color"/>
     <value value="1" nick="Symbolic"/>
   </enum>
+  <enum id="org.gnome.shell.extensions.spawn.menuitem-location">
+    <value value="0" nick="Bottom"/>
+    <value value="1" nick="Top"/>
+  </enum>
   <enum id="org.gnome.shell.extensions.spawn.runner-position">
     <value value="0" nick="Top"/>
     <value value="1" nick="Centered"/>
@@ -349,6 +353,27 @@
     <key name="power-display-style" enum="org.gnome.shell.extensions.spawn.power-display-style">
       <default>'Default'</default>
       <summary>How power buttons are displayed</summary>
+    </key>
+    <!-- Sidebar extras: category quick links under/above the left pane, external devices + bookmarks in the right pane -->
+    <key name="arcmenu-extra-categories-links" type="a(ib)">
+      <default>[(0, false), (1, false), (2, false), (3, false), (4, false)]</default>
+      <summary>Category quick links</summary>
+      <description>Quick links on the start view: (id, enabled), in display order; ids 0 Favorites (GNOME favorites) 1 Frequent 2 All apps 3 Pinned 4 Recent files. The link of the current start view is never shown</description>
+    </key>
+    <key name="arcmenu-extra-categories-links-location" enum="org.gnome.shell.extensions.spawn.menuitem-location">
+      <default>'Bottom'</default>
+      <summary>Where the category quick links are shown</summary>
+      <description>Top: above the list; Bottom: below it, above the Back / All Apps button</description>
+    </key>
+    <key name="show-external-devices" type="b">
+      <default>false</default>
+      <summary>Show external devices and network locations</summary>
+      <description>Mounted drives and network locations in the right pane, with an eject / unmount button</description>
+    </key>
+    <key name="show-bookmarks" type="b">
+      <default>false</default>
+      <summary>Show file manager bookmarks</summary>
+      <description>The bookmarks of ~/.config/gtk-3.0/bookmarks (the Files sidebar) in the right pane</description>
     </key>
     <key name="search-hidden" type="b">
       <default>false</default>

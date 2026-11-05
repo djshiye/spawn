@@ -20,6 +20,15 @@ export const PowerType = {
     SWITCH_USER: 7,
 } as const;
 
+/** Ids stored in `arcmenu-extra-categories-links` (a(ib)); identical to ArcMenu's CategoryType (0..4). */
+export const CategoryLink = {
+    FAVORITES: 0,
+    FREQUENT: 1,
+    ALL_PROGRAMS: 2,
+    PINNED: 3,
+    RECENT_FILES: 4,
+} as const;
+
 /** Built-in ids used in directory-shortcuts / application-shortcuts / pinned-apps entries. */
 export const ShortcutId = {
     HOME: 'Spawn_Home',

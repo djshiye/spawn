@@ -30,7 +30,7 @@
 //   popup.side: St.Side                the arrow side of the current attachment
 //   popup.menuActor / popup.layoutActor   dev hooks: the PopupMenu actor / the layout root (or null)
 //   popup.resetLayout() / popup.layoutBuilt   dev / benchmark: drop the built layout; is it built
-//   popup.search(q) / popup.showView(id) / popup.showAllApps() / popup.openFolderByIndex(i) / popup.debugState()
+//   popup.search(q) / popup.showView(id) / popup.showAllApps() / popup.openFolderByIndex(i) / popup.debugState() / popup.setFakePlaces(specs)
 //                                      thin forwards to the layout (dev hooks, MenuController.search)
 
 import Clutter from 'gi://Clutter';
@@ -45,6 +45,7 @@ import type {Scope} from '../core/scope.js';
 import type {IntellihideHold} from '../panel/intellihide.js';
 import {createIntellihideHold} from '../panel/targets.js';
 import {isActorAlive} from '../panel/validate.js';
+import type {FakePlace} from '../model/places.js';
 import {installUiDevHooks} from './devHooks.js';
 import {SpawnLayout} from './layout.js';
 import {closeMenu, openMenu} from './menuParams.js';
@@ -93,6 +94,11 @@ export class SpawnPopup {
 
     openFolderByIndex(index: number): void {
         this._layout?.openFolderByIndex(index);
+    }
+
+    /** Dev hook (Ui.SetPlaces): fake devices / bookmarks in the right pane; null = the real ones. */
+    setFakePlaces(specs: FakePlace[] | null): void {
+        this._ensureLayout().setFakePlaces(specs);
     }
 
     /** Dev / benchmark only: drop the built layout (and the anchor) so the next open() rebuilds it. */

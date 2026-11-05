@@ -28,6 +28,12 @@ your area before writing code.
     (by category) / Frequent, Back and All Apps buttons.
   - Right: user avatar + name, directory shortcuts (Home, Documents, …), application
     shortcuts (Software, Settings, …, separators), power buttons (power-options).
+  - Sidebar extras (opt-in, all off by default; same keys as ArcMenu): category quick links
+    (`arcmenu-extra-categories-links`, `-location`: Favorites / Frequent / All Apps / Pinned / Recent Files rows
+    above or below the start view's list, hidden on every other view; Recent Files and Favorites are views of
+    their own) and external devices + bookmarks in the right pane (`show-external-devices`, `show-bookmarks`; live
+    updates, an eject button on removable devices that Right-arrow reaches). All rows follow the hit-area convention.
+    `show-category-sub-menus` is not supported (categories are flat). See SETTINGS.md.
   - Pinned apps as a list (default, like ArcMenu's arcmenu layout: one row per app, a
     folder row with a chevron) or a grid (`pinned-apps-display`), with folders
     (open/rename/delete, drop app on app = new folder, drag reorder; in the list the

@@ -19,9 +19,18 @@
 // activate() re-checks the file, then opens it with its default application using a proper
 // launch context (focus / startup notification) and reports failures with a notification.
 //
+// The same cache feeds the menu's Recent Files view (the "Recent files" category quick link):
+// list(max) returns the newest live entries, honouring show-hidden-recent-files and GNOME's
+// org.gnome.desktop.privacy remember-recent-files (off = nothing is listed), and open(entry)
+// opens one with its default application. Neither depends on search-provider-recent-files.
+//
 // Public API:
 //   new RecentFilesProvider(scope: Scope, settings: SpawnSettings)  implements SearchProvider
 //   clear(): drop the parsed list, caches and the file monitor
+//   list(max): RecentList                 the newest `max` live files {entries, more, remembering}
+//   open(entry: RecentItem): void         open with the default application (notifies on failure)
+//   RecentItem                            {uri, name, folder (~-shortened parent), path, mime, hidden, modified}
+//   RecentList                            {entries, more (older live files exist), remembering (privacy switch)}
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -40,7 +49,7 @@ const STAT_BUDGET = 100;
 const EXISTS_TTL_US = 5_000_000;
 const RETRY_US = 3_000_000;
 
-interface RecentItem {
+export interface RecentItem {
     uri: string;
     name: string;
     /** Directory shown as description, with the home directory shortened to "~". */
@@ -50,6 +59,14 @@ interface RecentItem {
     hidden: boolean;
     modified: number;
 }
+
+export interface RecentList {
+    entries: RecentItem[];
+    more: boolean;
+    remembering: boolean;
+}
+
+const PRIVACY_SCHEMA = 'org.gnome.desktop.privacy';
 
 function tryGet<T>(fn: () => T, fallback: T): T {
     try {
@@ -71,6 +88,7 @@ export class RecentFilesProvider implements SearchProvider {
     private _monitorStarted = false;
     private _monitored = false;
     private _exists = new Map<string, {present: boolean; at: number}>();
+    private _privacy: Gio.Settings | null | undefined;
 
     constructor(scope: Scope, settings: SpawnSettings) {
         this._monitorScope = scope.child('recent files monitor');
@@ -89,6 +107,46 @@ export class RecentFilesProvider implements SearchProvider {
         this._retryAt = 0;
         this._items = [];
         this._exists.clear();
+    }
+
+    /** GNOME's "File History" switch (org.gnome.desktop.privacy remember-recent-files); true when it cannot be read. */
+    private _remembering(): boolean {
+        if (this._privacy === undefined) {
+            const source = Gio.SettingsSchemaSource.get_default();
+            this._privacy = source?.lookup(PRIVACY_SCHEMA, true) ? new Gio.Settings({schema_id: PRIVACY_SCHEMA}) : null;
+        }
+        return tryGet(() => this._privacy?.get_boolean('remember-recent-files') ?? true, true);
+    }
+
+    list(max: number): RecentList {
+        const remembering = this._remembering();
+        if (!remembering)
+            return {entries: [], more: false, remembering};
+        this._ensureLoaded();
+        const items = this._settings.get('show-hidden-recent-files') ? this._items : this._items.filter(i => !i.hidden);
+        const entries: RecentItem[] = [];
+        let more = false;
+        const now = GLib.get_monotonic_time();
+        let budget = STAT_BUDGET;
+        for (const item of items) {
+            const present = this._isPresent(item, now, budget > 0);
+            if (present === null)
+                break;
+            if (present === 'stat' || present === 'dead')
+                budget--;
+            if (present === false || present === 'dead')
+                continue;
+            if (entries.length >= max) {
+                more = true;
+                break;
+            }
+            entries.push(item);
+        }
+        return {entries, more, remembering};
+    }
+
+    open(item: RecentItem): void {
+        this._open(item);
     }
 
     search(query: string, token: CancelToken): SearchResult[] {

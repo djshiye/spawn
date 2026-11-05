@@ -40,6 +40,9 @@
 //                            items must be empty (items touch) unless a `spawn-section-title` / `spawn-separator` lies in them:
 //                            {rect, range, items, contiguous, gaps: [[y0, y1]...], total, hit, skipped, misses}.
 //   SetFrequent(s ids)       the Frequent lists show these desktop ids (comma separated) as the most used apps; '' = real usage
+//   SetPlaces(s json)        fake external devices / network locations / bookmarks in the right pane (needs
+//                            show-external-devices / show-bookmarks): [{kind: 'device'|'network'|'bookmark', name,
+//                            icon?, ejectable?}]; '' = the real ones. Ejecting a fake removes it
 //   Dump() -> s              JSON: monitor, anchor, popup rect and every visible actor of the popup /
 //                            context menu / tooltip with allocation, padding, margin, colours, font
 //                            (the UX audit measurements; see tools/dev/scenarios/ui-ux-measure.sh)
@@ -58,6 +61,7 @@ import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {SpawnSettings} from '../core/settings.js';
 import type {AppIndex} from '../model/appIndex.js';
+import type {FakePlace} from '../model/places.js';
 import type {SpawnPopup} from './menu.js';
 
 const PATH = '/io/github/djshiye/Spawn/Ui';
@@ -82,6 +86,7 @@ const IFACE = `
     <method name="HitSweep"><arg type="s" direction="in" name="itemCls"/><arg type="s" direction="out" name="json"/></method>
     <method name="HitSweepIn"><arg type="s" direction="in" name="containerCls"/><arg type="s" direction="in" name="itemCls"/><arg type="s" direction="in" name="rangeCls"/><arg type="s" direction="out" name="json"/></method>
     <method name="SetFrequent"><arg type="s" direction="in" name="ids"/></method>
+    <method name="SetPlaces"><arg type="s" direction="in" name="json"/></method>
     <method name="Dump"><arg type="s" direction="out" name="json"/></method>
   </interface>
 </node>`;
@@ -479,6 +484,7 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
         HitSweepInAsync: ([container, item, range]: [string, string, string], inv: Invocation) =>
             reply(inv, () => new GLib.Variant('(s)', [hitSweepIn(container, item, range)])),
         SetFrequentAsync: ([ids]: [string], inv: Invocation) => reply(inv, () => appIndex.setFrequentOverride(ids ? ids.split(',') : null)),
+        SetPlacesAsync: ([json]: [string], inv: Invocation) => reply(inv, () => popup.setFakePlaces(json ? JSON.parse(json) as FakePlace[] : null)),
         DumpAsync: (_p: unknown[], inv: Invocation) => reply(inv, () => new GLib.Variant('(s)', [dump()])),
         SearchAsync: ([q]: [string], inv: Invocation) => reply(inv, () => popup.search(q)),
         ShowViewAsync: ([id]: [string], inv: Invocation) => reply(inv, () => popup.showView(id)),

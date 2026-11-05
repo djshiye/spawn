@@ -10,6 +10,7 @@
 //   services.appIndex     AppIndex (lazy)
 //   services.pinned       PinnedStore (lazy)
 //   services.search       SearchEngine (lazy; apps/windows/recent/shell providers registered here)
+//   services.recentFiles  the RecentFilesProvider registered in services.search (also feeds the Recent Files view)
 //   services.warmUp()     (call from layout onOpen) create the search engine and start loading the
 //                         GNOME shell search providers in the background, so the first query of
 //                         the session already includes them. Cheap, idempotent, never throws.
@@ -43,6 +44,7 @@ export class Services {
     private _pinned: PinnedStore | null = null;
     private _search: SearchEngine | null = null;
     private _shell: ShellProviders | null = null;
+    private _recent: RecentFilesProvider | null = null;
 
     constructor(scope: Scope, settings: SpawnSettings, info: ExtensionInfo) {
         this.scope = scope;
@@ -66,13 +68,19 @@ export class Services {
             const engine = new SearchEngine(scope);
             engine.addProvider(new AppsProvider(this.appIndex, this.settings));
             engine.addProvider(new WindowsProvider(this.settings));
-            engine.addProvider(new RecentFilesProvider(scope, this.settings));
+            this._recent = new RecentFilesProvider(scope, this.settings);
+            engine.addProvider(this._recent);
             const shell = new ShellProviders(scope, this.settings);
             engine.addProviderSource(() => shell.ready());
             this._shell = shell;
             this._search = engine;
         }
         return this._search;
+    }
+
+    get recentFiles(): RecentFilesProvider {
+        void this.search;
+        return this._recent as RecentFilesProvider;
     }
 
     warmUp(): void {

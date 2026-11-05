@@ -53,6 +53,7 @@ export type DefaultMenuView = 'Pinned_Apps' | 'Categories_List' | 'Frequent_Apps
 export type AllAppsButtonAction = 'Categories_List' | 'All_Programs';
 export type SearchbarLocation = 'Bottom' | 'Top' | 'Auto';
 export type PowerDisplayStyle = 'Default' | 'In_Line' | 'Menu';
+export type MenuItemLocation = 'Bottom' | 'Top';
 export type RunnerPosition = 'Top' | 'Centered';
 export type RunnerDefaultView = 'Default' | 'Pinned_Apps' | 'Frequent_Apps';
 export type MenuItemIconStyle = 'Full_Color' | 'Symbolic';
@@ -112,6 +113,10 @@ export interface SettingsMap {
     'pinned-item-size': PinnedItemSize;
     'power-options': Array<[number, boolean]>;
     'power-display-style': PowerDisplayStyle;
+    'arcmenu-extra-categories-links': Array<[number, boolean]>;
+    'arcmenu-extra-categories-links-location': MenuItemLocation;
+    'show-external-devices': boolean;
+    'show-bookmarks': boolean;
     'search-hidden': boolean;
     'search-entry-location': SearchbarLocation;
     'max-search-results': number;
