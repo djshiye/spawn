@@ -31,7 +31,6 @@ const sleep = ms => {
         GLib.MainContext.default().iteration(true);
 };
 const names = picker => Array.from({length: picker.model.get_n_items()}, (_, i) => picker.model.get_item(i).string);
-const NONE = 0xffffffff;
 
 let failures = 0;
 function check(what, ok, detail = '') {
@@ -64,9 +63,19 @@ app.connect('activate', () => {
     });
 });
 
-function selectedValue(picker) {
-    const pos = picker.grid.model.selected;
-    return pos === NONE ? null : picker.model.get_item(pos).string;
+// Names (tooltips) of the realised grid cells that carry the "current icon" mark (the `card` class).
+function markedCells(picker) {
+    sleep(300); // let the grid lay out and bind its visible cells
+    const found = [];
+    const walk = widget => {
+        for (let child = widget.get_first_child(); child; child = child.get_next_sibling()) {
+            if (child.has_css_class('card'))
+                found.push(child.get_tooltip_text());
+            walk(child);
+        }
+    };
+    walk(picker.grid);
+    return found;
 }
 
 function run(ctx) {
@@ -75,7 +84,7 @@ function run(ctx) {
     let picker = openIconPicker(ctx);
     check('picker opens on the source of the current icon (Spawn)', picker.sourceBox.selected === 1, `selected=${picker.sourceBox.selected}`);
     check('Spawn source lists only icon-*.svg', names(picker).length > 0 && names(picker).every(n => n.startsWith('icon-') && n.endsWith('.svg')), `${names(picker).length} items`);
-    check('current icon is highlighted in the grid', selectedValue(picker) === 'icon-apps-symbolic.svg', String(selectedValue(picker)));
+    check('current icon is marked in the grid', markedCells(picker).join() === 'icon-apps-symbolic', markedCells(picker).join());
 
     const t0 = GLib.get_monotonic_time();
     picker.sourceBox.selected = 3;
@@ -101,7 +110,7 @@ function run(ctx) {
     // 2. Reopened on the System source with the current icon highlighted; pick a bundled distro icon.
     picker = openIconPicker(ctx);
     check('picker reopens on System for a themed name', picker.sourceBox.selected === 3);
-    check('current themed icon is highlighted', selectedValue(picker) === 'start-here', String(selectedValue(picker)));
+    check('current themed icon is marked', markedCells(picker).join() === 'start-here', markedCells(picker).join());
     picker.sourceBox.selected = 2;
     picker.search.text = 'fedora';
     sleep(400);
@@ -123,7 +132,7 @@ function run(ctx) {
     picker.dialog.close();
     settings.set('menu-button-icon', `${build}/data/icons/distro-fedora-symbolic.svg`);
     picker = openIconPicker(ctx);
-    check('a file path value opens the picker', picker.model.get_n_items() > 0);
+    check('a file path value opens the picker on All icons', picker.sourceBox.selected === 0 && picker.model.get_n_items() > 100, `${picker.model.get_n_items()} items`);
     picker.dialog.close();
     check('dconf keeps the file path', dconfRead('menu-button-icon') === `'${build}/data/icons/distro-fedora-symbolic.svg'`);
     settings.set('menu-button-icon', 'icon-apps-symbolic.svg');

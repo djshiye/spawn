@@ -26,6 +26,7 @@ type Style = 'all' | 'symbolic' | 'colour';
 const SOURCES: readonly Source[] = ['all', 'spawn', 'distro', 'system'];
 const STYLES: readonly Style[] = ['all', 'symbolic', 'colour'];
 const SEARCH_DELAY_MS = 150;
+const CURRENT_CLASS = 'card'; // marks the cell of the current icon (Adwaita card look)
 
 /** What openIconPicker returns: the live widgets, so the dev-prefs test can drive the dialog like a user. */
 export interface IconPicker {
@@ -78,7 +79,7 @@ function systemIcons(): string[] {
 
 /** Which source a setting value belongs to: bundled files end in .svg, theme names never do. */
 function sourceOf(value: string): Exclude<Source, 'all'> {
-    if (!value.endsWith('.svg'))
+    if (!value.endsWith('.svg') || value.includes('/'))
         return 'system';
     return value.startsWith('distro-') ? 'distro' : 'spawn';
 }
@@ -150,34 +151,40 @@ export function openIconPicker(ctx: PrefsContext): IconPicker {
     };
     const filter = Gtk.CustomFilter.new(item => matches((item as Gtk.StringObject).string));
     const model = Gtk.FilterListModel.new(store, filter);
-    const selection = Gtk.SingleSelection.new(model);
-    selection.autoselect = false;
-    selection.can_unselect = true;
+    // No selection model: single_click_activate also selects on hover, which would move a "selected" highlight
+    // away from the current icon. The current icon is marked in `bind` instead.
+    const selection = Gtk.NoSelection.new(model);
 
-    // Highlights the current icon when it is in the filtered list.
-    const markCurrent = (): void => {
-        let position = Gtk.INVALID_LIST_POSITION;
-        for (let i = 0, n = model.get_n_items(); i < n; i++) {
-            if ((model.get_item(i) as Gtk.StringObject).string === current) {
-                position = i;
-                break;
+    const scrollToCurrent = (): void => {
+        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            for (let i = 0, n = model.get_n_items(); i < n; i++) {
+                if ((model.get_item(i) as Gtk.StringObject).string === current) {
+                    grid.scroll_to(i, Gtk.ListScrollFlags.NONE, null);
+                    break;
+                }
             }
-        }
-        selection.set_selected(position);
+            return GLib.SOURCE_REMOVE;
+        });
     };
 
     const factory = new Gtk.SignalListItemFactory();
     factory.connect('setup', (_f: Gtk.SignalListItemFactory, obj: GObject.Object) => {
         const item = obj as Gtk.ListItem;
-        item.set_child(new Gtk.Image({pixel_size: 32, margin_top: 10, margin_bottom: 10, margin_start: 10, margin_end: 10}));
+        const cell = new Gtk.Box({halign: Gtk.Align.CENTER});
+        cell.append(new Gtk.Image({pixel_size: 32, margin_top: 10, margin_bottom: 10, margin_start: 10, margin_end: 10}));
+        item.set_child(cell);
     });
     factory.connect('bind', (_f: Gtk.SignalListItemFactory, obj: GObject.Object) => {
         const item = obj as Gtk.ListItem;
         const value = (item.get_item() as Gtk.StringObject).string;
-        const image = item.get_child() as Gtk.Image;
-        setImage(image, ctx.extensionDir, value);
-        image.set_tooltip_text(displayName(value));
-        label(image, displayName(value));
+        const cell = item.get_child() as Gtk.Box;
+        setImage(cell.get_first_child() as Gtk.Image, ctx.extensionDir, value);
+        cell.set_tooltip_text(displayName(value));
+        label(cell, displayName(value));
+        if (value === current)
+            cell.add_css_class(CURRENT_CLASS);
+        else
+            cell.remove_css_class(CURRENT_CLASS);
     });
 
     const grid = new Gtk.GridView({
@@ -200,18 +207,12 @@ export function openIconPicker(ctx: PrefsContext): IconPicker {
     });
 
     const empty = new Gtk.Label({label: 'No icons match', css_classes: ['dim-label'], margin_top: 24, visible: false});
-    // The filter's own items-changed fires when it is re-evaluated or when the system names arrive.
-    model.connect('items-changed', () => {
-        markCurrent();
-        empty.set_visible(model.get_n_items() === 0);
-    });
+    model.connect('items-changed', () => empty.set_visible(model.get_n_items() === 0));
     const refresh = (): void => {
         const source = SOURCES[sourceBox.selected] ?? 'all';
         if (source === 'all' || source === 'system')
             loadSystem();
         filter.changed(Gtk.FilterChange.DIFFERENT);
-        markCurrent();
-        empty.set_visible(model.get_n_items() === 0);
     };
 
     let timer = 0;
@@ -232,7 +233,7 @@ export function openIconPicker(ctx: PrefsContext): IconPicker {
     styleBox.connect('notify::selected', refresh);
     const settingsId = ctx.settings.raw.connect('changed::menu-button-icon', () => {
         current = showCurrent();
-        markCurrent();
+        filter.changed(Gtk.FilterChange.DIFFERENT); // re-binds the visible cells so the mark follows
     });
     dialog.connect('closed', () => {
         cancelTimer();
@@ -248,8 +249,9 @@ export function openIconPicker(ctx: PrefsContext): IconPicker {
     toolbar.set_content(body);
     dialog.set_child(toolbar);
     // Start on the source that holds the current icon, so it is visible (and highlighted) straight away.
-    sourceBox.set_selected(current === '' ? 0 : Math.max(0, SOURCES.indexOf(sourceOf(current))));
+    sourceBox.set_selected(current === '' || current.includes('/') ? 0 : Math.max(0, SOURCES.indexOf(sourceOf(current))));
     refresh();
+    scrollToCurrent();
     dialog.present(ctx.window);
     return {dialog, search, sourceBox, styleBox, grid, model};
 }

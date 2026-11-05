@@ -46,6 +46,7 @@ if [ "${1:-}" != "--inner" ]; then
 
     mkdir -p "$dev"
     rm -rf "$dev/config" "$dev/cache" "$dev/runtime" "$dev/data" "$dev/shots" "$dev/build"
+    rm -f "$dev/prefs.log" "$dev/shell.log" "$dev/errors.log" # stale logs from an earlier run would be re-reported
     mkdir -p "$dev/config" "$dev/data" "$dev/cache" "$dev/runtime" "$dev/shots" "$dev/build"
     chmod 700 "$dev/runtime"
 
