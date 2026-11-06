@@ -42,6 +42,7 @@ export class SearchBox {
         this.actor = new St.Entry({
             style_class: 'spawn-search-box',
             hint_text: _('Search apps, windows and files…'),
+            accessible_name: _('Search apps, windows and files…'),
             can_focus: true,
             track_hover: true,
             primary_icon: findIcon,

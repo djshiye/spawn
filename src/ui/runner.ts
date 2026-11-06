@@ -511,6 +511,14 @@ export class SpawnRunner {
         case Clutter.KEY_ISO_Left_Tab:
             this._navigate(ui, sym === Clutter.KEY_ISO_Left_Tab || (state & Clutter.ModifierType.SHIFT_MASK) ? -1 : 1, true);
             return Clutter.EVENT_STOP;
+        case Clutter.KEY_Escape:
+            // like the main menu: the first Escape clears the query, Escape on an empty one closes
+            if (ui.search.text.length > 0) {
+                ui.search.clear();
+                ui.search.focus();
+                return Clutter.EVENT_STOP;
+            }
+            return Clutter.EVENT_PROPAGATE;
         case Clutter.KEY_BackSpace:
             if (!ui.search.hasFocus && ui.search.text.length > 0) {
                 ui.search.deleteBackward();
@@ -532,7 +540,15 @@ export class SpawnRunner {
         if (!this._open || this._disposed)
             return;
         const focus = global.stage.key_focus as Clutter.Actor | null;
-        if (!focus || !ui.content.contains(focus))
+        if (!focus) {
+            // The focused row went away (results replaced): keep the keyboard alive.
+            ui.scope.idle(() => {
+                if (this._open && !this._disposed && !global.stage.key_focus)
+                    ui.search.focus();
+            });
+            return;
+        }
+        if (!ui.content.contains(focus))
             return;
         scrollIntoView(ui.scroll, focus);
         // The first result shows as selected only while the entry has focus.

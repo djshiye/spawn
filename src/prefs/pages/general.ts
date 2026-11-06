@@ -19,6 +19,12 @@ interface AcceleratorOptions {
     subtitle: string;
 }
 
+/** Human label of an accelerator ("Super+Space"), the raw string when it cannot be parsed. */
+function accelLabel(accel: string): string {
+    const [ok, keyval, mods] = Gtk.accelerator_parse(accel);
+    return ok && mods !== null ? Gtk.accelerator_get_label(keyval, mods) : accel;
+}
+
 /** One row per accelerator of the `as` setting `opts.key` plus an "Add" row, kept in `g` (live). */
 function acceleratorRows(ctx: PrefsContext, g: Adw.PreferencesGroup, opts: AcceleratorOptions): void {
     const key = opts.key;
@@ -40,11 +46,16 @@ function acceleratorRows(ctx: PrefsContext, g: Adw.PreferencesGroup, opts: Accel
                     toast(ctx, 'That shortcut is already in the list');
                     return;
                 }
+                const otherKey = key === 'spawn-hotkey' ? 'runner-hotkey' : 'spawn-hotkey';
+                if (ctx.settings.get(otherKey).includes(accel)) {
+                    toast(ctx, `Already used by the ${key === 'spawn-hotkey' ? 'runner' : 'menu'} shortcut`);
+                    return;
+                }
                 next[index] = accel;
             }
             write(next);
             if (accel === '<Super>space')
-                toast(ctx, 'Note: <Super>space is also used by GNOME for input source switching');
+                toast(ctx, `Note: ${accelLabel(accel)} is also used by GNOME for input source switching`);
         });
     };
 
@@ -60,7 +71,7 @@ function acceleratorRows(ctx: PrefsContext, g: Adw.PreferencesGroup, opts: Accel
             });
             const shown = new Gtk.ShortcutLabel({accelerator: accel, valign: Gtk.Align.CENTER});
             const change = new Gtk.Button({label: 'Change', valign: Gtk.Align.CENTER});
-            label(change, `Change shortcut ${accel}`);
+            label(change, `Change shortcut ${accelLabel(accel)}`);
             change.connect('clicked', () => capture(index));
             const remove = new Gtk.Button({
                 icon_name: 'edit-delete-symbolic',
@@ -68,7 +79,7 @@ function acceleratorRows(ctx: PrefsContext, g: Adw.PreferencesGroup, opts: Accel
                 tooltip_text: 'Remove the shortcut',
                 css_classes: ['flat'],
             });
-            label(remove, `Remove shortcut ${accel}`);
+            label(remove, `Remove shortcut ${accelLabel(accel)}`);
             remove.connect('clicked', () => {
                 const next = ctx.settings.get(key);
                 next.splice(index, 1);
@@ -136,7 +147,7 @@ function alignmentRow(ctx: PrefsContext): Adw.ActionRow {
         width_request: 220,
     });
     scale.add_mark(0, Gtk.PositionType.BOTTOM, 'Left');
-    scale.add_mark(50, Gtk.PositionType.BOTTOM, 'Center');
+    scale.add_mark(50, Gtk.PositionType.BOTTOM, 'Centre');
     scale.add_mark(100, Gtk.PositionType.BOTTOM, 'Right');
     label(scale, 'Menu alignment');
     ctx.settings.raw.bind('menu-position-alignment', scale.adjustment, 'value', Gio.SettingsBindFlags.DEFAULT);
@@ -162,7 +173,7 @@ export function createGeneralPage(ctx: PrefsContext): Adw.PreferencesPage {
     });
 
     page.add(group(ctx, 'Panel', [
-        enumRow(ctx, 'position-in-panel', 'Button position', [['Left', 'Left'], ['Center', 'Center'], ['Right', 'Right']]),
+        enumRow(ctx, 'position-in-panel', 'Button position', [['Left', 'Left'], ['Center', 'Centre'], ['Right', 'Right']]),
         alignmentRow(ctx),
         spinRow(ctx, 'menu-button-position-offset', 'Position offset', 0, 20, {
             subtitle: 'Number of panel items to skip from the chosen edge',
@@ -174,7 +185,7 @@ export function createGeneralPage(ctx: PrefsContext): Adw.PreferencesPage {
     page.add(hotkeyGroup(ctx));
     page.add(runnerHotkeyGroup(ctx));
     page.add(group(ctx, 'Runner layout', [
-        enumRow(ctx, 'runner-position', 'Position', [['Top', 'Top'], ['Centered', 'Centered']], 'Where the runner opens on the monitor'),
+        enumRow(ctx, 'runner-position', 'Position', [['Top', 'Top'], ['Centered', 'Centred']], 'Where the runner opens on the monitor'),
         spinRow(ctx, 'runner-menu-width', 'Width', 300, 2000, {step: 10, subtitle: 'In pixels'}),
         spinRow(ctx, 'runner-menu-height', 'Maximum height', 300, 1000, {step: 10, subtitle: 'The runner grows with its results up to this height'}),
         spinRow(ctx, 'runner-font-size', 'Font size', 0, 30, {subtitle: 'In points; 0 uses the menu font'}),

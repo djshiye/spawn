@@ -26,9 +26,9 @@ const PAGES: ReadonlyArray<readonly [name: string, title: string, create: (ctx: 
     ['general', 'General', createGeneralPage],
     ['button', 'Button', createButtonPage],
     ['menu', 'Menu', createMenuPage],
-    ['pinned', 'Pinned & Shortcuts', createPinnedPage],
+    ['pinned', 'Pinned', createPinnedPage],
     ['appearance', 'Appearance', createAppearancePage],
-    ['import', 'Import from ArcMenu', createImportPage],
+    ['import', 'Import', createImportPage],
     ['about', 'About', createAboutPage],
 ];
 

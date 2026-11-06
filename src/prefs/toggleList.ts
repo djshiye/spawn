@@ -5,7 +5,7 @@
 //   toggleListGroup(ctx, spec): Adw.PreferencesGroup
 //   ToggleListSpec: {key ('power-options' | 'arcmenu-extra-categories-links'), title, description,
 //                    items: [id, title, icon][], fallbackIcon, resetKeys (the group's Reset button),
-//                    resetMessage (its Undo toast)}
+//                    resetMessage (its Undo toast), extraRows? (rows appended after the toggles)}
 //   Rows are rebuilt on every change; the focus returns to the switch / arrow button that was used.
 
 import Adw from 'gi://Adw';
@@ -24,6 +24,8 @@ export interface ToggleListSpec {
     fallbackIcon: string;
     resetKeys: readonly SettingKey[];
     resetMessage: string;
+    /** Extra rows appended to the group after the toggle rows (covered by the Reset button via resetKeys). */
+    extraRows?: Gtk.Widget[];
 }
 
 export function toggleListGroup(ctx: PrefsContext, spec: ToggleListSpec): Adw.PreferencesGroup {
@@ -37,6 +39,10 @@ export function toggleListGroup(ctx: PrefsContext, spec: ToggleListSpec): Adw.Pr
     const build = (): void => {
         for (const row of rows)
             g.remove(row);
+        for (const row of spec.extraRows ?? []) {
+            if (row.get_parent())
+                g.remove(row);
+        }
         rows = [];
         buttons.clear();
         const list = ctx.settings.get(key);
@@ -76,6 +82,8 @@ export function toggleListGroup(ctx: PrefsContext, spec: ToggleListSpec): Adw.Pr
             g.add(row);
             rows.push(row);
         });
+        for (const row of spec.extraRows ?? [])
+            g.add(row);
         const wanted = pendingFocus;
         pendingFocus = null;
         const target = wanted?.map(k => buttons.get(k)).find(b => b?.get_sensitive());
@@ -89,6 +97,7 @@ export function toggleListGroup(ctx: PrefsContext, spec: ToggleListSpec): Adw.Pr
     watch(ctx, g, [key], build);
 
     const reset = new Gtk.Button({label: 'Reset', valign: Gtk.Align.CENTER, css_classes: ['flat'], tooltip_text: 'Restore the defaults of this section'});
+    label(reset, `Reset ${spec.title}`);
     reset.connect('clicked', () => resetWithUndo(ctx, spec.resetKeys, spec.resetMessage));
     g.set_header_suffix(reset);
     return g;

@@ -1,4 +1,4 @@
-// Preferences page "Import from ArcMenu": ArcMenu status (installed / enabled / release), preview of
+// Preferences page "Import": ArcMenu status (installed / enabled / release), preview of
 // what the migration will do, the Import buttons (also "Import and disable ArcMenu") with an Undo
 // toast, and the optional "Disable ArcMenu" action.
 //
@@ -80,7 +80,7 @@ const DISABLE_MESSAGE: Readonly<Record<DisableResult, string>> = {
 export function createImportPage(ctx: PrefsContext): Adw.PreferencesPage {
     const page = new Adw.PreferencesPage({
         name: 'import',
-        title: 'Import from ArcMenu',
+        title: 'Import',
         icon_name: 'document-open-symbolic',
     });
     let groups: Adw.PreferencesGroup[] = [];
@@ -110,6 +110,13 @@ export function createImportPage(ctx: PrefsContext): Adw.PreferencesPage {
             if (closed)
                 return;
             arcStatus = status;
+            build();
+        }).catch((e: unknown) => {
+            checking = false;
+            logError(e as object, 'Spawn: ArcMenu status query failed');
+            if (closed)
+                return;
+            arcStatus = {installed: false, enabled: false, version: null, versionName: null, unknown: true};
             build();
         });
     };
@@ -160,6 +167,10 @@ export function createImportPage(ctx: PrefsContext): Adw.PreferencesPage {
                     button.set_sensitive(true);
                 else
                     refreshStatus();
+            }).catch((e: unknown) => {
+                logError(e as object, 'Spawn: disabling ArcMenu failed');
+                if (!closed)
+                    button.set_sensitive(true);
             });
         });
         row.add_suffix(button);
@@ -230,7 +241,7 @@ export function createImportPage(ctx: PrefsContext): Adw.PreferencesPage {
         importButtons = [];
 
         const snapshot = readArcMenuSnapshot(ctx.extensionDir);
-        const head = new Adw.PreferencesGroup({title: 'Import from ArcMenu'});
+        const head = new Adw.PreferencesGroup({title: 'ArcMenu'});
         const rescan = new Gtk.Button({label: 'Rescan', valign: Gtk.Align.CENTER, css_classes: ['flat']});
         rescan.connect('clicked', () => {
             build();

@@ -35,14 +35,14 @@ export function createAppearancePage(ctx: PrefsContext): Adw.PreferencesPage {
         'menu-item-hover-bg-color', 'menu-item-hover-fg-color', 'menu-item-active-bg-color', 'menu-item-active-fg-color',
     ];
     const menu = group(ctx, 'Menu colours', [
-        colorRow(ctx, 'menu-background-color', 'Background'),
-        colorRow(ctx, 'menu-foreground-color', 'Text'),
-        colorRow(ctx, 'menu-border-color', 'Border'),
-        colorRow(ctx, 'menu-separator-color', 'Separators'),
-        colorRow(ctx, 'menu-item-hover-bg-color', 'Item hover background'),
-        colorRow(ctx, 'menu-item-hover-fg-color', 'Item hover text'),
-        colorRow(ctx, 'menu-item-active-bg-color', 'Item pressed background'),
-        colorRow(ctx, 'menu-item-active-fg-color', 'Item pressed text'),
+        colorRow(ctx, 'menu-background-color', 'Background', undefined, 'Menu'),
+        colorRow(ctx, 'menu-foreground-color', 'Text', undefined, 'Menu'),
+        colorRow(ctx, 'menu-border-color', 'Border', undefined, 'Menu'),
+        colorRow(ctx, 'menu-separator-color', 'Separators', undefined, 'Menu'),
+        colorRow(ctx, 'menu-item-hover-bg-color', 'Item hover background', undefined, 'Menu'),
+        colorRow(ctx, 'menu-item-hover-fg-color', 'Item hover text', undefined, 'Menu'),
+        colorRow(ctx, 'menu-item-active-bg-color', 'Item pressed background', undefined, 'Menu'),
+        colorRow(ctx, 'menu-item-active-fg-color', 'Item pressed text', undefined, 'Menu'),
     ], {reset: colourKeys, description: 'Applied only while custom colours are enabled.'});
     page.add(menu);
 
@@ -71,13 +71,13 @@ export function createAppearancePage(ctx: PrefsContext): Adw.PreferencesPage {
         'menu-button-border-radius', 'menu-button-border-width',
     ];
     page.add(group(ctx, 'Panel button', [
-        optionalColorRow(ctx, 'menu-button-fg-color', 'Icon and text colour'),
-        optionalColorRow(ctx, 'menu-button-bg-color', 'Background'),
-        optionalColorRow(ctx, 'menu-button-hover-fg-color', 'Hover text'),
-        optionalColorRow(ctx, 'menu-button-hover-bg-color', 'Hover background'),
-        optionalColorRow(ctx, 'menu-button-active-fg-color', 'Pressed text'),
-        optionalColorRow(ctx, 'menu-button-active-bg-color', 'Pressed background'),
-        optionalColorRow(ctx, 'menu-button-border-color', 'Border colour'),
+        optionalColorRow(ctx, 'menu-button-fg-color', 'Icon and text colour', 'Panel button'),
+        optionalColorRow(ctx, 'menu-button-bg-color', 'Background', 'Panel button'),
+        optionalColorRow(ctx, 'menu-button-hover-fg-color', 'Hover text', 'Panel button'),
+        optionalColorRow(ctx, 'menu-button-hover-bg-color', 'Hover background', 'Panel button'),
+        optionalColorRow(ctx, 'menu-button-active-fg-color', 'Pressed text', 'Panel button'),
+        optionalColorRow(ctx, 'menu-button-active-bg-color', 'Pressed background', 'Panel button'),
+        optionalColorRow(ctx, 'menu-button-border-color', 'Border colour', 'Panel button'),
         optionalSpinRow(ctx, 'menu-button-border-width', 'Border width', 0, 5),
         optionalSpinRow(ctx, 'menu-button-border-radius', 'Corner radius', 0, 25),
     ], {

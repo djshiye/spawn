@@ -35,6 +35,7 @@ import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 
+import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 
@@ -318,7 +319,7 @@ export class MenuButton extends PanelMenu.Button {
     private _showTooltip(): void {
         if (!this.hover || this.has_style_pseudo_class('active') || !this._deps.settings.get('show-tooltips'))
             return;
-        const text = this._deps.settings.get('menu-button-text').trim() || 'Applications';
+        const text = this._deps.settings.get('menu-button-text').trim() || _('Applications');
         if (!this._tooltip) {
             this._tooltip = new St.Label({style_class: 'dash-label', text, opacity: 0});
             Main.uiGroup.add_child(this._tooltip);

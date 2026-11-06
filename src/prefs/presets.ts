@@ -109,7 +109,6 @@ export function createPresetsGroup(ctx: PrefsContext): Adw.PreferencesGroup {
     label(save, 'Save the current colours as a preset');
     const saveRow = new Adw.ActionRow({
         title: 'Save current colours as a preset',
-        subtitle: 'Not available while they already match a preset',
         activatable_widget: save,
     });
     saveRow.add_suffix(save);
@@ -132,6 +131,7 @@ export function createPresetsGroup(ctx: PrefsContext): Adw.PreferencesGroup {
             combo.selected = match >= 0 ? match + 1 : presets.length + 1;
         syncing = false;
         save.set_sensitive(match < 0);
+        saveRow.set_subtitle(match < 0 ? '' : 'Not available while they already match a preset');
         manageRow.set_sensitive(presets.length > 0);
     };
     sync();

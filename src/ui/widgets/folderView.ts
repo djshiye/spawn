@@ -177,6 +177,7 @@ export class FolderView {
         nameBox.add_child(this._nameLabel);
         nameBox.add_child(new St.Icon({icon_name: 'document-edit-symbolic', icon_size: 14, style_class: 'spawn-folder-edit-icon', y_align: Clutter.ActorAlign.CENTER}));
         this._nameButton.set_child(nameBox);
+        this._nameButton.accessible_name = _('Rename folder');
         wireItem(this._nameButton, {activate: () => this.startRename()});
         host.tooltips?.attach(this._nameButton, null, () => _('Rename folder'));
 
@@ -184,6 +185,7 @@ export class FolderView {
         this._closeButton.x_expand = false;
         this._closeButton.y_align = Clutter.ActorAlign.CENTER;
         this._closeButton.set_child(new St.Icon({icon_name: 'window-close-symbolic', icon_size: 16}));
+        this._closeButton.accessible_name = _('Close');
         wireItem(this._closeButton, {activate: () => host.back()});
         host.tooltips?.attach(this._closeButton, null, () => _('Close'));
 
@@ -196,6 +198,7 @@ export class FolderView {
             x_expand: true,
             visible: false,
         });
+        this._hint.clutter_text.ellipsize = Pango.EllipsizeMode.END;
 
         this._header.add_child(balance);
         this._header.add_child(this._nameButton);

@@ -216,6 +216,8 @@ export class SpawnLayout implements ShortcutHost {
     private _view: ViewId = 'pinned';
     /** The view under an open folder popup (where closing the popup returns to). */
     private _underFolder: ViewId = 'pinned';
+    /** Last keyboard-focused pinned tile and its index, to refocus a neighbour when it is destroyed. */
+    private _lastTile: {widget: Clutter.Actor; index: number} | null = null;
     private _isOpen = false;
     private _searchHandle: SearchHandle | null = null;
     private _searchToken = 0;
@@ -407,6 +409,8 @@ export class SpawnLayout implements ShortcutHost {
             if (this._searchOnTop() !== this._searchTop)
                 this._arrangeLeft();
             this._setView(this._defaultView());
+            for (const s of [this._pinnedScroll, this._frequentScroll, this._extraScroll, this._resultsScroll, this._shortcutScroll])
+                s?.vadjustment.set_value(0);
             this._search.actor.visible = !this._services.settings.get('search-hidden');
             if (this._search.actor.visible)
                 this._search.focus();
@@ -443,7 +447,6 @@ export class SpawnLayout implements ShortcutHost {
             return false;
         if (this._folderView?.renaming) {
             this._folderView.cancelRename();
-            this._focusMain();
             return true;
         }
         if (this._search.text.length > 0) {
@@ -1449,6 +1452,7 @@ export class SpawnLayout implements ShortcutHost {
         }
         this._setView('results');
         const results = this._results as ResultList;
+        this._resultsScroll?.vadjustment.set_value(0);
         // Keep the previous rows (dimmed) until the first batch of this query arrives: no blank
         // flash between keystrokes.
         results.beginQuery();
@@ -1555,7 +1559,7 @@ export class SpawnLayout implements ShortcutHost {
         case 'pinned': {
             const groups: Group[] = [{id: 'tiles', items: this._grid.tiles(), cols: this._grid.columns}];
             if (this._frequentSection) {
-                const rows = this._frequentSection.get_children()[2]?.get_children() ?? [];
+                const rows = (this._frequentSection.get_children()[2]?.get_children() ?? []).filter(c => c instanceof St.Button);
                 groups.push({id: 'frequent', items: rows, cols: 1});
             }
             return groups;
@@ -1914,12 +1918,24 @@ export class SpawnLayout implements ShortcutHost {
         const focus = global.stage.key_focus as Clutter.Actor | null;
         if (!focus) {
             // The focused actor went away (view switched, tile removed): keep the keyboard alive.
+            const lost = this._lastTile;
             this._scope.idle(() => {
                 if (this._isOpen && !this._destroyed && !global.stage.key_focus && !this._context.isOpen) {
                     // An open folder popup keeps the keyboard (its tiles are rebuilt on every store change).
-                    if (this._view === 'folder')
+                    if (this._view === 'folder') {
                         this._focusMain();
-                    else if (this._search.actor.visible)
+                        return;
+                    }
+                    // A pinned tile was destroyed (Unpin, Delete Folder): focus its neighbour at the same index.
+                    // Compare identities only: touching the destroyed tile itself logs a critical.
+                    const current = this._view === 'pinned' ? this._grid.tiles() : [];
+                    const tiles = lost && !current.includes(lost.widget as St.Widget) ? current : [];
+                    const next = tiles[Math.min(lost?.index ?? 0, tiles.length - 1)];
+                    if (next) {
+                        next.grab_key_focus();
+                        return;
+                    }
+                    if (this._search.actor.visible)
                         this._search.focus();
                     else
                         this._focusMain();
@@ -1929,6 +1945,11 @@ export class SpawnLayout implements ShortcutHost {
         }
         if (!this.actor.contains(focus))
             return;
+        if (this._view === 'pinned') {
+            const index = this._grid.tiles().indexOf(focus as St.Widget);
+            if (index >= 0)
+                this._lastTile = {widget: focus, index};
+        }
         // Keep the focused item visible inside its scroll view.
         let a: Clutter.Actor | null = focus;
         while (a && a !== this.actor) {

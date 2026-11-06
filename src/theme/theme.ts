@@ -59,7 +59,7 @@ import type {SettingKey, SpawnSettings} from '../core/settings.js';
 import {accentColor, buildCss, type ThemeInput} from './css.js';
 
 export {
-    ACCENT_COLORS, ACCENT_FG, accentColor, buildCss, sanitizeColor, withAlpha,
+    ACCENT_COLORS, ACCENT_FG, accentColor, accentForeground, buildCss, sanitizeColor, withAlpha,
     type ButtonColors, type ThemeColors, type ThemeInput,
 } from './css.js';
 

@@ -51,6 +51,16 @@ export class TooltipManager {
             else if (this._owner === widget || !this._owner)
                 this.hide();
         });
+        // Keyboard navigation: show the same tooltip while the widget holds key focus (the pointer
+        // case is handled by notify::hover; `hover` is skipped here so clicks do not re-trigger it).
+        widget.connect('key-focus-in', () => {
+            if (!widget.hover)
+                this._schedule(widget, label, extra, opts.delay ?? SHOW_DELAY_MS);
+        });
+        widget.connect('key-focus-out', () => {
+            if (this._owner === widget || !this._owner)
+                this.hide();
+        });
         widget.connect('button-press-event', () => {
             this.hide();
             return Clutter.EVENT_PROPAGATE;
@@ -79,7 +89,7 @@ export class TooltipManager {
             return;
         this._cancel = this._scope.timeout(delay, () => {
             this._cancel = null;
-            if (!widget.get_stage() || !widget.hover)
+            if (!widget.get_stage() || !(widget.hover || widget.has_key_focus()))
                 return;
             let text = extra?.() ?? null;
             if (!text && label && isTruncated(label))
