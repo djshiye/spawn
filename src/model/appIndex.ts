@@ -19,7 +19,8 @@
 //   index.usageScore(id: string): number  0..1 from Shell.AppUsage's ordering (1 = most used, 0 =
 //                                           unknown / usage tracking off); the ordering is re-read
 //                                           from get_most_used() at most every USAGE_TTL_MS
-//   index.searchEntries(): AppSearchEntry[] precomputed normalised keys for search/providers/apps
+//   index.searchEntries(): AppSearchEntry[] normalised keys for search/providers/apps; built on an idle
+//                                           after every (re)build, or on demand by the first search
 //   index.onChanged(scope, cb)              cb() after any incremental update
 //
 // Notes:
@@ -39,6 +40,7 @@ import {debounce} from '../core/debounce.js';
 import {warn} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import {appInfoOf, newShellApp} from './appInfo.js';
+import {prepareApps} from '../search/rank.js';
 import {appKeys, descriptionKey} from './appKeys.js';
 
 export interface AppCategory {
@@ -76,7 +78,9 @@ export class AppIndex {
     private _apps: Shell.App[] = [];
     private _byId = new Map<string, Shell.App>();
     private _categories: AppCategory[] = [];
-    private _entries: AppSearchEntry[] = [];
+    /** Built lazily (searchEntries(), or an idle after each rebuild): ~6 desktop-file reads per app. */
+    private _entries: AppSearchEntry[] | null = null;
+    private _cancelEntriesIdle: (() => void) | null = null;
     private readonly _listeners = new Set<() => void>();
     private _usageScores: Map<string, number> | null = null;
     private _usageStamp = 0;
@@ -116,6 +120,8 @@ export class AppIndex {
         // Drop references on dispose; the index stays usable (empty) and can be re-built.
         this._scope.add(() => {
             this._listeners.clear();
+            this._cancelEntriesIdle = null; // the scope cancels its own idle sources
+            this._entries = null;
             this._tree = null;
             this._appSystem = null;
             this._usage = null;
@@ -214,6 +220,11 @@ export class AppIndex {
 
     searchEntries(): AppSearchEntry[] {
         this.build();
+        if (!this._entries) {
+            this._cancelEntriesIdle?.();
+            this._cancelEntriesIdle = null;
+            this._entries = this._apps.map(app => this._entryFor(app));
+        }
         return this._entries;
     }
 
@@ -244,8 +255,14 @@ export class AppIndex {
         }
     }
 
-    private _byName = (a: Shell.App, b: Shell.App): number =>
-        this._collator.compare(a.get_name() ?? '', b.get_name() ?? '');
+    /** Sorts by display name; every name is read once (a GI call), not twice per comparison. */
+    private _sortByName(apps: Shell.App[], names: Map<Shell.App, string>): void {
+        for (const app of apps) {
+            if (!names.has(app))
+                names.set(app, app.get_name() ?? '');
+        }
+        apps.sort((a, b) => this._collator.compare(names.get(a) ?? '', names.get(b) ?? ''));
+    }
 
     private _appFor(id: string, entry?: GMenu.TreeEntry): Shell.App | null {
         let app = this._appSystem?.lookup_app(id) ?? null;
@@ -264,7 +281,7 @@ export class AppIndex {
         const categories: AppCategory[] = [];
 
         // Walk one GMenu directory, flattening sub-directories into the same category.
-        const collect = (dir: GMenu.TreeDirectory, into: Shell.App[], depth: number) => {
+        const collect = (dir: GMenu.TreeDirectory, into: Shell.App[], seen: Set<Shell.App>, depth: number) => {
             const iter = dir.iter();
             let type: GMenu.TreeItemType;
             while ((type = iter.next()) !== GMenu.TreeItemType.INVALID) {
@@ -281,12 +298,14 @@ export class AppIndex {
                         continue;
                     const appId = app.get_id() ?? id;
                     byId.set(appId, app);
-                    if (!into.includes(app))
+                    if (!seen.has(app)) {
+                        seen.add(app);
                         into.push(app);
+                    }
                 } else if (type === GMenu.TreeItemType.DIRECTORY && depth < 8) {
                     const sub = iter.get_directory();
                     if (!sub.get_is_nodisplay())
-                        collect(sub, into, depth + 1);
+                        collect(sub, into, seen, depth + 1);
                 }
             }
         };
@@ -304,7 +323,7 @@ export class AppIndex {
                     if (dir.get_is_nodisplay())
                         continue;
                     const apps: Shell.App[] = [];
-                    collect(dir, apps, 0);
+                    collect(dir, apps, new Set(), 0);
                     if (apps.length === 0)
                         continue;
                     categories.push({
@@ -343,15 +362,26 @@ export class AppIndex {
                 categories.push({id: OTHER_ID, name: _('Other'), iconName: 'applications-other', apps: orphans});
         }
 
+        const names = new Map<Shell.App, string>();
         for (const cat of categories)
-            cat.apps.sort(this._byName);
+            this._sortByName(cat.apps, names);
 
-        const apps = [...byId.values()].sort(this._byName);
+        // An app listed under two ids (lookup by an alias) appears once.
+        const apps = [...new Set(byId.values())];
+        this._sortByName(apps, names);
 
         this._byId = byId;
         this._apps = apps;
         this._categories = categories;
-        this._entries = apps.map(app => this._entryFor(app));
+        // Search keys (and rank.ts' per-app match data) are prepared on an idle, so neither the build nor
+        // the first keystroke waits for them.
+        this._entries = null;
+        this._cancelEntriesIdle?.();
+        this._cancelEntriesIdle = this._scope.idle(() => {
+            this._cancelEntriesIdle = null;
+            if (this._built)
+                prepareApps(this.searchEntries());
+        });
     }
 
     private _iconName(icon: Gio.Icon | null): string {

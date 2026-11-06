@@ -30,6 +30,9 @@ a = d.get("appIndex")
 if a:
     print(f"  {'AppIndex.build() cold (1st fresh instance)':<46} {a['coldBuildMs']:>9.2f}   ({a['apps']} apps)")
     row("AppIndex.build() fresh instance, 5 more", a["warmBuildMs"])
+    if "coldBuildWithSearchKeysMs" in a:
+        print(f"  {'AppIndex.build() + search keys, cold':<46} {a['coldBuildWithSearchKeysMs']:>9.2f}")
+        row("AppIndex.build() + search keys, 5 more", a["warmBuildWithSearchKeysMs"])
 
 o = d.get("open")
 if o:
@@ -71,3 +74,14 @@ if s2:
         print(f"    {q!r:<8} apps {ap['median']:>7.2f} / {ap['p95']:>7.2f}    all {st['median']:>7.2f} / {st['p95']:>7.2f}")
     if s2.get("timeouts"):
         print(f"  WARNING: {s2['timeouts']} query runs timed out waiting for a provider")
+
+lk = d.get("leaks")
+if lk:
+    print()
+    if "error" in lk:
+        print(f"  leak check: {lk['error']}")
+    else:
+        b, a = lk["before"], lk["after"]
+        print(f"  leak check: {lk['cycles']} cycles of open, type {lk['query']!r} letter by letter, close")
+        print(f"  {'stage actors before -> after':<46} {b['stageActors']:>9} -> {a['stageActors']}   (delta {lk['stageActorsDelta']:+d})")
+        print(f"  {'shell RSS KiB before -> after (after GC)':<46} {b['rssKiB']:>9} -> {a['rssKiB']}   (delta {lk['rssDeltaKiB']:+d})")

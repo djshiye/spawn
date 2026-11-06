@@ -1,6 +1,7 @@
 // Pure-JS search benchmark (no GNOME Shell needed): `gjs -m tools/dev/bench-search.js` after `npx tsc`.
 // Builds a realistic 400-app catalogue with the real appKeys()/descriptionKey() and times rankApps()
 // for the in-shell benchmark's queries plus typical typing sequences. Prints JSON.
+/* global ARGV, print */
 import GLib from 'gi://GLib';
 
 import * as rank from '../../build/search/rank.js';
@@ -16,10 +17,10 @@ function median(v) {
 
 const n = Number(ARGV[0] ?? 400);
 const items = catalogue(n);
-const prepare = rank.prepareApps ?? (x => x);
 const t0 = nowMs();
-const prepared = prepare(items);
-const prepMs = nowMs() - t0;
+rank.rankApps('fi', items, 10, () => 0); // the first search of a fresh index (pays any per-app preparation)
+const firstSearchMs = nowMs() - t0;
+const prepared = items;
 const usage = () => 0;
 for (let i = 0; i < 20; i++) // warm-up (JIT)
     for (const q of QUERIES)
@@ -41,4 +42,4 @@ for (const q of QUERIES) {
     perQuery[q] = Math.round(median(times) * 1000) / 1000;
     all.push(...times);
 }
-print(JSON.stringify({apps: items.length, prepareMs: Math.round(prepMs * 1000) / 1000, medianMs: Math.round(median(all) * 1000) / 1000, perQueryMedianMs: perQuery, top3: tops}, null, 1));
+print(JSON.stringify({apps: items.length, firstSearchMs: Math.round(firstSearchMs * 1000) / 1000, medianMs: Math.round(median(all) * 1000) / 1000, perQueryMedianMs: perQuery, top3: tops}, null, 1));

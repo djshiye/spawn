@@ -1,6 +1,6 @@
 // Regenerates rank-snapshot.json: the rankApps() result count and top 25 (ids + scores) for the benchmark
 // catalogue and a wide query set. Only regenerate when a ranking change is intended:
-//   npx tsc && gjs -m tests/fixtures/gen-rank-snapshot.js > tests/fixtures/rank-snapshot.json
+//   npx tsc && LC_ALL=C.UTF-8 gjs -m tests/fixtures/gen-rank-snapshot.js > tests/fixtures/rank-snapshot.json
 import {catalogue} from '../../tools/dev/bench-catalogue.js';
 import {rankApps} from '../../build/search/rank.js';
 import {SNAPSHOT_QUERIES} from './rank-snapshot-queries.js';
