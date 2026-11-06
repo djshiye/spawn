@@ -347,6 +347,12 @@ export class SpawnLayout implements ShortcutHost {
 
         // search wiring
         this._search.onTextChanged(scope, text => this._onSearchText(text));
+        // An app installed or removed while results are showing: search again, so a new app shows up
+        // and a removed one cannot be launched from a stale row.
+        services.appIndex.onChanged(scope, () => {
+            if (this._isOpen && this._view === 'results' && this._search.text.trim().length > 0)
+                this._onSearchText(this._search.text);
+        });
         this._search.onActivate(scope, () => this._onSearchActivate());
         this._search.onNavigate(scope, (key, shift) => this._onSearchKey(key, shift));
 

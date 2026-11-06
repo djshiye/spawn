@@ -8,7 +8,7 @@ import * as rank from '../../build/search/rank.js';
 import {catalogue} from './bench-catalogue.js';
 
 const nowMs = () => GLib.get_monotonic_time() / 1000;
-const QUERIES = ['f', 'fi', 'fir', 'fire', 'vsc', 'term', 'set', 'st', 'zz', 'doc', 'file manager', 'libre writer', 'minecraft', 'ff', 'xyzq'];
+const QUERIES = ['f', 'fi', 'fir', 'fire', 'vsc', 'term', 'set', 'st', 'zz', 'doc', 'file manager', 'libre writer', 'minecraft', 'ff', 'xyzq', 'calculater', 'dsicord'];
 
 function median(v) {
     const s = [...v].sort((a, b) => a - b);
