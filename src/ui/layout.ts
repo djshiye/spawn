@@ -3,13 +3,14 @@
 //
 // Responsibility: build the whole menu content as ONE St actor (`layout.actor`) that SpawnPopup
 // places inside its popup. Left pane: search entry (top or bottom), the main view (pinned list or grid /
-// all apps by category / frequent / folder / search results), Back and All Apps buttons. Right
-// pane: avatar, directory + application shortcuts, power bar. Only cheap chrome is built up
-// front; each view is created the first time it is shown.
+// all apps by category / frequent / search results), Back and All Apps buttons. Right
+// pane: avatar, directory + application shortcuts, power bar. An open pinned folder is a popup card
+// over both panes (FolderView, on top of the panes in the root's BinLayout); the view under it stays.
+// Only cheap chrome is built up front; each view is created the first time it is shown.
 //
 // Public API:
 //   new SpawnLayout(scope, services, host)
-//   layout.actor: St.Widget            content root (class "spawn-layout")
+//   layout.actor: St.Widget            content root (class "spawn-layout"): the panes, plus the folder popup on top
 //   layout.onOpen(anchor?, side?): void  menu is about to be shown from `anchor` (which decides the
 //                                      work area the popup is clamped to) opening towards `side`
 //                                      (reset view, "Auto" search position, focus search)
@@ -163,13 +164,14 @@ function isDefaultViewPinnedish(view: string): boolean {
 }
 
 export class SpawnLayout implements ShortcutHost {
-    readonly actor: St.BoxLayout;
+    readonly actor: St.Widget;
 
     private readonly _scope: Scope;
     private readonly _services: Services;
     private readonly _host: LayoutHost;
 
     // chrome
+    private readonly _panes: St.BoxLayout;
     private readonly _left: St.BoxLayout;
     private readonly _right: St.BoxLayout;
     private readonly _vsep: St.Widget;
@@ -212,6 +214,8 @@ export class SpawnLayout implements ShortcutHost {
 
     // state
     private _view: ViewId = 'pinned';
+    /** The view under an open folder popup (where closing the popup returns to). */
+    private _underFolder: ViewId = 'pinned';
     private _isOpen = false;
     private _searchHandle: SearchHandle | null = null;
     private _searchToken = 0;
@@ -286,11 +290,19 @@ export class SpawnLayout implements ShortcutHost {
             },
         });
 
-        this.actor = new St.BoxLayout({
+        // A BinLayout root: the panes fill it, the folder popup (when open) lies on top of them.
+        this.actor = new St.Widget({
             style_class: 'spawn-layout',
-            orientation: Clutter.Orientation.HORIZONTAL,
+            layout_manager: new Clutter.BinLayout(),
             reactive: true,
         });
+        this._panes = new St.BoxLayout({
+            style_class: 'spawn-panes',
+            orientation: Clutter.Orientation.HORIZONTAL,
+            x_expand: true,
+            y_expand: true,
+        });
+        this.actor.add_child(this._panes);
 
         // Registered FIRST so it runs LAST (LIFO): every widget scope is torn down while its
         // actors are still alive, then the root actor takes the remaining children with it.
@@ -303,9 +315,9 @@ export class SpawnLayout implements ShortcutHost {
         this._left = new St.BoxLayout({style_class: 'spawn-left-pane', orientation: Clutter.Orientation.VERTICAL, y_expand: true});
         this._vsep = new St.Widget({style_class: 'spawn-vseparator', y_expand: true});
         this._right = new St.BoxLayout({style_class: 'spawn-right-pane', orientation: Clutter.Orientation.VERTICAL, y_expand: true});
-        this.actor.add_child(this._left);
-        this.actor.add_child(this._vsep);
-        this.actor.add_child(this._right);
+        this._panes.add_child(this._left);
+        this._panes.add_child(this._vsep);
+        this._panes.add_child(this._right);
 
         this._search = new SearchBox(scope, settings);
         this._stack = new St.BoxLayout({style_class: 'spawn-stack', orientation: Clutter.Orientation.VERTICAL, x_expand: true, y_expand: true});
@@ -408,6 +420,9 @@ export class SpawnLayout implements ShortcutHost {
     onClosed(): void {
         this._isOpen = false;
         try {
+            // Gone at once: it must not fade out over the next open of the menu.
+            if (this._view === 'folder')
+                this._folderView?.hide(false);
             this._dismissUndo();
             this._context.close();
             this._tooltips.hide();
@@ -490,6 +505,7 @@ export class SpawnLayout implements ShortcutHost {
             display: this._listMode() ? 'List' : 'Grid',
             folder: this._view === 'folder' ? this._folderView?.uuid ?? null : null,
             folderTiles: this._view === 'folder' ? this._folderView?.tiles().length ?? 0 : 0,
+            folderColumns: this._view === 'folder' ? this._folderView?.columns ?? 0 : 0,
             results: this._results?.rows().length ?? 0,
             links: this._links?.actor.visible ? this._links.buttons().length : 0,
             extraRows: this._extraList?.rows().length ?? 0,
@@ -511,6 +527,20 @@ export class SpawnLayout implements ShortcutHost {
     // ---- sizes ----
 
     /** Work area of the monitor the popup opens on (the anchor's, else the primary one). */
+    /** Is the pinned grid on screen (its own view, or under an open folder popup)? */
+    private _pinnedShowing(): boolean {
+        if (!this._isOpen)
+            return false;
+        return this._view === 'pinned' || (this._view === 'folder' && Boolean(this._pinnedScroll?.visible));
+    }
+
+    /** Size of the menu content the folder popup is centred in (pane widths + separator, menu height). */
+    private _contentSize(): {width: number; height: number} {
+        // Fixed sizes from _applyMetrics: readable before the layout is staged or allocated.
+        const width = this._left.width + this._right.width + PANE_GAP + (this._vsep.visible ? SEPARATOR_W : 0);
+        return {width, height: this.actor.height};
+    }
+
     private _workArea(): {width: number; height: number} | null {
         try {
             const lm = Main.layoutManager;
@@ -613,7 +643,7 @@ export class SpawnLayout implements ShortcutHost {
         if (this._pinnedSubscribed)
             this._services.pinned.invalidate();
         this._pinnedDirty = true;
-        if (this._isOpen && this._view === 'pinned')
+        if (this._pinnedShowing())
             this._syncPinnedIfNeeded();
         if (this._isOpen && this._view === 'folder')
             this._folderView?.refresh();
@@ -891,7 +921,15 @@ export class SpawnLayout implements ShortcutHost {
             this._search.clear();
             return;
         }
-        this._setView(this._defaultView());
+        const folder = this._view === 'folder' ? this._folderView?.uuid ?? null : null;
+        // Closing a folder popup returns to the view it was opened over (e.g. Pinned reached by a quick link).
+        this._setView(this._view === 'folder' ? this._underFolder : this._defaultView());
+        // Closing a folder popup: the keyboard goes back to the folder it came from.
+        const folderTile = folder && this._view === 'pinned' ? this._tileEntries.get(`f:${folder}`)?.widget : null;
+        if (this._isOpen && folderTile?.mapped) {
+            folderTile.grab_key_focus();
+            return;
+        }
         if (this._isOpen) {
             // `search-hidden`: the entry is out of sight, so focus the list (typing reveals the entry).
             if (this._search.actor.visible)
@@ -911,12 +949,27 @@ export class SpawnLayout implements ShortcutHost {
         if (this._destroyed)
             return;
         this._tooltips.hide();
+        if (view === 'folder') {
+            // The folder is a popup over the current view: that view stays as it is underneath.
+            this._ensureFolderView();
+            if (this._view !== 'folder')
+                this._underFolder = this._view;
+            this._view = view;
+            // A relayout while the popup is open (display / size settings): the pinned grid under it follows.
+            if (this._pinnedShowing())
+                this._syncPinnedIfNeeded();
+            this._updateNav();
+            this._results?.setSelectionVisible(true);
+            return;
+        }
+        if (this._view === 'folder')
+            this._folderView?.hide(this._isOpen);
         const actors = this._ensureView(view);
         this._view = view;
         for (const child of this._stack.get_children())
             child.visible = actors.includes(child);
         this._updateNav();
-        if (view === 'folder' || view === 'pinned')
+        if (view === 'pinned')
             this._results?.setSelectionVisible(true);
     }
 
@@ -950,10 +1003,9 @@ export class SpawnLayout implements ShortcutHost {
             list.ensureBuilt();
             return [add(list.actor)];
         }
-        case 'folder': {
-            const fv = this._ensureFolderView();
-            return [add(fv.actor)];
-        }
+        case 'folder':
+            // Never a stack child: _setView shows the popup on top of the panes instead.
+            return [];
         case 'favorites':
         case 'recent': {
             if (!this._extraList || !this._extraScroll) {
@@ -984,7 +1036,7 @@ export class SpawnLayout implements ShortcutHost {
                 this._pinnedSubscribed = true;
                 this._services.pinned.onChanged(this._scope, () => {
                     this._pinnedDirty = true;
-                    if (this._isOpen && this._view === 'pinned')
+                    if (this._pinnedShowing())
                         this._syncPinnedIfNeeded();
                 });
             }
@@ -1007,13 +1059,16 @@ export class SpawnLayout implements ShortcutHost {
                     columns: this._cols,
                     tileWidth: this._tileWidth,
                     iconSize: this._tileIconSize,
-                    multiLine: this._services.settings.get('multi-lined-labels') && !this._listMode(),
+                    // The popup is always a grid, so the grid's label setting applies in the list display too.
+                    multiLine: this._services.settings.get('multi-lined-labels'),
                     list: this._listMode(),
                     rowIconSize: this._rowIconSize(),
                     size: this._itemSize(),
+                    ...this._contentSize(),
                 }),
                 openMissingContext: (tile, id) => this._context.open(tile, {kind: 'custom', id}),
             });
+            this.actor.add_child(this._folderView.actor);
         }
         return this._folderView;
     }
@@ -1257,7 +1312,7 @@ export class SpawnLayout implements ShortcutHost {
         const fv = this._ensureFolderView();
         // The folder vanished (deleted elsewhere, emptied): show() already went back to the default
         // view, so do not switch to an empty folder view.
-        if (!fv.show(uuid))
+        if (!fv.show(uuid, this._isOpen))
             return;
         this._setView('folder');
         const first = fv.tiles()[0];
@@ -1338,7 +1393,7 @@ export class SpawnLayout implements ShortcutHost {
         const fv = this._view === 'folder' ? this._folderView : null;
         if (fv?.uuid) {
             const tiles = fv.tiles();
-            const cols = this._listMode() ? 1 : this._cols;
+            const cols = fv.columns;
             const loc = this._locate([{id: 'folder', items: tiles, cols}], focus);
             if (!loc)
                 return false;
@@ -1477,10 +1532,12 @@ export class SpawnLayout implements ShortcutHost {
     // ---- navigation ----
 
     private _updateNav(): void {
+        // An open folder popup leaves the nav of the view under it alone (no jump behind the scrim).
+        if (this._view === 'folder')
+            return;
         const dv = this._services.settings.get('default-menu-view');
         const back = this._canGoBack();
-        // The folder view has its own Back button next to the title: one control per action.
-        this._backButton.visible = back && this._view !== 'folder';
+        this._backButton.visible = back;
         this._allAppsButton.visible = !back && isDefaultViewPinnedish(dv);
         this._nav.visible = this._backButton.visible || this._allAppsButton.visible;
         this._updateLinksVisible();
@@ -1514,7 +1571,7 @@ export class SpawnLayout implements ShortcutHost {
                 return [];
             return [
                 {id: 'header', items: fv.headerButtons(), cols: 2},
-                {id: 'folder', items: fv.tiles(), cols: this._listMode() ? 1 : this._cols},
+                {id: 'folder', items: fv.tiles(), cols: fv.columns},
             ];
         }
         case 'favorites':
@@ -1567,6 +1624,9 @@ export class SpawnLayout implements ShortcutHost {
 
     /** Left column groups in vertical order. */
     private _leftColumn(): Group[] {
+        // An open folder popup keeps the keyboard inside it (header, then its apps).
+        if (this._view === 'folder')
+            return this._mainGroups().filter(g => g.items.length > 0);
         const out: Group[] = [];
         const search = this._searchGroup();
         const top = this._searchTop;
@@ -1619,6 +1679,11 @@ export class SpawnLayout implements ShortcutHost {
             return;
         }
         const groups = this._mainGroups().filter(g => g.items.length > 0);
+        // In a folder popup the apps come first, the header (rename / close) second.
+        if (this._view === 'folder' && !last && groups.length > 1) {
+            this._focusItem(groups[1], 'first');
+            return;
+        }
         if (groups.length === 0) {
             // Results still pending (or none): stay where the focus is instead of jumping to Back.
             if (this._view !== 'results')
@@ -1643,8 +1708,9 @@ export class SpawnLayout implements ShortcutHost {
             }
         }
         const leftCol = this._leftColumn();
-        const rightCol = this._rightGroups().filter(g => g.items.length > 0);
-        const cats = this._categoryGroup();
+        const inFolder = this._view === 'folder';
+        const rightCol = inFolder ? [] : this._rightGroups().filter(g => g.items.length > 0);
+        const cats = inFolder ? null : this._categoryGroup();
 
         let col: Group[] = leftCol;
         let loc = this._locate(leftCol, focus);
@@ -1715,6 +1781,8 @@ export class SpawnLayout implements ShortcutHost {
                 }
                 return true;
             }
+            if (inFolder)
+                return true;
             if (delta > 0) {
                 // By rank among the non-search groups: the search entry on top must not shift the mapping.
                 const rank = leftCol.filter(g => g.id !== 'search' && g.id !== 'undo' && g.id !== 'links').indexOf(group);
@@ -1734,6 +1802,16 @@ export class SpawnLayout implements ShortcutHost {
     }
 
     private _cyclePane(delta: number): void {
+        if (this._view === 'folder') {
+            // Tab stays inside the folder popup: header <-> apps.
+            const groups = this._mainGroups().filter(g => g.items.length > 0);
+            const loc = this._locate(groups, global.stage.key_focus as Clutter.Actor | null);
+            const current = loc ? groups.indexOf(loc.group) : -1;
+            const n = groups.length;
+            if (n > 0)
+                this._focusItem(groups[((current + delta) % n + n) % n], 'first');
+            return;
+        }
         const panes: Array<() => boolean> = [];
         const search = this._searchGroup();
         const cats = this._categoryGroup();
@@ -1838,7 +1916,10 @@ export class SpawnLayout implements ShortcutHost {
             // The focused actor went away (view switched, tile removed): keep the keyboard alive.
             this._scope.idle(() => {
                 if (this._isOpen && !this._destroyed && !global.stage.key_focus && !this._context.isOpen) {
-                    if (this._search.actor.visible)
+                    // An open folder popup keeps the keyboard (its tiles are rebuilt on every store change).
+                    if (this._view === 'folder')
+                        this._focusMain();
+                    else if (this._search.actor.visible)
                         this._search.focus();
                     else
                         this._focusMain();

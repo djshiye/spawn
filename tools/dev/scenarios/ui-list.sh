@@ -10,6 +10,9 @@ mkdesktop() { # id name [exec]
 }
 clutter_criticals() { grep -c "Clutter-CRITICAL\|clutter_actor_add_child" "$log" || true; }
 crit0="$(clutter_criticals)"
+edge_x() { # <class> <nth> <left|right>: y centre, 4 px inside the left / right edge (a grid tile's before / after band)
+    python3 -c 'import json,sys; x,y,w,h=json.loads(sys.argv[1]); print(round(x+4 if sys.argv[2]=="left" else x+w-4), round(y+h/2))' "$(rect "$1" "$2")" "$3"
+}
 edge_y() { # <class> <nth> <top|bottom>: x centre, 4 px inside the top / bottom edge
     python3 -c 'import json,sys; x,y,w,h=json.loads(sys.argv[1]); print(round(x+w/2), round(y+4 if sys.argv[2]=="top" else y+h-4))' "$(rect "$1" "$2")" "$3"
 }
@@ -56,8 +59,10 @@ expect_state "Down returns to the folder row" layout.focusIndex 3
 key Return 0.8
 expect_state "Return on a folder row opens the folder view" layout.view folder
 expect_state "the folder is the Internet folder" layout.folder "$F_INTERNET"
-expect "folder contents are rows too" "$(count spawn-pinned-row)" "$(state_get layout.folderTiles)"
-expect "no tiles in the folder view" "$(count spawn-tile)" 0
+# the folder is a popup card of grid tiles even in the list display; the 6 pinned rows stay mapped (dimmed) behind it
+expect "folder contents are tiles, not rows" "$(count spawn-tile)" "$(state_get layout.folderTiles)"
+expect "the pinned rows stay behind the popup" "$(count spawn-pinned-row)" 6
+expect "the popup card is shown" "$(count spawn-folder-popup)" 1
 screenshot ui-list-folder
 key Escape 0.6
 expect_state "Escape returns to the pinned list" layout.view pinned
@@ -141,23 +146,36 @@ ui_call Drag $src $dst >/dev/null; sleep 2.2
 echo "Internet folder: $(folder_ids $F_INTERNET)"
 echo "$(folder_ids $F_INTERNET)" | grep -q 'com.anthropic.Claude.desktop' && echo "ok   Claude dropped into the Internet folder" || { echo "FAIL Claude not in the Internet folder"; status=1; }
 
-echo "-- drag & drop inside a folder: reorder rows, drag out onto the header"
+echo "-- drag & drop inside a folder: reorder tiles, drag out onto the header and onto the scrim"
 reset_seed
 open_menu 1.5
 ui_call OpenFolder 2 >/dev/null; sleep 0.8
 expect_state "Tarky folder open" layout.folder "$F_TARKY"
-expect "two folder rows" "$(count spawn-pinned-row)" 2
+expect "two folder tiles" "$(count spawn-tile)" 2
+expect_state "2 apps: 2 columns" layout.folderColumns 2
 echo "Tarky before: $(folder_ids $F_TARKY)"
 screenshot ui-list-folder-tarky
-src="$(center spawn-pinned-row 1)"; dst="$(edge_y spawn-pinned-row 0 top)"
+src="$(center spawn-tile 1)"; dst="$(edge_x spawn-tile 0 left)"
 ui_call Move $src >/dev/null; sleep 0.5
 ui_call Drag $src $dst >/dev/null; sleep 2.2
-expect "rows swapped by the top-band drop" "$(folder_ids $F_TARKY)" "SPT - Launcher.desktop SPT - Server.desktop"
-src="$(center spawn-pinned-row 0)"; dst="$(center spawn-folder-header 0)"
+expect "tiles swapped by the left-band drop" "$(folder_ids $F_TARKY)" "SPT - Launcher.desktop SPT - Server.desktop"
+src="$(center spawn-tile 0)"; dst="$(center spawn-folder-header 0)"
 ui_call Move $src >/dev/null; sleep 0.5
 ui_call Drag $src $dst >/dev/null; sleep 2.2
 echo "Tarky after: $(folder_ids $F_TARKY)   top level: $(pinned_ids)"
-echo "$(pinned_ids)" | grep -q 'SPT - Launcher.desktop' && echo "ok   dragged out of the folder to the top level" || { echo "FAIL not taken out of the folder"; status=1; }
+echo "$(pinned_ids)" | grep -q 'SPT - Launcher.desktop' && echo "ok   dragged out of the folder to the top level (header)" || { echo "FAIL not taken out of the folder (header)"; status=1; }
+echo "-- ... and out onto the scrim (outside the card)"
+reset_seed
+open_menu 1.5
+ui_call OpenFolder 2 >/dev/null; sleep 0.8
+expect_state "Tarky folder open again" layout.folder "$F_TARKY"
+src="$(center spawn-tile 1)"; dst="$(scrim_point 10 10)"
+echo "scrim drop point: $dst (popup card: $(rect spawn-folder-popup 0))"
+ui_call Move $src >/dev/null; sleep 0.5
+ui_call Drag $src $dst >/dev/null; sleep 2.2
+echo "Tarky after: $(folder_ids $F_TARKY)   top level: $(pinned_ids)"
+echo "$(pinned_ids)" | grep -q 'SPT - Launcher.desktop' && echo "ok   dragged out of the folder to the top level (scrim)" || { echo "FAIL not taken out of the folder (scrim)"; status=1; }
+echo "$(folder_ids $F_TARKY)" | grep -q 'SPT - Launcher.desktop' && { echo "FAIL still in the Tarky folder (scrim)"; status=1; } || echo "ok   no longer in the Tarky folder"
 
 echo "-- tooltips only when the name is truncated"
 reset_seed
@@ -221,13 +239,17 @@ expect "6 rows again" "$(count spawn-pinned-row)" 6
 expect "no tiles left" "$(count spawn-tile)" 0
 echo "-- ... and inside an open folder"
 ui_call OpenFolder 2 >/dev/null; sleep 0.8
-expect "two folder rows" "$(count spawn-pinned-row)" 2
+expect "two folder tiles in the list display (the 6 pinned rows are behind the popup)" "$(count spawn-tile)" 2
+expect "the pinned rows stay" "$(count spawn-pinned-row)" 6
 dconf write $K/pinned-apps-display "'Grid'"; sleep 1.5
 expect_state "still in the folder view" layout.view folder
-expect "two folder tiles" "$(count spawn-tile)" 2
+expect "two folder tiles + the 6 pinned tiles behind them" "$(count spawn-tile)" 8
 expect "no rows" "$(count spawn-pinned-row)" 0
+expect_state "still 2 columns in the folder" layout.folderColumns 2
 dconf write $K/pinned-apps-display "'List'"; sleep 1.5
-expect "two folder rows again" "$(count spawn-pinned-row)" 2
+expect_state "still in the folder view after switching back" layout.view folder
+expect "two folder tiles again, the pinned rows are back behind them" "$(count spawn-tile)" 2
+expect "6 pinned rows again" "$(count spawn-pinned-row)" 6
 key Escape 0.6
 expect_state "Escape leaves the folder" layout.view pinned
 
