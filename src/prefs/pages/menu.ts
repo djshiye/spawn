@@ -100,13 +100,13 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
         fallbackIcon: 'view-more-symbolic',
         resetKeys: ['arcmenu-extra-categories-links', 'arcmenu-extra-categories-links-location'],
         resetMessage: 'Category quick links reset to defaults',
+        extraRows: [
+            enumRow(ctx, 'arcmenu-extra-categories-links-location', 'Quick links position', [
+                ['Bottom', 'Below the list'],
+                ['Top', 'Above the list'],
+            ]),
+        ],
     }));
-    page.add(group(ctx, '', [
-        enumRow(ctx, 'arcmenu-extra-categories-links-location', 'Quick links position', [
-            ['Bottom', 'Below the list'],
-            ['Top', 'Above the list'],
-        ]),
-    ]));
 
     const sizeKeys: SettingKey[] = ['menu-height', 'left-panel-width', 'right-panel-width', 'menu-width-adjustment'];
     page.add(group(ctx, 'Size', [
@@ -133,35 +133,48 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
         spinRow(ctx, 'max-search-results', 'Results per source', 1, 20),
         switchRow(ctx, 'highlight-search-result-terms', 'Highlight matching text'),
         switchRow(ctx, 'show-search-result-details', 'Show result descriptions'),
-        optionalSpinRow(ctx, 'search-entry-border-radius', 'Custom search bar corner radius', 0, 25),
+        optionalSpinRow(ctx, 'search-entry-border-radius', 'Search bar corner radius', 0, 25),
     ], {reset: searchKeys}));
 
     const providerKeys: SettingKey[] = [
         'search-provider-open-windows', 'search-provider-recent-files', 'search-provider-shell', 'show-hidden-recent-files',
         'apps-show-extra-details', 'apps-show-generic-names',
     ];
+    const hiddenRecent = switchRow(ctx, 'show-hidden-recent-files', 'Include hidden recent files');
     page.add(group(ctx, 'Search sources', [
         switchRow(ctx, 'search-provider-open-windows', 'Open windows'),
         switchRow(ctx, 'search-provider-recent-files', 'Recent files'),
-        switchRow(ctx, 'show-hidden-recent-files', 'Include hidden recent files'),
+        hiddenRecent,
         switchRow(ctx, 'search-provider-shell', 'GNOME Shell search providers', 'Results from Calculator, Settings, Characters and other providers'),
         switchRow(ctx, 'apps-show-extra-details', 'Show app descriptions'),
         switchRow(ctx, 'apps-show-generic-names', 'Show generic app names', 'For example "Web Browser" below Firefox'),
     ], {reset: providerKeys}));
 
+    const syncHiddenRecent = (): void => hiddenRecent.set_sensitive(ctx.settings.get('search-provider-recent-files'));
+    syncHiddenRecent();
+    watch(ctx, hiddenRecent, ['search-provider-recent-files'], syncHiddenRecent);
+
     const displayKeys: SettingKey[] = [
         'show-user-avatar', 'avatar-style', 'vert-separator', 'multi-lined-labels', 'scrollbars-visible',
         'scrollbars-overlay', 'scrollview-fade-effect',
     ];
+    const avatarShape = enumRow(ctx, 'avatar-style', 'Avatar shape', [['Round', 'Round'], ['Square', 'Square']]);
+    const overlay = switchRow(ctx, 'scrollbars-overlay', 'Overlay scrollbars');
     page.add(group(ctx, 'Display', [
         switchRow(ctx, 'show-user-avatar', 'Show user avatar'),
-        enumRow(ctx, 'avatar-style', 'Avatar shape', [['Round', 'Round'], ['Square', 'Square']]),
+        avatarShape,
         switchRow(ctx, 'vert-separator', 'Separator between the panes'),
         switchRow(ctx, 'multi-lined-labels', 'Wrap long app names'),
         switchRow(ctx, 'scrollbars-visible', 'Show scrollbars'),
-        switchRow(ctx, 'scrollbars-overlay', 'Overlay scrollbars'),
+        overlay,
         switchRow(ctx, 'scrollview-fade-effect', 'Fade the edges of scrolled lists'),
     ], {reset: displayKeys}));
+    const syncDisplay = (): void => {
+        avatarShape.set_sensitive(ctx.settings.get('show-user-avatar'));
+        overlay.set_sensitive(ctx.settings.get('scrollbars-visible'));
+    };
+    syncDisplay();
+    watch(ctx, page, ['show-user-avatar', 'scrollbars-visible'], syncDisplay);
 
     const iconKeys: SettingKey[] = [
         'icon-size-apps', 'icon-size-shortcuts', 'icon-size-categories', 'icon-size-buttons', 'icon-size-misc',

@@ -1,4 +1,4 @@
-import {ACCENT_COLORS, accentColor, buildCss, sanitizeColor, withAlpha} from '../build/theme/css.js';
+import {ACCENT_COLORS, accentColor, accentForeground, buildCss, sanitizeColor, withAlpha} from '../build/theme/css.js';
 import {assert, assertEquals, run, test} from './harness.js';
 
 const off = v => [false, v];
@@ -130,6 +130,12 @@ test('balanced braces in the full CSS', () => {
     base.buttonColors.fg = [true, '#fff'];
     const css = buildCss(base);
     assertEquals(css.split('{').length, css.split('}').length);
+});
+
+test('accentForeground: white on blue, dark on yellow and orange', () => {
+    assertEquals(accentForeground(ACCENT_COLORS.blue), '#ffffff');
+    assertEquals(accentForeground(ACCENT_COLORS.yellow), 'rgba(0,0,0,0.87)');
+    assertEquals(accentForeground('nonsense'), '#ffffff');
 });
 
 run();

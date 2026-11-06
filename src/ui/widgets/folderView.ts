@@ -97,6 +97,7 @@ export class FolderView {
         this._backButton = makeItemButton('spawn-row spawn-folder-back');
         this._backButton.x_expand = false;
         this._backButton.set_child(new St.Icon({icon_name: 'go-previous-symbolic', icon_size: 16}));
+        this._backButton.accessible_name = _('Back');
         wireItem(this._backButton, {activate: () => host.back()});
         host.tooltips?.attach(this._backButton, null, () => _('Back'));
 
@@ -108,10 +109,12 @@ export class FolderView {
         nameBox.add_child(this._nameLabel);
         nameBox.add_child(new St.Icon({icon_name: 'document-edit-symbolic', icon_size: 14, style_class: 'spawn-folder-edit-icon', y_align: Clutter.ActorAlign.CENTER}));
         this._nameButton.set_child(nameBox);
+        this._nameButton.accessible_name = _('Rename folder');
         wireItem(this._nameButton, {activate: () => this.startRename()});
         host.tooltips?.attach(this._nameButton, null, () => _('Rename folder'));
 
-        this._hint = new St.Label({text: _('Drop here to take out of folder'), style_class: 'spawn-folder-hint', y_align: Clutter.ActorAlign.CENTER, visible: false});
+        this._hint = new St.Label({text: _('Drop here to take out of folder'), style_class: 'spawn-folder-hint', y_align: Clutter.ActorAlign.CENTER, x_expand: true, visible: false});
+        this._hint.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         this._header.add_child(this._backButton);
         this._header.add_child(this._nameButton);
         this._header.add_child(this._hint);

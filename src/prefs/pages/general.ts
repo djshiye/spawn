@@ -19,6 +19,12 @@ interface AcceleratorOptions {
     subtitle: string;
 }
 
+/** Human label of an accelerator ("Super+Space"), the raw string when it cannot be parsed. */
+function accelLabel(accel: string): string {
+    const [ok, keyval, mods] = Gtk.accelerator_parse(accel);
+    return ok && mods !== null ? Gtk.accelerator_get_label(keyval, mods) : accel;
+}
+
 /** One row per accelerator of the `as` setting `opts.key` plus an "Add" row, kept in `g` (live). */
 function acceleratorRows(ctx: PrefsContext, g: Adw.PreferencesGroup, opts: AcceleratorOptions): void {
     const key = opts.key;
@@ -40,11 +46,16 @@ function acceleratorRows(ctx: PrefsContext, g: Adw.PreferencesGroup, opts: Accel
                     toast(ctx, 'That shortcut is already in the list');
                     return;
                 }
+                const otherKey = key === 'spawn-hotkey' ? 'runner-hotkey' : 'spawn-hotkey';
+                if (ctx.settings.get(otherKey).includes(accel)) {
+                    toast(ctx, `Already used by the ${key === 'spawn-hotkey' ? 'runner' : 'menu'} shortcut`);
+                    return;
+                }
                 next[index] = accel;
             }
             write(next);
             if (accel === '<Super>space')
-                toast(ctx, 'Note: <Super>space is also used by GNOME for input source switching');
+                toast(ctx, `Note: ${accelLabel(accel)} is also used by GNOME for input source switching`);
         });
     };
 
@@ -60,7 +71,7 @@ function acceleratorRows(ctx: PrefsContext, g: Adw.PreferencesGroup, opts: Accel
             });
             const shown = new Gtk.ShortcutLabel({accelerator: accel, valign: Gtk.Align.CENTER});
             const change = new Gtk.Button({label: 'Change', valign: Gtk.Align.CENTER});
-            label(change, `Change shortcut ${accel}`);
+            label(change, `Change shortcut ${accelLabel(accel)}`);
             change.connect('clicked', () => capture(index));
             const remove = new Gtk.Button({
                 icon_name: 'edit-delete-symbolic',
@@ -68,7 +79,7 @@ function acceleratorRows(ctx: PrefsContext, g: Adw.PreferencesGroup, opts: Accel
                 tooltip_text: 'Remove the shortcut',
                 css_classes: ['flat'],
             });
-            label(remove, `Remove shortcut ${accel}`);
+            label(remove, `Remove shortcut ${accelLabel(accel)}`);
             remove.connect('clicked', () => {
                 const next = ctx.settings.get(key);
                 next.splice(index, 1);

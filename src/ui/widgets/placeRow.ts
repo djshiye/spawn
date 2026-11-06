@@ -53,7 +53,7 @@ export class PlaceRow {
                 track_hover: true,
                 accessible_name: place.ejectLabel,
                 y_align: Clutter.ActorAlign.FILL,
-                child: new St.Icon({icon_name: 'media-eject-symbolic', icon_size: 16, y_align: Clutter.ActorAlign.CENTER}),
+                child: new St.Icon({icon_name: 'media-eject-symbolic', icon_size: size > 0 ? size : 16, y_align: Clutter.ActorAlign.CENTER}),
             });
             eject.connect('clicked', () => place.eject());
             host.tooltips?.attach(eject, null, () => place.ejectLabel);

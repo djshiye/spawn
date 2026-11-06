@@ -75,7 +75,7 @@ const ACTIONS: readonly Builtin[] = [
 const CONTEXT_ACTIONS: readonly Builtin[] = [
     {id: ContextMenuId.SETTINGS, title: 'Spawn Settings', icon: SPAWN_ICON},
     {id: ContextMenuId.PANEL_EXTENSION_SETTINGS, title: 'Panel Extension Settings', icon: 'application-x-addon-symbolic'},
-    {id: ShortcutId.SHOW_DESKTOP, title: 'Show Desktop', icon: 'computer-symbolic'},
+    {id: ShortcutId.SHOW_DESKTOP, title: 'Show Desktop', icon: 'user-desktop-symbolic'},
     {id: ShortcutId.ACTIVITIES_OVERVIEW, title: 'Activities Overview', icon: 'view-fullscreen-symbolic'},
     {id: ShortcutId.SHOW_ALL_APPS, title: 'Show All Applications', icon: 'view-app-grid-symbolic'},
     {id: ShortcutId.RUN_COMMAND, title: 'Run Command', icon: 'system-run-symbolic'},
@@ -331,11 +331,21 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
     };
     const remove = (index: number): void => {
         const list = items();
+        const previous = items();
         const [entry] = list.splice(index, 1);
-        if (entry?.isFolder === 'true' && isValidFolderId(entry.id))
-            ctx.settings.deleteFolder(entry.id);
+        // A deleted folder's name and contents are snapshotted so Undo can bring them back too.
+        const folderId = entry?.isFolder === 'true' && isValidFolderId(entry.id) ? entry.id : null;
+        const saved = folderId ? ctx.settings.snapshot([], [folderId]) : null;
+        if (folderId)
+            ctx.settings.deleteFolder(folderId);
         pendingFocus = [`del:${Math.min(index, list.length - 1)}`, 'add'];
         put(list);
+        if (entry)
+            toast(ctx, `Removed “${describeEntry(entry, ctx).title}”`, () => {
+                if (saved)
+                    ctx.settings.restore(saved);
+                put(previous);
+            });
     };
 
     const restoreFocus = (): void => {
@@ -478,6 +488,7 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
     if (opts.reset && source.keys?.length === 1) {
         const key = source.keys[0] as SettingKey;
         const reset = new Gtk.Button({label: 'Reset', valign: Gtk.Align.CENTER, css_classes: ['flat'], tooltip_text: 'Restore the default list'});
+        label(reset, `Reset ${opts.title}`);
         reset.connect('clicked', () => {
             const folderIds = kind === 'pinned' ? items().filter(e => e.isFolder === 'true' && isValidFolderId(e.id)).map(e => e.id) : [];
             resetWithUndo(ctx, [key], `${opts.title} reset to defaults`, folderIds);

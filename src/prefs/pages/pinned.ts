@@ -1,4 +1,4 @@
-// Preferences page "Pinned & Shortcuts": pinned apps and folders, directory and application
+// Preferences page "Pinned": pinned apps and folders, directory and application
 // shortcuts (all reorderable) and the power buttons.
 //
 // Public API:
@@ -16,18 +16,18 @@ import {enumRow, group, switchRow} from '../widgets.js';
 const POWER: ReadonlyArray<readonly [number, string, string]> = [
     [PowerType.LOGOUT, 'Log Out', 'system-log-out-symbolic'],
     [PowerType.LOCK, 'Lock', 'system-lock-screen-symbolic'],
-    [PowerType.RESTART, 'Restart', 'system-reboot-symbolic'],
+    [PowerType.RESTART, 'Restart', 'view-refresh-symbolic'],
     [PowerType.POWER_OFF, 'Power Off', 'system-shutdown-symbolic'],
     [PowerType.SUSPEND, 'Suspend', 'media-playback-pause-symbolic'],
     [PowerType.HYBRID_SLEEP, 'Hybrid Sleep', 'weather-clear-night-symbolic'],
-    [PowerType.HIBERNATE, 'Hibernate', 'weather-clear-night-symbolic'],
-    [PowerType.SWITCH_USER, 'Switch User', 'system-users-symbolic'],
+    [PowerType.HIBERNATE, 'Hibernate', 'document-save-symbolic'],
+    [PowerType.SWITCH_USER, 'Switch User', 'system-switch-user-symbolic'],
 ];
 
 export function createPinnedPage(ctx: PrefsContext): Adw.PreferencesPage {
     const page = new Adw.PreferencesPage({
         name: 'pinned',
-        title: 'Pinned & Shortcuts',
+        title: 'Pinned',
         icon_name: 'starred-symbolic',
     });
     const s = ctx.settings;
@@ -72,13 +72,13 @@ export function createPinnedPage(ctx: PrefsContext): Adw.PreferencesPage {
         fallbackIcon: 'system-shutdown-symbolic',
         resetKeys: ['power-options', 'power-display-style'],
         resetMessage: 'Power buttons reset to defaults',
+        extraRows: [
+            enumRow(ctx, 'power-display-style', 'Show power buttons as', [
+                ['Default', 'Buttons at the bottom'],
+                ['In_Line', 'Buttons in line with the shortcuts'],
+                ['Menu', 'A single power menu'],
+            ]),
+        ],
     }));
-    page.add(group(ctx, 'Power button style', [
-        enumRow(ctx, 'power-display-style', 'Show power buttons as', [
-            ['Default', 'Buttons at the bottom'],
-            ['In_Line', 'Buttons in line with the shortcuts'],
-            ['Menu', 'A single power menu'],
-        ]),
-    ]));
     return page;
 }

@@ -36,7 +36,7 @@ export function createAboutPage(ctx: PrefsContext): Adw.PreferencesPage {
 
     const meta = ctx.metadata;
     const name = String(meta['name'] ?? 'Spawn');
-    const url = String(meta['url'] ?? 'https://github.com/djshiye/spawn');
+    const url = String(meta['url'] ?? 'https://github.com/djshiye/spawn').replace(/\/+$/, '');
     const version = String(meta['version-name'] ?? meta['version'] ?? '');
 
     const head = new Adw.PreferencesGroup();

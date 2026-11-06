@@ -6,7 +6,7 @@
 //   onWindowClose(ctx, fn)             run fn once when the prefs window closes
 //   label(widget, text)                sets the accessible label of a widget
 //   switchRow / spinRow / enumRow / entryRow / colorRow
-//   optionalColorRow / optionalSpinRow  rows for the (bs) / (bi) override keys
+//   optionalColorRow / optionalSpinRow  (title is appended to "Use custom " for the switch label) rows for the (bs) / (bi) override keys
 //   group(title, rows, {description?, reset?})   PreferencesGroup with an optional Reset button
 //   resetKeys(ctx, keys)               resets keys (one SpawnSettings.batch(); ctx.settings.raw is never delayed)
 //   resetWithUndo(ctx, keys, message)  resetKeys + a toast whose Undo button restores the old values
@@ -192,9 +192,9 @@ function parseColor(text: string): Gdk.RGBA {
     return rgba;
 }
 
-function colorButton(title: string, initial: string, onChange: (css: string) => void): {button: Gtk.ColorDialogButton; set(css: string): void} {
+function colorButton(title: string, initial: string, onChange: (css: string) => void, dialogTitle = title): {button: Gtk.ColorDialogButton; set(css: string): void} {
     const button = new Gtk.ColorDialogButton({
-        dialog: new Gtk.ColorDialog({title, with_alpha: true, modal: true}),
+        dialog: new Gtk.ColorDialog({title: dialogTitle, with_alpha: true, modal: true}),
         valign: Gtk.Align.CENTER,
     });
     let syncing = true;
@@ -216,15 +216,15 @@ function colorButton(title: string, initial: string, onChange: (css: string) => 
     };
 }
 
-export function colorRow(ctx: PrefsContext, key: SettingKey, title: string, subtitle?: string): Adw.ActionRow {
+export function colorRow(ctx: PrefsContext, key: SettingKey, title: string, subtitle?: string, groupTitle?: string): Adw.ActionRow {
     const row = new Adw.ActionRow({title});
     if (subtitle)
         row.set_subtitle(subtitle);
     const c = colorButton(title, ctx.settings.get(key) as string, css => {
         if (ctx.settings.get(key) !== css)
             ctx.settings.set(key, css as never);
-    });
-    label(c.button, title);
+    }, `Choose ${title} Colour`);
+    label(c.button, groupTitle ? `${groupTitle}: ${title}` : title);
     row.add_suffix(c.button);
     row.set_activatable_widget(c.button);
     watch(ctx, row, [key], () => c.set(ctx.settings.get(key) as string));
@@ -232,7 +232,7 @@ export function colorRow(ctx: PrefsContext, key: SettingKey, title: string, subt
 }
 
 /** Row for a `(bs)` key: a switch that turns the override on plus a colour button. */
-export function optionalColorRow(ctx: PrefsContext, key: SettingKey, title: string): Adw.ActionRow {
+export function optionalColorRow(ctx: PrefsContext, key: SettingKey, title: string, groupTitle?: string): Adw.ActionRow {
     const read = (): [boolean, string] => ctx.settings.get(key) as [boolean, string];
     const row = new Adw.ActionRow({title});
     const toggle = new Gtk.Switch({valign: Gtk.Align.CENTER, active: read()[0]});
@@ -240,10 +240,10 @@ export function optionalColorRow(ctx: PrefsContext, key: SettingKey, title: stri
         const [on, current] = read();
         if (current !== css)
             ctx.settings.set(key, [on, css] as never);
-    });
+    }, `Choose ${groupTitle ? `${groupTitle} ` : ''}${title} Colour`);
     c.button.set_sensitive(toggle.active);
-    label(c.button, title);
-    label(toggle, `Use custom ${title.toLowerCase()}`);
+    label(c.button, groupTitle ? `${groupTitle}: ${title}` : title);
+    label(toggle, `Use custom ${groupTitle ? `${groupTitle.toLowerCase()} ` : ''}${title.toLowerCase()}`);
     toggle.connect('notify::active', () => {
         const [on, css] = read();
         if (on !== toggle.active)

@@ -121,6 +121,7 @@ export class PowerBar {
     private _build(): void {
         if (this._destroyed)
             return;
+        this._host.tooltips?.hide();
         this._teardownMenu();
         this._buttons.length = 0;
         for (const c of this._row.get_children())

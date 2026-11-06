@@ -40,6 +40,8 @@ import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
+import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
+
 import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
 import type {SearchBatch, SearchResult} from '../../search/engine.js';
@@ -92,7 +94,7 @@ export class ResultList {
             y_expand: true,
         });
         this._empty = new St.Label({
-            text: 'No results',
+            text: _('No results'),
             style_class: 'spawn-empty-label',
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,

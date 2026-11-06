@@ -55,6 +55,27 @@ export const ACCENT_COLORS: Readonly<Record<string, string>> = {
 };
 
 export const ACCENT_FG = '#ffffff';
+const WHITE_MIN_CONTRAST = 3.5;
+const ACCENT_FG_DARK = 'rgba(0,0,0,0.87)';
+
+function linear(c: number): number {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+}
+
+/** Text colour for a selected / checked accent background: white or dark, whichever contrasts more (WCAG). */
+export function accentForeground(hex: string): string {
+    const m = /^#([0-9a-f]{6}|[0-9a-f]{3})$/i.exec(hex.trim());
+    if (!m)
+        return ACCENT_FG;
+    let h = m[1] as string;
+    if (h.length === 3)
+        h = [...h].map(c => c + c).join('');
+    const lum = 0.2126 * linear(parseInt(h.slice(0, 2), 16)) + 0.7152 * linear(parseInt(h.slice(2, 4), 16)) + 0.0722 * linear(parseInt(h.slice(4, 6), 16));
+    // Pure "higher contrast wins" would pick dark on GNOME's blue; keep white (the platform look)
+    // while it still reaches 3.5:1, and switch to dark where it does not (yellow 3.0, orange 3.4).
+    return 1.05 / (lum + 0.05) >= WHITE_MIN_CONTRAST ? ACCENT_FG : ACCENT_FG_DARK;
+}
 
 export function accentColor(name: string): string {
     return ACCENT_COLORS[name] ?? ACCENT_COLORS['blue'] as string;
@@ -182,7 +203,7 @@ function accentRules(accent: string): string[] {
         ]),
         rule([...each(':selected'), ...each(':checked')], [
             ['background-color', a],
-            ['color', ACCENT_FG],
+            ['color', accentForeground(a)],
         ]),
         rule('.spawn-search-box:focus', [['border-color', a]]),
         rule('.spawn-drop-target', [

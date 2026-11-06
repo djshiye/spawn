@@ -162,7 +162,7 @@ export class CategoryList {
 
     appRows(): St.Widget[] {
         const list = this._lists.get(this._selected);
-        return list ? list.get_children() as St.Widget[] : [];
+        return list ? list.get_children().filter((c): c is St.Button => c instanceof St.Button) : [];
     }
 
     appScroll(): St.ScrollView {
