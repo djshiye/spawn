@@ -266,7 +266,7 @@ export default class SpawnExtension extends Extension {
 
         if (popup) {
             this._start(root, 'prebuild', scope => {
-                this._afterStartup(scope, () => popup.prebuild());
+                this._afterStartup(scope, () => popup.prebuild(anchorButton()));
             });
         }
 
