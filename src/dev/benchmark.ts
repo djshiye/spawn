@@ -4,7 +4,8 @@
 //
 //   sections: comma separated subset of  enable,index,open,search   ("all" = every section)
 //     enable  enable() duration (measured by extension.ts, passed in) plus per-subsystem split
-//     index   AppIndex.build() on a FRESH instance: first (cold) build and the median of 5 more
+//     index   AppIndex.build() on a FRESH instance: first (cold) build and the median of 5 more, without
+//             and with the search keys (searchEntries(), which build() defers to an idle)
 //     open    popup open -> actor mapped (the synchronous open() call) and -> first frame painted
 //             ('after-paint' on the stage): the first open of the session as it is (layout
 //             prebuilt on idle), 3 opens with the layout dropped and rebuilt (the lazy path;
@@ -12,12 +13,17 @@
 //     search  engine.search(q, ..., {immediate: true}) for ~10 queries x 5 repetitions: time from
 //             the call to the apps batch (= apps only) and to the last provider batch (= all
 //             enabled providers); the 80 ms keystroke debounce is bypassed (it is a fixed cost)
+//     leaks   (only when named, not part of "all") open the menu, type a query letter by letter, close;
+//             LEAK_CYCLES times after LEAK_WARMUP warm-up cycles. Reports the stage's actor count and
+//             the shell's RSS (after a GC) before and after, so a growing actor tree or memory shows up
 //
 // Public API:
 //   runBenchmark(ctx: BenchContext, sections: string): Promise<BenchResult>
 
+import type Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import type St from 'gi://St';
+import System from 'system';
 
 import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
@@ -50,6 +56,9 @@ const SEARCH_REPS = 5;
 const OPEN_REPS = 20;
 const REBUILD_REPS = 3;
 const TIMEOUT_MS = 3000;
+const LEAK_WARMUP = 5;
+const LEAK_CYCLES = 30;
+const LEAK_QUERY = 'firefox';
 
 const nowMs = (): number => GLib.get_monotonic_time() / 1000;
 const round = (v: number): number => Math.round(v * 1000) / 1000;
@@ -62,6 +71,24 @@ export function stats(values: number[]): Stats {
     const median = n % 2 ? v[(n - 1) / 2] : (v[n / 2 - 1] + v[n / 2]) / 2;
     const p95 = v[Math.min(n - 1, Math.ceil(0.95 * n) - 1)];
     return {n, median: round(median), p95: round(p95), min: round(v[0]), max: round(v[n - 1]), mean: round(v.reduce((a, b) => a + b, 0) / n)};
+}
+
+function countActors(actor: Clutter.Actor): number {
+    let n = 1;
+    for (const child of actor.get_children())
+        n += countActors(child);
+    return n;
+}
+
+/** VmRSS of the shell process in KiB (0 when /proc is unreadable). */
+function rssKiB(): number {
+    try {
+        const [ok, bytes] = GLib.file_get_contents('/proc/self/status');
+        const m = ok ? /VmRSS:\s+(\d+)/.exec(new TextDecoder().decode(bytes)) : null;
+        return m ? Number(m[1]) : 0;
+    } catch {
+        return 0;
+    }
 }
 
 export async function runBenchmark(ctx: BenchContext, sections: string): Promise<BenchResult> {
@@ -114,17 +141,27 @@ export async function runBenchmark(ctx: BenchContext, sections: string): Promise
 
     if (has('index')) {
         const builds: number[] = [];
+        const withKeys: number[] = [];
         let apps = 0;
         for (let i = 0; i < 6; i++) {
             const scope = ctx.scope.child(`bench-index-${i}`);
             const index = new AppIndex(scope);
             const t0 = nowMs();
             index.build();
-            builds.push(nowMs() - t0);
+            const t1 = nowMs();
+            index.searchEntries(); // the search keys (built on an idle after build(), or by the first search)
+            builds.push(t1 - t0);
+            withKeys.push(nowMs() - t0);
             apps = index.apps().length;
             scope.dispose();
         }
-        result.appIndex = {apps, coldBuildMs: round(builds[0]), warmBuildMs: stats(builds.slice(1))};
+        result.appIndex = {
+            apps,
+            coldBuildMs: round(builds[0]),
+            warmBuildMs: stats(builds.slice(1)),
+            coldBuildWithSearchKeysMs: round(withKeys[0]),
+            warmBuildWithSearchKeysMs: stats(withKeys.slice(1)),
+        };
     }
 
     if (has('open')) {
@@ -159,6 +196,45 @@ export async function runBenchmark(ctx: BenchContext, sections: string): Promise
         }
         open.steadyState = summarize(steady);
         result.open = open;
+    }
+
+    if (wanted.has('leaks')) {
+        const anchor = ctx.anchor();
+        if (anchor) {
+            if (ctx.popup.isOpen)
+                await settle();
+            const cycle = async () => {
+                ctx.popup.open(anchor);
+                await sleep(150);
+                for (let i = 1; i <= LEAK_QUERY.length; i++) {
+                    ctx.popup.search(LEAK_QUERY.slice(0, i));
+                    await sleep(120); // past the 80 ms debounce: every prefix really runs
+                }
+                ctx.popup.search('');
+                await settle();
+            };
+            const sample = async () => {
+                System.gc();
+                await sleep(500);
+                return {stageActors: countActors(global.stage), rssKiB: rssKiB()};
+            };
+            for (let i = 0; i < LEAK_WARMUP; i++)
+                await cycle();
+            const before = await sample();
+            for (let i = 0; i < LEAK_CYCLES; i++)
+                await cycle();
+            const after = await sample();
+            result.leaks = {
+                cycles: LEAK_CYCLES,
+                query: LEAK_QUERY,
+                before,
+                after,
+                stageActorsDelta: after.stageActors - before.stageActors,
+                rssDeltaKiB: after.rssKiB - before.rssKiB,
+            };
+        } else {
+            result.leaks = {error: 'no panel button to open the menu from'};
+        }
     }
 
     if (has('search')) {
