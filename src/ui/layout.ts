@@ -70,7 +70,7 @@ import {TileGrid} from './widgets/tileGrid.js';
 import {TooltipManager} from './widgets/tooltip.js';
 import {UndoBanner} from './widgets/undoBanner.js';
 import {UserCard} from './widgets/userCard.js';
-import {applyScrollSettings, displayName, iconSizeFor, iconSizeOrHidden, launchApp, lookupApp, ownedScope, scrollIntoView} from './util.js';
+import {applyScrollSettings, displayName, iconSizeFor, iconSizeOrHidden, launchApp, lookupApp, ownedScope, scrollIntoView, showDescriptions} from './util.js';
 
 export interface LayoutHost {
     /** Close the popup (e.g. after launching an app). */
@@ -116,7 +116,7 @@ const RELAYOUT_KEYS = [
 
 /** Read once when a view is built: a change rebuilds the lists. */
 const VIEW_KEYS = [
-    'icon-size-apps', 'apps-show-extra-details', 'apps-show-generic-names', 'max-frequent-apps',
+    'icon-size-apps', 'apps-show-extra-details', 'show-search-result-details', 'apps-show-generic-names', 'max-frequent-apps',
     'icon-size-categories', 'icon-style-categories',
 ] as const;
 
@@ -1098,7 +1098,7 @@ export class SpawnLayout implements ShortcutHost {
         for (const c of box.get_children())
             c.destroy();
         const s = this._services.settings;
-        const opts = {iconSize: iconSizeFor(s, 'icon-size-apps', 28), description: s.get('apps-show-extra-details')};
+        const opts = {iconSize: iconSizeFor(s, 'icon-size-apps', 28), description: showDescriptions(s)};
         const apps = this._services.appIndex.frequent(this._frequentLimit());
         for (const app of apps)
             box.add_child(new AppRow(app, this._tileHostWithTips(), {...opts, name: displayName(app, s)}).actor);

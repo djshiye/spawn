@@ -235,10 +235,10 @@
     color: rgba(255, 255, 255, 0.92);
 }
 
-/* 40x32 targets, 8 px apart (4 + 4 of transparent button padding), vertically centred on the search
- * entry's centre line. The rule above them is its own widget so it keeps the pane's 8 px inset while
- * the buttons reach the pane's edges (the first / last one carry the 8 px). The flexible spacer
- * between the harmless and the destructive buttons stays dead on purpose. */
+/* 40x32 targets, at least 8 px apart (4 + 4 of transparent button padding), vertically centred on the
+ * search entry's centre line. Each button expands to an equal share of the row and centres its surface,
+ * so the buttons are spread evenly. The rule above them is its own widget so it keeps the pane's 8 px
+ * inset while the buttons reach the pane's edges (the first / last one carry the 8 px). */
 .spawn-power-bar,
 .spawn-power-row {
     spacing: 0;

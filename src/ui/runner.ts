@@ -50,7 +50,7 @@ import type {Services} from '../core/services.js';
 import type {SearchHandle} from '../search/engine.js';
 import {closeMenu, openMenu, silenceSourceKeys} from './menuParams.js';
 import {
-    applyScrollSettings, applyTone, displayName, iconSizeFor, launchApp, lookupApp, scrollIntoView,
+    applyScrollSettings, applyTone, displayName, iconSizeFor, launchApp, lookupApp, scrollIntoView, showDescriptions,
 } from './util.js';
 import {AppRow, DEFAULT_ROW_ICON_SIZE} from './widgets/appRow.js';
 import {ResultList} from './widgets/resultList.js';
@@ -355,7 +355,7 @@ export class SpawnRunner {
                 openContext: () => {},
                 tooltips: ui.tooltips,
             };
-            const opts = {iconSize: iconSizeFor(s, 'icon-size-apps', DEFAULT_ROW_ICON_SIZE), description: s.get('apps-show-extra-details')};
+            const opts = {iconSize: iconSizeFor(s, 'icon-size-apps', DEFAULT_ROW_ICON_SIZE), description: showDescriptions(s)};
             for (const app of apps) {
                 const row = new AppRow(app, host, {...opts, name: displayName(app, s)});
                 ui.defaultBox.add_child(row.actor);

@@ -2,14 +2,16 @@
 // (Default / In_Line: a row of icon buttons; Menu: one "Power Off" button opening a list).
 //
 // Buttons are ordered by severity (POWER_RANK: switch user, lock, log out, suspend, ..., restart,
-// power off), not by the stored order; a flexible spacer pushes the destructive pair (restart,
-// power off) to the far end so they are never next to the harmless ones (that spacer is dead on purpose).
-// 40x32 targets, 8 px apart (stylesheet.css); every button is a transparent hit area (its padding is the
-// gap to its neighbours and the pane's edge) around a `spawn-power-surface` that draws it. `icon-style-buttons` picks the symbolic or the full-colour icon.
+// power off), not by the stored order, so the destructive pair (restart, power off) sits at the far end.
+// They are spread evenly over the row: every button expands to an equal share of the width and centres its
+// 40x32 surface in it (stylesheet.css), so the hit areas touch and there is no dead gap. A stray click on
+// Restart / Power Off is safe: the shell asks for confirmation first.
+// Every button is a transparent hit area (its padding is the gap to the pane's edge) around a
+// `spawn-power-surface` that draws it. `icon-style-buttons` picks the symbolic or the full-colour icon.
 //
 // The row adapts to the pane's width (powerFit.ts, deferred to BEFORE_REDRAW on notify::width): buttons that
 // fit 48n+8 px stay as they are; else `spawn-power-compact` (4 px gaps, surfaces shrink to >= 32 px); else the
-// least important buttons move into a "More" popup menu (placed before the spacer; Power Off hides last).
+// least important buttons move into a "More" popup menu (placed before the destructive pair; Power Off hides last).
 //
 // Availability follows GNOME's SystemActions (can-* properties, live) and a one-off logind probe
 // for hibernate / hybrid sleep, so buttons the system cannot perform are hidden.
@@ -156,30 +158,30 @@ export class PowerBar {
         if (style === 'Menu') {
             this._buildMenuButton(size);
         } else {
-            let spacer: St.Widget | null = null;
+            let firstDestructive: St.Widget | null = null;
             for (const type of this._enabledTypes()) {
                 const info = POWER_INFO[type];
                 if (!info)
                     continue;
                 const destructive = isDestructive(type);
-                if (destructive && !spacer && this._buttons.length > 0) {
-                    spacer = new St.Widget({style_class: 'spawn-power-spacer', x_expand: true});
-                    this._row.add_child(spacer);
-                }
                 const button = makeItemButton(destructive ? 'spawn-power-button spawn-power-destructive' : 'spawn-power-button');
-                button.x_expand = false;
+                button.x_expand = true; // equal shares of the row: evenly spaced
                 button.y_align = Clutter.ActorAlign.CENTER;
                 const icon = new St.Icon({icon_size: size, x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
                 this._setIcon(icon, info.icon);
                 const surface = makeFace('spawn-power-surface', icon);
+                surface.x_expand = false;
+                surface.x_align = Clutter.ActorAlign.CENTER;
                 button.set_child(surface);
                 button.accessible_name = info.name;
                 this._host.tooltips?.attach(button, null, () => info.name, {delay: TOOLTIP_DELAY_MS, above: true});
                 wireItem(button, {activate: () => runPowerAction(type, this._host, this._scope)});
                 this._row.add_child(button);
+                if (destructive && !firstDestructive)
+                    firstDestructive = button;
                 this._buttons.push({type, actor: button, surface});
             }
-            this._buildMore(size, spacer);
+            this._buildMore(size, firstDestructive);
         }
         this._refresh();
     }
@@ -192,19 +194,21 @@ export class PowerBar {
             icon.icon_name = name;
     }
 
-    /** The "More" button (hidden until the row overflows): sits before the spacer, opens a menu of the overflowed actions. */
-    private _buildMore(size: number, spacer: St.Widget | null): void {
+    /** The "More" button (hidden until the row overflows): sits before Restart / Power Off, opens a menu of the overflowed actions. */
+    private _buildMore(size: number, before: St.Widget | null): void {
         const button = makeItemButton('spawn-power-button spawn-power-more');
-        button.x_expand = false;
+        button.x_expand = true;
         button.y_align = Clutter.ActorAlign.CENTER;
         const icon = new St.Icon({icon_name: 'view-more-horizontal-symbolic', icon_size: size, x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
         const surface = makeFace('spawn-power-surface', icon);
+        surface.x_expand = false;
+        surface.x_align = Clutter.ActorAlign.CENTER;
         button.set_child(surface);
         button.accessible_name = _('More');
         this._host.tooltips?.attach(button, null, () => _('More'), {delay: TOOLTIP_DELAY_MS, above: true});
         button.visible = false;
-        if (spacer)
-            this._row.insert_child_below(button, spacer);
+        if (before)
+            this._row.insert_child_below(button, before);
         else
             this._row.add_child(button);
         this._more = {type: -1, actor: button, surface};

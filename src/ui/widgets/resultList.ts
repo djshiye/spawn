@@ -47,7 +47,7 @@ import type {SpawnSettings} from '../../core/settings.js';
 import type {SearchBatch, SearchResult} from '../../search/engine.js';
 import {error} from '../../core/log.js';
 import {highlightMarkup} from '../../search/highlight.js';
-import {iconSizeFor} from '../util.js';
+import {iconSizeFor, showDescriptions} from '../util.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
 import type {ShortcutHost} from './shortcutRow.js';
 
@@ -332,7 +332,7 @@ export class ResultList {
             title.text = result.title;
         title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         text.add_child(title);
-        if (result.description && (result.alwaysShowDescription || this._settings.get('show-search-result-details'))) {
+        if (result.description && (result.alwaysShowDescription || showDescriptions(this._settings))) {
             const d = new St.Label({text: result.description, style_class: 'spawn-row-description'});
             d.clutter_text.ellipsize = Pango.EllipsizeMode.END;
             text.add_child(d);

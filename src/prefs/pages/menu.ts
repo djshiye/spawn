@@ -62,6 +62,31 @@ function gridRows(ctx: PrefsContext): Adw.SpinRow[] {
     });
 }
 
+/**
+ * One switch for the two description keys (app lists and search results used to be separate switches that
+ * read like duplicates). On when either is on, which is also what the menu shows (ui/util.ts showDescriptions);
+ * flipping it writes both.
+ */
+function descriptionsRow(ctx: PrefsContext): Adw.SwitchRow {
+    const keys = ['apps-show-extra-details', 'show-search-result-details'] as const;
+    const read = (): boolean => keys.some(k => ctx.settings.get(k));
+    const row = new Adw.SwitchRow({title: 'Show descriptions', subtitle: 'A dimmed line below app names and search results', active: read()});
+    let writing = false; // the first write must not flip the switch back before the second one lands
+    row.connect('notify::active', () => {
+        writing = true;
+        for (const k of keys) {
+            if (ctx.settings.get(k) !== row.active)
+                ctx.settings.set(k, row.active);
+        }
+        writing = false;
+    });
+    watch(ctx, row, [...keys], () => {
+        if (!writing && row.active !== read())
+            row.set_active(read());
+    });
+    return row;
+}
+
 export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
     const page = new Adw.PreferencesPage({
         name: 'menu',
@@ -123,7 +148,7 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
 
     const searchKeys: SettingKey[] = [
         'search-hidden', 'search-entry-location', 'max-search-results', 'highlight-search-result-terms',
-        'show-search-result-details', 'search-entry-border-radius',
+        'show-search-result-details', 'apps-show-extra-details', 'search-entry-border-radius',
     ];
     page.add(group(ctx, 'Search', [
         switchRow(ctx, 'search-hidden', 'Hide the search bar', 'It appears as soon as you start typing'),
@@ -134,13 +159,13 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
         ], 'Automatic puts it nearest the panel the menu opens from'),
         spinRow(ctx, 'max-search-results', 'Results per source', 1, 20),
         switchRow(ctx, 'highlight-search-result-terms', 'Highlight matching text'),
-        switchRow(ctx, 'show-search-result-details', 'Show result descriptions'),
-        optionalSpinRow(ctx, 'search-entry-border-radius', 'Search bar corner radius', 0, 25),
+        descriptionsRow(ctx),
+        optionalSpinRow(ctx, 'search-entry-border-radius', 'Search bar corner radius', 0, 25, 'Radius'),
     ], {reset: searchKeys}));
 
     const providerKeys: SettingKey[] = [
         'search-provider-open-windows', 'search-provider-recent-files', 'search-provider-shell', 'show-hidden-recent-files',
-        'apps-show-extra-details', 'apps-show-generic-names',
+        'apps-show-generic-names',
     ];
     const hiddenRecent = switchRow(ctx, 'show-hidden-recent-files', 'Include hidden recent files');
     page.add(group(ctx, 'Search sources', [
@@ -148,7 +173,6 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
         switchRow(ctx, 'search-provider-recent-files', 'Recent files'),
         hiddenRecent,
         switchRow(ctx, 'search-provider-shell', 'GNOME Shell search providers', 'Results from Calculator, Settings, Characters and other providers'),
-        switchRow(ctx, 'apps-show-extra-details', 'Show app descriptions'),
         switchRow(ctx, 'apps-show-generic-names', 'Show generic app names', 'For example "Web Browser" below Firefox'),
     ], {reset: providerKeys}));
 
