@@ -263,6 +263,21 @@
     padding-right: 8px;
 }
 
+/* Narrow pane (powerBar.ts / powerFit.ts): 4 px gaps, the surfaces' width is set inline. The edge rules
+ * come after and are more specific, so the first / last button keep their 8 px. */
+.spawn-power-compact .spawn-power-button {
+    padding-left: 2px;
+    padding-right: 2px;
+}
+
+.spawn-power-compact .spawn-power-button.spawn-power-first {
+    padding-left: 8px;
+}
+
+.spawn-power-compact .spawn-power-button.spawn-power-last {
+    padding-right: 8px;
+}
+
 .spawn-power-surface {
     border-radius: 8px;
     min-width: 40px;
