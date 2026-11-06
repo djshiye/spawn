@@ -97,14 +97,9 @@ PY
     pick_is "$disp: the pointer on the pane's left edge, level with the first pinned entry, hits it" $(pane_point spawn-left-pane 1 $ITEM) "$ITEM"
     pick_is "$disp: ... and on the right edge" $(pane_point spawn-left-pane -2 $ITEM) "$ITEM"
     ui_call OpenFolder 0 >/dev/null; sleep 0.8
-    if [ "$disp" = List ]; then
-        sweep_in "List: folder contents over the whole left pane" spawn-tile-grid spawn-pinned-row spawn-left-pane 4
-    else
-        j="$(ui_call HitSweep spawn-tile | unwrap)"
-        python3 -c 'import json,sys; r=json.loads(sys.argv[1]); print("Grid folder: %d/%d points hit a tile" % (r["hit"], r["total"])); sys.exit(0 if r["total"] > 100 and not r["misses"] and r["contiguous"] else 1)' "$j"
-        check "Grid: folder contents, no dead pixel" $?
-        edge "Grid folder: the first tile" spawn-tile spawn-left-pane left
-    fi
+    # the folder is a centred popup card of grid tiles (both displays): it has no full-pane hit areas to
+    # sweep, and the sweeps only see the first spawn-tile-grid (the pinned one underneath)
+    expect_state "$disp: the folder popup is open" layout.view folder
     key Escape 0.6
 
     echo "-- nav button at the pane's edge"

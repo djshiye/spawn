@@ -37,7 +37,12 @@ your area before writing code.
   - Pinned apps as a list (default, like ArcMenu's arcmenu layout: one row per app, a
     folder row with a chevron) or a grid (`pinned-apps-display`), with folders
     (open/rename/delete, drop app on app = new folder, drag reorder; in the list the
-    top / middle / bottom band of a row means before / onto / after).
+    top / middle / bottom band of a row means before / onto / after). An opened folder is a popup card
+    centred over both panes on a dimming scrim (the pinned view stays underneath): header with the
+    name (click = rename) and a close button, its apps always as grid tiles (1 / 2 / 3 / 4 columns for 1 / 2-4 /
+    5-9 / 10+ apps). Escape, the close button or a click on the scrim closes it and returns the focus
+    to the folder's entry; Tab and the arrows stay inside it; dropping an app on the scrim or the header
+    takes it out of the folder.
   - Pinned hit areas: no dead zones and three sizes (`pinned-item-size`: Compact / Comfortable /
     Large). St only hit-tests an actor's allocation (padding included, margins and container
     spacing excluded), so the pinned list / grid and a folder's contents have no container padding or

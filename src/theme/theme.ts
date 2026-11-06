@@ -38,6 +38,7 @@
 //   Only when `override-menu-theme` is true:
 //     .spawn-popup                          arrow colours, font size, foreground
 //     .spawn-popup .popup-menu-content      background, border, radius
+//     .spawn-popup .spawn-folder-popup      background, foreground, border colour (the folder popup card)
 //     the item selectors above                   hover/focus + active colours
 //     .spawn-popup StEntry / .hint-text     foreground, separator colour as border
 //     .spawn-separator, .spawn-popup .popup-separator-menu-item-separator  separators

@@ -35,15 +35,15 @@ state_get layout.focus | grep -q 'spawn-power-button' && { echo "FAIL Right land
 state_get layout.focus | grep -q 'spawn-user-card' && echo "ok   Right lands on the user card" || { echo "FAIL Right did not land on the user card"; status=1; }
 dconf write $K/search-entry-location "'Bottom'"
 
-echo "-- ui2 #3: Back with search-hidden focuses the list, not the invisible entry"
+echo "-- ui2 #3: closing a folder with search-hidden focuses the list, not the invisible entry"
 reset_seed
 dconf write $K/search-hidden true
 sleep 1
 close_menu; open_menu 1.2
 ui_call OpenFolder 0 >/dev/null; sleep 0.8
 expect_state "folder open" layout.view folder
-click_class spawn-folder-back 0
-expect_state "Back leaves the folder" layout.view pinned
+click_class spawn-folder-close 0
+expect_state "Close leaves the folder" layout.view pinned
 expect "focus is not the hidden entry" "$(state_get layout.focus | cut -c1-12 | grep -c Clutter_Text)" 0
 expect_state "focus is in the layout" layout.focusInLayout true
 key a 0.9

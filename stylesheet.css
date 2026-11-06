@@ -488,17 +488,36 @@
     box-shadow: inset 0 -3px 0 0 st-transparentize(-st-accent-color, 0);
 }
 
-/* ---- folder view ---- */
+/* ---- folder popup ----
+ * An open folder is a card over the menu (ui/widgets/folderView.ts): the scrim dims both panes, the
+ * card holds the header (title + pencil, close) and the app grid. Keep the 24 px margin, the 12 px
+ * vertical padding and the 38 px header in step with POPUP_MARGIN / CARD_CHROME_H there. */
 
-.spawn-folder-view {
+.spawn-folder-scrim {
+    background-color: rgba(0, 0, 0, 0.38);
+    border-radius: 12px;
+}
+
+/* dragging an app over the scrim: no accent frame around the whole menu, just a little less dim
+ * (the header hint says what a drop there does) */
+.spawn-popup .spawn-folder-scrim.spawn-drop-target {
+    border-width: 0;
+    background-color: rgba(0, 0, 0, 0.28);
+}
+
+.spawn-folder-popup {
+    background-color: rgba(52, 52, 58, 0.97);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 22px;
+    padding: 12px 0;
     spacing: 4px;
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5);
 }
 
 .spawn-folder-header {
     min-height: 38px;
     spacing: 4px;
-    margin: 0 8px;
-    padding: 0 0 4px 0;
+    margin: 0 12px;
     border-radius: 12px;
 }
 
@@ -506,8 +525,22 @@
     background-color: rgba(255, 255, 255, 0.06);
 }
 
-.spawn-folder-back {
-    border-radius: 8px;
+/* as wide as the close button, so the title is centred in the card */
+.spawn-folder-header-balance {
+    width: 32px;
+}
+
+.spawn-folder-close {
+    border-radius: 16px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.spawn-folder-close:hover,
+.spawn-folder-close:focus {
+    color: rgba(255, 255, 255, 1);
 }
 
 .spawn-folder-name {
@@ -526,7 +559,6 @@
 .spawn-folder-hint {
     color: rgba(255, 255, 255, 0.55);
     font-size: 0.85em;
-    padding-left: 8px;
 }
 
 .spawn-folder-rename {
@@ -844,6 +876,30 @@
 
 .spawn-light .spawn-folder-header:drag {
     background-color: rgba(0, 0, 0, 0.06);
+}
+
+.spawn-light .spawn-folder-scrim {
+    background-color: rgba(0, 0, 0, 0.18);
+}
+
+.spawn-popup.spawn-light .spawn-folder-scrim.spawn-drop-target,
+.spawn-light .spawn-popup .spawn-folder-scrim.spawn-drop-target {
+    background-color: rgba(0, 0, 0, 0.12);
+}
+
+.spawn-light .spawn-folder-popup {
+    background-color: rgba(250, 250, 252, 0.98);
+    border-color: rgba(0, 0, 0, 0.08);
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.22);
+}
+
+.spawn-light .spawn-folder-close {
+    color: rgba(0, 0, 0, 0.6);
+}
+
+.spawn-light .spawn-folder-close:hover,
+.spawn-light .spawn-folder-close:focus {
+    color: rgba(0, 0, 0, 0.9);
 }
 
 .spawn-light .spawn-section-title,

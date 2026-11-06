@@ -95,22 +95,33 @@ fstep "Ctrl+Right at the end is a no-op" Ctrl+Right "${fa[1]} ${fa[2]} ${fa[3]} 
 fstep "Ctrl+Left" Ctrl+Left "${fa[1]} ${fa[2]} ${fa[0]} ${fa[3]}" 2
 fstep "Ctrl+Home" Ctrl+Home "${fa[0]} ${fa[1]} ${fa[2]} ${fa[3]}" 0
 fstep "Ctrl+Up on the first row is a no-op" Ctrl+Up "${fa[0]} ${fa[1]} ${fa[2]} ${fa[3]}" 0
+expect_state "the folder popup is a 2-column grid (4 apps)" layout.folderColumns 2
+fstep "Ctrl+Down moves one row (two positions)" Ctrl+Down "${fa[1]} ${fa[2]} ${fa[0]} ${fa[3]}" 2
+fstep "Ctrl+Up moves one row back" Ctrl+Up "${fa[0]} ${fa[1]} ${fa[2]} ${fa[3]}" 0
 expect "the top level is untouched by folder reordering" "$(pinned_ids)" "$S $C $H $I $G $T"
 fstep "Ctrl+Right (to survive the reopen check)" Ctrl+Right "${fa[1]} ${fa[0]} ${fa[2]} ${fa[3]}" 1
 close_menu
 open_menu 1.5
 expect "folder order after reopen" "$(folder_ids $I)" "${fa[1]} ${fa[0]} ${fa[2]} ${fa[3]}"
 
-echo "== Inside a folder (list)"
+echo "== Inside a folder (list display: the popup is still a 2-column grid)"
 PINNED_DISPLAY=List; pin_vars
 reset_seed
 open_menu 1.5
 ui_call OpenFolder 0 >/dev/null; sleep 0.8
 expect_state "Internet folder open (list)" layout.folder "$I"
 expect_state "list display" layout.display List
-fstep "Ctrl+Down" Ctrl+Down "${fa[1]} ${fa[0]} ${fa[2]} ${fa[3]}" 1
-fstep "Ctrl+Down" Ctrl+Down "${fa[1]} ${fa[2]} ${fa[0]} ${fa[3]}" 2
-fstep "Ctrl+Right does nothing in a list" Ctrl+Right "${fa[1]} ${fa[2]} ${fa[0]} ${fa[3]}" 2
+expect_state "folder contents are a 2-column grid" layout.folderColumns 2
+expect_state "focus on the first app" layout.focusIndex 0
+# 2 columns, 4 apps: positions 0 1 / 2 3
+fstep "Ctrl+Down moves a whole row (0 -> 2)" Ctrl+Down "${fa[1]} ${fa[2]} ${fa[0]} ${fa[3]}" 2
+fstep "Ctrl+Down on the last row is a no-op" Ctrl+Down "${fa[1]} ${fa[2]} ${fa[0]} ${fa[3]}" 2
+fstep "Ctrl+Right moves one position (2 -> 3)" Ctrl+Right "${fa[1]} ${fa[2]} ${fa[3]} ${fa[0]}" 3
+fstep "Ctrl+Right at the end is a no-op" Ctrl+Right "${fa[1]} ${fa[2]} ${fa[3]} ${fa[0]}" 3
+fstep "Ctrl+Up moves a whole row (3 -> 1)" Ctrl+Up "${fa[1]} ${fa[0]} ${fa[2]} ${fa[3]}" 1
+fstep "Ctrl+Left (1 -> 0)" Ctrl+Left "${fa[0]} ${fa[1]} ${fa[2]} ${fa[3]}" 0
+fstep "Ctrl+Left at the start is a no-op" Ctrl+Left "${fa[0]} ${fa[1]} ${fa[2]} ${fa[3]}" 0
+fstep "Ctrl+End" Ctrl+End "${fa[1]} ${fa[2]} ${fa[3]} ${fa[0]}" 3
 fstep "Ctrl+Home" Ctrl+Home "${fa[0]} ${fa[1]} ${fa[2]} ${fa[3]}" 0
 close_menu
 

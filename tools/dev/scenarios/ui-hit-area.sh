@@ -50,8 +50,10 @@ for size in Compact Comfortable Large; do
     python3 "$root/tools/dev/ux-measure.py" "$dev/ux/hit-list-$size.json" --check >/dev/null; check "List $size meets the UX targets" $?
     screenshot ui-hit-list-$size
     ui_call OpenFolder 0 >/dev/null; sleep 0.8
-    expect "$size: folder contents are rows" "$(count spawn-pinned-row)" 4
-    sweep "List $size, folder contents" spawn-pinned-row
+    # the folder is a popup of grid tiles over the (still mapped) pinned rows; HitSweep only sweeps the
+    # first visible spawn-tile-grid, which is the pinned one underneath, so the popup is only counted
+    expect "$size: folder contents are tiles (the 6 pinned rows stay behind the popup)" "$(count spawn-pinned-row)" 6
+    expect "$size: the folder popup shows its 4 apps as tiles" "$(count spawn-tile)" 4
     screenshot ui-hit-list-$size-folder
     key Escape 0.6
     expect_state "back on the pinned view" layout.view pinned
@@ -102,8 +104,7 @@ for size in Compact Comfortable Large; do
     dump_ui "$dev/ux/hit-grid-$size.json"
     screenshot ui-hit-grid-$size
     ui_call OpenFolder 0 >/dev/null; sleep 0.8
-    expect "$size: the folder shows its 4 apps as tiles" "$(count spawn-tile)" 4
-    sweep "Grid $size, folder contents" spawn-tile
+    expect "$size: the folder popup adds its 4 apps as tiles to the 6 pinned ones behind it" "$(count spawn-tile)" 10
     key Escape 0.6
     expect_state "back on the pinned view" layout.view pinned
 done
