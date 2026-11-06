@@ -1,8 +1,9 @@
-# Tooltips: truncated folder-view names and the power buttons.
+# Tooltips: truncated folder-popup names and the power buttons.
 open_menu 1.5
 ui_call OpenFolder 1 >/dev/null; sleep 0.8
 ui_call Move 300 300 >/dev/null; sleep 0.5
-move_class $ITEM 0 1.5
+# the folder popup's tiles are spawn-tile in both displays; in Grid the 6 pinned tiles behind it come first
+move_class spawn-tile "$([ "$PINNED_DISPLAY" = Grid ] && echo 6 || echo 0)" 1.5
 echo "folder tile tooltip: $(state_get layout.tooltip)"
 screenshot ui-tooltip-folder
 key Escape 0.6

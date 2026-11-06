@@ -165,6 +165,9 @@ center() {
     [ -n "$r" ] || return 1
     python3 -c 'import json,sys; x,y,w,h=json.loads(sys.argv[1]); print(round(x+w/2), round(y+h/2))' "$r"
 }
+scrim_point() { # [dx dy]: a point on the folder scrim outside the popup card (dx, dy px inside the scrim's top left corner)
+    python3 -c 'import json,sys; x,y,w,h=json.loads(sys.argv[1]); print(round(x+float(sys.argv[2])), round(y+float(sys.argv[3])))' "$(rect spawn-folder-scrim 0)" "${1:-10}" "${2:-10}"
+}
 count() { ui_call Count "$1" | tr -dc '0-9'; }
 move_class() {
     local c

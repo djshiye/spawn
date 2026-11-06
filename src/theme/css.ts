@@ -244,6 +244,12 @@ function overrideRules(c: ThemeColors): string[] {
             ['border-style', 'solid'],
             ['border-radius', radius],
         ]),
+        // The folder popup card is a raised copy of the menu background (opaque-ish over the scrim).
+        rule(`${popup} .spawn-folder-popup`, [
+            ['background-color', bg],
+            ['color', fg],
+            ['border-color', border],
+        ]),
         rule(each(':hover', `${popup} `), [['background-color', hoverBg], ['color', hoverFg]]),
         rule(each(':focus', `${popup} `), [['background-color', hoverBg], ['color', hoverFg]]),
         rule([...each(':active', `${popup} `), ...each(':selected', `${popup} `), ...each(':checked', `${popup} `)], [

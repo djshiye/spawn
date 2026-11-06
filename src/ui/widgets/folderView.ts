@@ -1,21 +1,28 @@
-// FolderView: the contents of one pinned folder, shown in place of the pinned grid. Header with a
-// back button and the folder name (click to rename inline), then the apps as a tile grid or, in
-// the list display (`metrics().list`), as full-width rows. Tiles / rows are draggable (reorder inside the folder via ui/dnd.ts) and can
-// be dropped onto the header to take them out of the folder. Rebuilt from PinnedStore whenever it changes.
+// FolderView: the contents of one pinned folder, shown as a popup card over the menu (like app
+// folders on GNOME, Android or iOS) instead of replacing the pinned view. The whole layout is dimmed by
+// a scrim; the card in its middle has the folder name (click to rename inline), a close button and the
+// apps as a tile grid. The grid is always tiles, also when the pinned view is a list, sized to the
+// folder: 2 columns up to 4 apps, 3 up to 9, then 4 (fewer when the menu is too narrow); it scrolls when
+// the folder is taller than the menu. Clicking the scrim, the close button or Escape (the layout) closes it.
+// Tiles are draggable (reorder inside the folder via ui/dnd.ts); dropping one outside the card (on
+// the scrim) or on the header takes it out of the folder. Rebuilt from PinnedStore whenever it changes.
 //
 // Public API:
 //   new FolderView(scope: Scope, services: Services, host: FolderViewHost)
-//   view.actor: St.Widget
-//   view.show(uuid: string): boolean  false when the folder is gone (nothing is shown, the host went back)
+//   view.actor: St.Widget             the scrim (full size of its parent, hidden while closed); the
+//                                     host adds it on top of the menu content
+//   view.show(uuid: string, animate?): boolean  false when the folder is gone (nothing is shown, the host went back)
+//   view.hide(animate?): void         close the popup (fades out when `animate`)
 //   view.refresh(): void              re-sync with the store (also called on store changes)
 //   view.uuid: string | null
-//   view.tiles(): St.Widget[]         app tiles / rows in order (keyboard nav)
-//   view.headerButtons(): St.Widget[] back + name buttons
+//   view.columns: number              columns of the grid (keyboard nav / reordering)
+//   view.tiles(): St.Widget[]         app tiles in order (keyboard nav)
+//   view.headerButtons(): St.Widget[] name + close buttons
 //   view.startRename(): void
 //   view.commitRename(): void         save an inline rename in progress (menu closing)
 //   view.scroll: St.ScrollView
 //   view.destroy()
-//   FolderViewHost: TileHost & {back(), metrics?(): {columns, tileWidth, iconSize, multiLine?, list?, rowIconSize?, size?},
+//   FolderViewHost: TileHost & {back(), metrics?(): {columns, tileWidth, iconSize, multiLine?, size?, width?, height?},
 //                               openMissingContext?(tile, id)}
 //
 // Apps of the folder whose .desktop file is gone are shown as dimmed tiles (context menu: Unpin)
@@ -32,7 +39,6 @@ import type {Services} from '../../core/services.js';
 import type {PinnedItemSize} from '../../core/settings.js';
 import {acceptDrops, enableDrag, rejectDrops} from '../dnd.js';
 import {applyScrollSettings, displayName, lookupApp} from '../util.js';
-import {ActionRow, AppRow} from './appRow.js';
 import {ActionTile, AppTile, type TileHost} from './appTile.js';
 import {makeItemButton, wireItem} from './interact.js';
 import {TileGrid} from './tileGrid.js';
@@ -42,11 +48,14 @@ export interface FolderMetrics {
     tileWidth: number;
     iconSize: number;
     multiLine?: boolean;
-    /** List display: rows (of `rowIconSize`) instead of a grid of tiles. */
+    /** List display of the pinned view. The folder popup is a grid either way; kept for the host's convenience. */
     list?: boolean;
     rowIconSize?: number;
     /** pinned-item-size tier (default Compact). */
     size?: PinnedItemSize;
+    /** Size of the area the popup is centred in (the menu content); the card stays inside it. */
+    width?: number;
+    height?: number;
 }
 
 export type FolderViewHost = TileHost & {
@@ -59,13 +68,52 @@ export type FolderViewHost = TileHost & {
 /** Longest folder name the rename entry accepts (the name shows up in tiles and menus). */
 const MAX_NAME_LENGTH = 40;
 
+/**
+ * Space the card keeps from the edges of the menu content, and the chrome inside the card that the
+ * grid cannot use: header (38) + its spacing / the card's vertical padding. Keep in step with
+ * .spawn-folder-popup / .spawn-folder-header in stylesheet.css.
+ */
+const POPUP_MARGIN = 24;
+const CARD_CHROME_H = 38 + 8 + 2 * 12;
+/** TileGrid's transparent gutter at the left and right end of each row (2 x 16 px). */
+const GRID_GUTTER_W = 32;
+/** Narrowest card: room for the title, its pencil and the close button. */
+const MIN_CARD_WIDTH = 280;
+
+const OPEN_MS = 180;
+const CLOSE_MS = 120;
+const CARD_START_SCALE = 0.92;
+
+type EaseParams = Parameters<Clutter.Actor['ease']>[0];
+
+/**
+ * Ease params that scale to `scale`. The shell's ease() names the transitions after the property with
+ * `_` turned into `-` (`scale_x` -> `scale-x`), so the snake_case names are the ones it tracks; the
+ * typings only know the camelCase spelling.
+ */
+function scaleTo(scale: number, params: Record<string, unknown>): EaseParams {
+    return {...params, scale_x: scale, scale_y: scale} as unknown as EaseParams;
+}
+
+/** Columns for `n` apps: 2 up to 4 (a 2x2 like the folder icon), 3 up to 9, then 4. */
+export function folderColumns(n: number): number {
+    if (n <= 1)
+        return 1;
+    if (n <= 4)
+        return 2;
+    if (n <= 9)
+        return 3;
+    return 4;
+}
+
 export class FolderView {
-    readonly actor: St.BoxLayout;
+    readonly actor: St.Widget;
     readonly scroll: St.ScrollView;
     private readonly _services: Services;
     private readonly _host: FolderViewHost;
+    private readonly _card: St.BoxLayout;
     private readonly _header: St.BoxLayout;
-    private readonly _backButton: St.Button;
+    private readonly _closeButton: St.Button;
     private readonly _nameButton: St.Button;
     private readonly _nameLabel: St.Label;
     private readonly _hint: St.Label;
@@ -77,6 +125,7 @@ export class FolderView {
     private _cancelFocusOut: (() => void) | null = null;
     private _uuid: string | null = null;
     private _tiles: St.Widget[] = [];
+    private _columns = 1;
     private _tileScope: Scope;
     private _destroyed = false;
 
@@ -86,23 +135,42 @@ export class FolderView {
         this._scope = scope;
         this._tileScope = scope.child('folder tiles');
 
-        this.actor = new St.BoxLayout({
-            style_class: 'spawn-folder-view',
-            orientation: Clutter.Orientation.VERTICAL,
+        // The scrim: covers the whole menu content, dims it and closes the popup on a click.
+        this.actor = new St.Widget({
+            style_class: 'spawn-folder-scrim',
+            layout_manager: new Clutter.BinLayout(),
+            reactive: true,
             x_expand: true,
             y_expand: true,
+            visible: false,
+        });
+        this.actor.connect('button-press-event', (_a: Clutter.Actor, event: Clutter.Event) => {
+            const button = event.get_button();
+            if (button !== 1 && button !== 3)
+                return Clutter.EVENT_PROPAGATE;
+            if (this._insideCard(event))
+                return Clutter.EVENT_PROPAGATE;
+            host.back();
+            return Clutter.EVENT_STOP;
         });
 
-        this._header = new St.BoxLayout({style_class: 'spawn-folder-header', reactive: true});
-        this._backButton = makeItemButton('spawn-row spawn-folder-back');
-        this._backButton.x_expand = false;
-        this._backButton.set_child(new St.Icon({icon_name: 'go-previous-symbolic', icon_size: 16}));
-        this._backButton.accessible_name = _('Back');
-        wireItem(this._backButton, {activate: () => host.back()});
-        host.tooltips?.attach(this._backButton, null, () => _('Back'));
+        this._card = new St.BoxLayout({
+            style_class: 'spawn-folder-popup',
+            orientation: Clutter.Orientation.VERTICAL,
+            x_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.CENTER,
+            reactive: true,
+        });
+        this._card.set_pivot_point(0.5, 0.5);
+        this.actor.add_child(this._card);
+
+        this._header = new St.BoxLayout({style_class: 'spawn-folder-header', reactive: true, x_expand: true});
+        // Balances the close button so the title sits in the middle of the card.
+        const balance = new St.Widget({style_class: 'spawn-folder-header-balance'});
 
         this._nameButton = makeItemButton('spawn-row spawn-folder-name');
-        this._nameButton.x_expand = false;
+        this._nameButton.x_expand = true;
+        this._nameButton.x_align = Clutter.ActorAlign.CENTER;
         const nameBox = new St.BoxLayout({style_class: 'spawn-row-box'});
         this._nameLabel = new St.Label({style_class: 'spawn-folder-title', y_align: Clutter.ActorAlign.CENTER});
         this._nameLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
@@ -113,20 +181,42 @@ export class FolderView {
         wireItem(this._nameButton, {activate: () => this.startRename()});
         host.tooltips?.attach(this._nameButton, null, () => _('Rename folder'));
 
-        this._hint = new St.Label({text: _('Drop here to take out of folder'), style_class: 'spawn-folder-hint', y_align: Clutter.ActorAlign.CENTER, x_expand: true, visible: false});
+        this._closeButton = makeItemButton('spawn-row spawn-folder-close');
+        this._closeButton.x_expand = false;
+        this._closeButton.y_align = Clutter.ActorAlign.CENTER;
+        this._closeButton.set_child(new St.Icon({icon_name: 'window-close-symbolic', icon_size: 16}));
+        this._closeButton.accessible_name = _('Close');
+        wireItem(this._closeButton, {activate: () => host.back()});
+        host.tooltips?.attach(this._closeButton, null, () => _('Close'));
+
+        // Shown in place of the title while an app is dragged, so the card keeps its size under the pointer.
+        this._hint = new St.Label({
+            text: _('Drop outside to take out of folder'),
+            style_class: 'spawn-folder-hint',
+            x_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.CENTER,
+            x_expand: true,
+            visible: false,
+        });
         this._hint.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-        this._header.add_child(this._backButton);
+
+        this._header.add_child(balance);
         this._header.add_child(this._nameButton);
         this._header.add_child(this._hint);
-        this.actor.add_child(this._header);
+        this._header.add_child(this._closeButton);
+        this._card.add_child(this._header);
+
 
         this.scroll = new St.ScrollView({
+            style_class: 'spawn-folder-scroll',
             hscrollbar_policy: St.PolicyType.NEVER,
-            y_expand: true,
+            vscrollbar_policy: St.PolicyType.AUTOMATIC,
         });
         applyScrollSettings(this.scroll, services.settings);
+        this._grid.actor.x_expand = false;
+        this._grid.actor.x_align = Clutter.ActorAlign.CENTER;
         this.scroll.add_child(this._grid.actor);
-        this.actor.add_child(this.scroll);
+        this._card.add_child(this.scroll);
 
         services.pinned.onChanged(scope, () => {
             if (this._uuid && this.actor.mapped)
@@ -139,20 +229,70 @@ export class FolderView {
         return this._uuid;
     }
 
+    get columns(): number {
+        return this._columns;
+    }
+
     tiles(): St.Widget[] {
         return this._tiles;
     }
 
     headerButtons(): St.Widget[] {
-        return [this._backButton, this._nameButton];
+        return [this._nameButton, this._closeButton];
     }
 
-    show(uuid: string): boolean {
+    show(uuid: string, animate = false): boolean {
         this._uuid = uuid;
         this._cancelRename();
         this.refresh();
+        if (this._uuid !== uuid)
+            return false;
         this.scroll.vadjustment.value = 0;
-        return this._uuid === uuid;
+        const wasOpen = this.actor.visible && this.actor.opacity === 255;
+        this.actor.remove_all_transitions();
+        this._card.remove_all_transitions();
+        this.actor.reactive = true;
+        this.actor.show();
+        if (animate && !wasOpen) {
+            this.actor.opacity = 0;
+            this._card.opacity = 0;
+            this._card.set_scale(CARD_START_SCALE, CARD_START_SCALE);
+            this.actor.ease({opacity: 255, duration: OPEN_MS, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+            this._card.ease(scaleTo(1, {opacity: 255, duration: OPEN_MS, mode: Clutter.AnimationMode.EASE_OUT_QUAD}));
+        } else {
+            this.actor.opacity = 255;
+            this._card.opacity = 255;
+            this._card.set_scale(1, 1);
+        }
+        return true;
+    }
+
+    /** Close the popup; `animate` fades it out (the menu is open), otherwise it goes at once. */
+    hide(animate = false): void {
+        if (this._destroyed)
+            return;
+        this._finish?.(true, false);
+        this._uuid = null;
+        this._host.tooltips?.hide();
+        // No second close and no launches from the fading card.
+        this.actor.reactive = false;
+        this.actor.remove_all_transitions();
+        this._card.remove_all_transitions();
+        if (!animate || !this.actor.visible) {
+            this.actor.hide();
+            return;
+        }
+        this._card.ease(scaleTo(0.96, {duration: CLOSE_MS, mode: Clutter.AnimationMode.EASE_IN_QUAD}));
+        this.actor.ease({
+            opacity: 0,
+            duration: CLOSE_MS,
+            mode: Clutter.AnimationMode.EASE_IN_QUAD,
+            onStopped: (finished: boolean) => {
+                // Not finished: show() took over mid-fade and resets opacity / scale itself.
+                if (finished && !this._destroyed && this._uuid === null)
+                    this.actor.hide();
+            },
+        });
     }
 
     refresh(): void {
@@ -173,12 +313,15 @@ export class FolderView {
         this._host.tooltips?.hide();
         // Per-tile drag/drop registrations live in a scope that is reset on every rebuild.
         this._tileScope.dispose();
+        // Outside the card (the scrim) and the header take an app out of the folder; the rest of the
+        // card appends it inside the folder (so a drop on its padding does not take it out by surprise).
+        acceptDrops(this._tileScope, this.actor, store, {kind: 'unfolder', folderUuid: uuid});
         acceptDrops(this._tileScope, this._header, store, {kind: 'unfolder', folderUuid: uuid});
+        acceptDrops(this._tileScope, this._card, store, {kind: 'grid', index: () => -1, folderUuid: uuid});
 
         for (const t of this._tiles)
             t.destroy();
         const metrics: FolderMetrics = this._host.metrics?.() ?? {columns: 4, tileWidth: 96, iconSize: 48};
-        const list = Boolean(metrics.list);
         const tiles: St.Widget[] = [];
         const settings = this._services.settings;
         for (const entry of store.folderApps(uuid, true)) {
@@ -188,43 +331,60 @@ export class FolderView {
                 continue;
             }
             const name = displayName(app, settings);
-            const actor = list
-                ? new AppRow(app, this._host, {
-                    folderUuid: uuid, iconSize: metrics.rowIconSize, name, pinned: true,
-                }).actor
-                : new AppTile(app, this._host, {
-                    folderUuid: uuid, iconSize: metrics.iconSize, multiLine: metrics.multiLine, name,
-                }).actor;
+            const actor = new AppTile(app, this._host, {
+                folderUuid: uuid, iconSize: metrics.iconSize, multiLine: metrics.multiLine, name,
+            }).actor;
             enableDrag(this._tileScope, actor, {
                 id: entry.id,
                 folderUuid: uuid,
                 onDragBegin: () => this._setDragging(true),
                 onDragEnd: () => this._setDragging(false),
             });
-            acceptDrops(this._tileScope, actor, store, {kind: 'app', id: entry.id, folderUuid: uuid}, {vertical: list});
+            acceptDrops(this._tileScope, actor, store, {kind: 'app', id: entry.id, folderUuid: uuid});
             tiles.push(actor);
         }
         this._tiles = tiles;
-        this._grid.setTiles(tiles, list ? 1 : metrics.columns, list ? -1 : metrics.tileWidth, metrics.size);
+
+        const tileWidth = metrics.tileWidth;
+        let columns = folderColumns(tiles.length);
+        if (metrics.width && metrics.width > 0) {
+            const fit = Math.floor((metrics.width - 2 * POPUP_MARGIN - GRID_GUTTER_W) / tileWidth);
+            columns = Math.max(1, Math.min(columns, fit));
+        }
+        this._columns = columns;
+        this._grid.setTiles(tiles, columns, tileWidth, metrics.size);
         acceptDrops(this._tileScope, this._grid.actor, store, {kind: 'grid', index: () => -1, folderUuid: uuid});
+
+        // The card hugs the grid; the scroll view takes over when the folder is taller than the menu.
+        const gridWidth = columns * tileWidth + GRID_GUTTER_W;
+        const maxWidth = metrics.width && metrics.width > 0 ? metrics.width - 2 * POPUP_MARGIN : Infinity;
+        this._card.set_width(Math.min(maxWidth, Math.max(MIN_CARD_WIDTH, gridWidth)));
+        const maxScroll = metrics.height && metrics.height > 0
+            ? Math.max(80, metrics.height - 2 * POPUP_MARGIN - CARD_CHROME_H)
+            : -1;
+        this.scroll.set_style(maxScroll > 0 ? `max-height: ${Math.floor(maxScroll)}px;` : null);
     }
 
     private _ghostTile(id: string, metrics: FolderMetrics): St.Widget {
         const name = id.replace(/\.desktop$/, '');
         const open = () => this._host.openMissingContext?.(ghost, id);
-        const view = metrics.list
-            ? new ActionRow(name, 'application-x-executable', open, undefined, {
-                iconSize: metrics.rowIconSize, context: open,
-            })
-            : new ActionTile(name, 'application-x-executable', open, undefined, {
-                iconSize: metrics.iconSize, multiLine: metrics.multiLine, context: open,
-            });
+        const view = new ActionTile(name, 'application-x-executable', open, undefined, {
+            iconSize: metrics.iconSize, multiLine: metrics.multiLine, context: open,
+        });
         const ghost = view.actor;
         ghost.add_style_class_name('spawn-tile-missing');
         ghost.opacity = 130;
         rejectDrops(this._tileScope, ghost);
         this._host.tooltips?.attach(ghost, null, () => _('%s (not installed)').format(name));
         return ghost;
+    }
+
+    /** Was the press inside the card (then it belongs to the card's own items)? */
+    private _insideCard(event: Clutter.Event): boolean {
+        const [x, y] = event.get_coords();
+        const [cx, cy] = this._card.get_transformed_position();
+        const [w, h] = this._card.get_transformed_size();
+        return x >= cx && x < cx + w && y >= cy && y < cy + h;
     }
 
     startRename(): void {
@@ -316,6 +476,7 @@ export class FolderView {
 
     private _setDragging(on: boolean): void {
         this._hint.visible = on;
+        this._nameButton.visible = !on && !this._entry;
         if (on)
             this._header.add_style_pseudo_class('drag');
         else
