@@ -622,9 +622,10 @@ export class SpawnLayout implements ShortcutHost {
     // ---- chrome ----
 
     private _navButton(iconName: string, text: string, cb: () => void): St.Button {
+        // Full pane width like every other row: only one of Back / All Apps shows at a time (_updateNav), so the
+        // whole row highlights on hover and takes the click, not just the icon + label.
         const button = makeItemButton('spawn-nav-button');
-        button.x_expand = false;
-        const box = new St.BoxLayout({style_class: 'spawn-row-box'});
+        const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
         const navIcon = new St.Icon({icon_name: iconName, icon_size: iconSizeFor(this._services.settings, 'icon-size-misc', 16), y_align: Clutter.ActorAlign.CENTER});
         this._services.settings.onChanged(this._scope, ['icon-size-misc'], () => {
             navIcon.icon_size = iconSizeFor(this._services.settings, 'icon-size-misc', 16);
