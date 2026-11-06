@@ -26,7 +26,9 @@
 //   popup.close(): void
 //   popup.toggle(anchor): void         close if open on this anchor, otherwise open there
 //   popup.onOpenStateChanged(scope, cb(open: boolean, anchor: St.Widget | null))
-//   popup.prebuild(): void             optional: build the layout on idle (no UI shown)
+//   popup.prebuild(anchor?): void      optional, call on idle: build the layout; with `anchor`, also attach
+//                                      to it, build the start view and resolve its styles over the next
+//                                      two idles (no UI shown), so the first open is about as fast as later ones
 //   popup.side: St.Side                the arrow side of the current attachment
 //   popup.menuActor / popup.layoutActor   dev hooks: the PopupMenu actor / the layout root (or null)
 //   popup.resetLayout() / popup.layoutBuilt   dev / benchmark: drop the built layout; is it built
@@ -49,7 +51,7 @@ import type {FakePlace} from '../model/places.js';
 import {installUiDevHooks} from './devHooks.js';
 import {SpawnLayout} from './layout.js';
 import {closeMenu, openMenu, silenceSourceKeys} from './menuParams.js';
-import {applyTone, ownedScope} from './util.js';
+import {applyTone, ownedScope, warmStyles} from './util.js';
 
 type OpenListener = (open: boolean, anchor: St.Widget | null) => void;
 
@@ -152,12 +154,42 @@ export class SpawnPopup {
         scope.add(() => this._listeners.delete(cb), 'SpawnPopup listener');
     }
 
-    prebuild(): void {
+    prebuild(anchor: St.Widget | null = null): void {
+        let layout: SpawnLayout;
         try {
-            this._ensureLayout();
+            layout = this._ensureLayout();
         } catch (e) {
             error('popup prebuild failed', e);
+            return;
         }
+        // With a button to open from, also do now what the first open would otherwise do before it can
+        // paint, one step per idle so no single step stalls a frame for long: create the popup shell on
+        // the button and build the start view, then resolve the styles (and with them the icons) of
+        // everything the first open will show. The menu stays hidden; an open in between wins.
+        const current = () => this._layout === layout && !this._open && anchor !== null && isActorAlive(anchor);
+        if (!current())
+            return;
+        this._scope.idle(() => {
+            try {
+                if (!current() || !anchor)
+                    return;
+                if (this._anchor !== anchor || this._side !== this._sideOf(anchor))
+                    this._attach(anchor);
+                layout.prepare(anchor, this._side);
+                this._scope.idle(() => {
+                    try {
+                        if (current() && this._anchor === anchor && this._menu) {
+                            applyTone(this._menu.actor, this._menu.box);
+                            warmStyles(this._menu.actor);
+                        }
+                    } catch (e) {
+                        error('popup prebuild (styles) failed', e);
+                    }
+                });
+            } catch (e) {
+                error('popup prebuild (start view) failed', e);
+            }
+        });
     }
 
     open(anchor: St.Widget): void {

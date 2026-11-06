@@ -329,8 +329,11 @@ export function acceptDrops(scope: Scope, target: St.Widget, store: PinnedStore,
     delegate.acceptDrop = (source, _actor, x, y) => {
         const zone = toZone(x, y, false);
         clearDropClasses(target);
-        if (!canAccept(source, zone))
-            return false;
+        if (!canAccept(source, zone)) {
+            // A refused Spawn drag on a tile is claimed and ignored: returning false would let an ancestor's
+            // "append at the end" grid target take it.
+            return !!source?.spawnPayload && (drop.kind === 'app' || drop.kind === 'folder');
+        }
         const p = source.spawnPayload as DragPayload;
         try {
             return perform(store, drop, p, zone);

@@ -247,6 +247,13 @@ test('runner: sizes outside the schema range are clamped with a warning', () => 
     assertEquals(p.warnings.length, 2);
 });
 
+test('max-search-results is clamped to 1..50 with a warning', () => {
+    const p = planMigration(snap({'max-search-results': 0}));
+    assertEquals(p.items.find(i => i.key === 'max-search-results').value, 1);
+    assertEquals(p.warnings.length, 1);
+    assertEquals(planMigration(snap({'max-search-results': 500})).items.find(i => i.key === 'max-search-results').value, 50);
+});
+
 test('runner: keys without an equivalent are skipped with a runner-specific reason', () => {
     const p = planMigration(snap({
         'runner-menu-height-static': true, 'runner-searchbar-location': 'Bottom',

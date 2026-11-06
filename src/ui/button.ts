@@ -65,11 +65,17 @@ const BUTTON_ACTION_KEY = {
     3: 'menu-button-right-click-action',
 } as const;
 
-/** True when `path` is a regular file whose header gdk-pixbuf recognises as an image (svg included). */
-function isLoadableImage(path: string): boolean {
+/**
+ * True when `path` is a regular file whose header gdk-pixbuf recognises as an image (svg included).
+ * Spawn's own icons (directly in `iconDir`) are known to be images and skip the header check: the
+ * first gdk-pixbuf call of a session loads its image loaders, ~10 ms of every shell start-up.
+ */
+function isLoadableImage(path: string, iconDir: string): boolean {
     try {
         if (!GLib.file_test(path, GLib.FileTest.IS_REGULAR))
             return false;
+        if (GLib.path_get_dirname(path) === iconDir && path.endsWith('.svg'))
+            return true;
         return GdkPixbuf.Pixbuf.get_file_info(path)[0] !== null;
     } catch {
         return false;
@@ -119,7 +125,8 @@ export class MenuButton extends PanelMenu.Button {
 
         const gesture = new Clutter.ClickGesture();
         gesture.set_recognize_on_press(true);
-        gesture.connect('recognize', () => this._onClick(gesture.get_button()));
+        // A touch tap reports button 0: treat it as the primary button.
+        gesture.connect('recognize', () => this._onClick(gesture.get_button() || 1));
         this.add_action(gesture);
 
         this._contextMenu = new ButtonMenu(this._scope, this, {
@@ -236,7 +243,7 @@ export class MenuButton extends PanelMenu.Button {
             const padding = s.get('menu-button-padding');
 
             const resolved = resolveButtonIcon(s.get('menu-button-icon'), this._deps.iconDir);
-            if (resolved.kind === 'file' && isLoadableImage(resolved.path)) {
+            if (resolved.kind === 'file' && isLoadableImage(resolved.path, this._deps.iconDir)) {
                 this._icon.icon_name = null;
                 this._icon.gicon = new Gio.FileIcon({file: Gio.File.new_for_path(resolved.path)});
             } else {

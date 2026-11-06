@@ -79,6 +79,7 @@ export const INT_RANGES: Readonly<Record<string, readonly [min: number, max: num
     'runner-menu-height': [300, 1000],
     'menu-position-alignment': [0, 100],
     'runner-font-size': [0, 30],
+    'max-search-results': [1, 50],
 };
 /** `menu-arrow-rise` (bi): the px part is clamped to Spawn's 0..50 (ArcMenu allows -50..50; a negative rise pulls the menu over the panel). */
 const ARROW_RISE_RANGE = [0, 50] as const;

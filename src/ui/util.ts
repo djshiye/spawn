@@ -15,6 +15,7 @@
 //   clear(actor)                              destroy every child of a container
 //   applyTone(actor, probe?)                  add/remove "spawn-light" on `actor` when the shell theme's
 //                                             foreground at `probe` is dark (light shell theme)
+//   warmStyles(root)                          resolve the styles (and start the icon loads) of root and its visible descendants now
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
@@ -171,4 +172,21 @@ export function applyTone(actor: St.Widget, probe: St.Widget = actor): void {
         actor.add_style_class_name('spawn-light');
     else
         actor.remove_style_class_name('spawn-light');
+}
+
+/**
+ * Resolve the style of `root` and every visible descendant now (St does it when they are first mapped),
+ * which also starts loading their icons. Used on a hidden popup so its first open does not pay for it.
+ */
+export function warmStyles(root: Clutter.Actor): void {
+    const stack: Clutter.Actor[] = [root];
+    while (stack.length > 0) {
+        const actor = stack.pop() as Clutter.Actor;
+        if (actor instanceof St.Widget)
+            actor.ensure_style();
+        for (const child of actor.get_children()) {
+            if (child.visible)
+                stack.push(child);
+        }
+    }
 }

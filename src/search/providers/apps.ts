@@ -20,6 +20,7 @@ import type {SpawnSettings} from '../../core/settings.js';
 import type {AppIndex} from '../../model/appIndex.js';
 import {launchApp} from '../../ui/util.js';
 import type {CancelToken, SearchProvider, SearchResult} from '../engine.js';
+import {maxSearchResults} from '../limit.js';
 import {hasAlnum, rankApps, type UsageOf} from '../rank.js';
 
 export interface AppsProviderOptions {
@@ -53,7 +54,7 @@ export class AppsProvider implements SearchProvider {
         if (!this._index.built)
             this._index.build();
 
-        const ranked = rankApps(query, this._index.searchEntries(), this._max ?? this._settings.get('max-search-results'), this._usageOf);
+        const ranked = rankApps(query, this._index.searchEntries(), this._max ?? maxSearchResults(this._settings), this._usageOf);
         if (token.cancelled)
             return [];
 

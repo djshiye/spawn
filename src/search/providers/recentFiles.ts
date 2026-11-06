@@ -13,6 +13,11 @@
 // few seconds. A transient parse error is retried (at most every RETRY_US); a file larger
 // than MAX_XBEL_BYTES is not parsed at all.
 //
+// Ranking: the file name at full weight, its folder at FOLDER_WEIGHT (so "invoices" also finds the
+// files inside ~/Documents/Invoices, below any file NAMED like that), and a multi-word query may mix
+// both ("invoices march"). Both strings are prepared for matching once per parse, not per keystroke.
+// Equal scores keep the newest file first.
+//
 // id 'recentFiles'; enabled by search-provider-recent-files; honours show-hidden-recent-files
 // (any dot-component below $HOME hides a file) and max-search-results. Results always show
 // the folder as description (alwaysShowDescription) so equal names stay distinguishable.
@@ -41,13 +46,16 @@ import {error, warn} from '../../core/log.js';
 import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
 import type {CancelToken, SearchProvider, SearchResult} from '../engine.js';
-import {hasAlnum, rankItemsBy, scoreNormalized} from '../rank.js';
+import {maxSearchResults} from '../limit.js';
+import {candidate, hasAlnum, rankFields, type Field} from '../rank.js';
 
 const MAX_ITEMS = 2000;
 const MAX_XBEL_BYTES = 2 * 1024 * 1024;
 const STAT_BUDGET = 100;
 const EXISTS_TTL_US = 5_000_000;
 const RETRY_US = 3_000_000;
+/** A folder match counts at half a name match. */
+const FOLDER_WEIGHT = 0.5;
 
 export interface RecentItem {
     uri: string;
@@ -89,6 +97,8 @@ export class RecentFilesProvider implements SearchProvider {
     private _monitored = false;
     private _exists = new Map<string, {present: boolean; at: number}>();
     private _privacy: Gio.Settings | null | undefined;
+    /** Prepared name + folder per item; items are replaced wholesale on a reparse. */
+    private _fields = new WeakMap<RecentItem, readonly Field[]>();
 
     constructor(scope: Scope, settings: SpawnSettings) {
         this._monitorScope = scope.child('recent files monitor');
@@ -150,16 +160,16 @@ export class RecentFilesProvider implements SearchProvider {
     }
 
     search(query: string, token: CancelToken): SearchResult[] {
-        if (!query.trim() || !hasAlnum(query))
-            return [];
+        if (!query.trim() || !hasAlnum(query) || !this._remembering())
+            return []; // File History off: nothing is read or shown, as in list()
         this._ensureLoaded();
         if (token.cancelled)
             return [];
 
         const showHidden = this._settings.get('show-hidden-recent-files');
-        const max = this._settings.get('max-search-results');
+        const max = maxSearchResults(this._settings);
         const items = showHidden ? this._items : this._items.filter(i => !i.hidden);
-        const ranked = rankItemsBy(query, items, (item: RecentItem, q) => scoreNormalized(q, item.name));
+        const ranked = rankFields(query, items, item => this._fieldsOf(item));
 
         const results: SearchResult[] = [];
         const now = GLib.get_monotonic_time();
@@ -186,6 +196,15 @@ export class RecentFilesProvider implements SearchProvider {
             });
         }
         return results;
+    }
+
+    private _fieldsOf(item: RecentItem): readonly Field[] {
+        let fields = this._fields.get(item);
+        if (!fields) {
+            fields = [{candidate: candidate(item.name), weight: 1}, {candidate: candidate(item.folder), weight: FOLDER_WEIGHT}];
+            this._fields.set(item, fields);
+        }
+        return fields;
     }
 
     /**

@@ -1,6 +1,7 @@
 // WindowsProvider: searches open windows (global.display tab list, most recently used
 // first); id 'windows'; enabled by search-provider-open-windows; max from max-search-results.
-// Matches the window title (and the owning app's name at 80 %). activate() raises and
+// Matches the window title (and the owning app's name at 80 %); a multi-word query may mix both
+// ("firefox github": the app name and a word of the title). activate() raises and
 // focuses the window via Main.activateWindow (skipped when the window has since closed).
 //
 // Public API:
@@ -14,7 +15,8 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {error} from '../../core/log.js';
 import type {SpawnSettings} from '../../core/settings.js';
 import type {CancelToken, SearchProvider, SearchResult} from '../engine.js';
-import {hasAlnum, rankItemsBy, scoreNormalized} from '../rank.js';
+import {maxSearchResults} from '../limit.js';
+import {candidate, hasAlnum, rankFields} from '../rank.js';
 
 const APP_NAME_WEIGHT = 0.8;
 
@@ -46,11 +48,10 @@ export class WindowsProvider implements SearchProvider {
         if (token.cancelled)
             return [];
 
-        const ranked = rankItemsBy(query, windows, (info: WindowInfo, q) => {
-            const byTitle = scoreNormalized(q, info.title);
-            const byApp = Math.round(scoreNormalized(q, info.appName) * APP_NAME_WEIGHT);
-            return Math.max(byTitle, byApp);
-        }, this._settings.get('max-search-results'));
+        const ranked = rankFields(query, windows, (info: WindowInfo) => [
+            {candidate: candidate(info.title), weight: 1},
+            {candidate: candidate(info.appName), weight: APP_NAME_WEIGHT},
+        ], maxSearchResults(this._settings));
 
         return ranked.map(({item, score}) => ({
             id: String(item.window.get_id()),

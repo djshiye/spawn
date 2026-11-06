@@ -70,10 +70,12 @@ your area before writing code.
   - Delete Folder (its apps move to the top level) shows an in-menu banner "Folder “X” deleted [Undo]"
     for 8 s (Tab-reachable, Ctrl+Z too); Undo restores the folder exactly (uuid, name, apps, slot).
     The banner ends when the menu closes or the pinned list changes otherwise.
-- Search: apps (own index, ranked prefix > word-prefix > substring > fuzzy), open
-  windows, recent files (cached, refreshed on change), GNOME Shell search
-  providers (optional). Debounce 80 ms, cancel stale queries, results streamed
-  per provider.
+- Search: apps (own index, ranked prefix > word-prefix > substring > typo > fuzzy; the
+  typo tier, one edit per word, only runs when nothing matched at substring or better), open
+  windows (title, app name, or both across a multi-word query), recent files (cached, refreshed
+  on change; name, then folder at half weight), GNOME Shell search providers (optional).
+  Debounce 80 ms, cancel stale queries, results streamed per provider. Results that are showing
+  refresh by themselves when an app is installed or removed.
 - Hotkeys: Super key toggles menu (optional), custom accelerator (default
   `<Super>space` off by default), D-Bus `io.github.djshiye.Spawn` method
   `Toggle` (`ToggleRunner` for the runner). Super interception must be **in memory only** (block GNOME's handler,
@@ -194,7 +196,9 @@ data/migration/arcmenu/   compiled copy of ArcMenu's schema (GPL, credited)
   through Main.extensionManager / gnome-extensions D-Bus API).
 - No timers/idles without Scope ownership.
 - Lazy: popup + layout built on first open or on an idle after startup-complete;
-  AppIndex built once and patched on change.
+  that idle prebuild also attaches the hidden popup to the panel button, builds the
+  start view and resolves its styles (one step per idle), so the first open costs
+  about what later opens do. AppIndex built once and patched on change.
 
 ## Done for v1
 - Builds, lints, type-checks, unit tests pass.

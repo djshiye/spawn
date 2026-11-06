@@ -14,6 +14,7 @@
 //   layout.onOpen(anchor?, side?): void  menu is about to be shown from `anchor` (which decides the
 //                                      work area the popup is clamped to) opening towards `side`
 //                                      (reset view, "Auto" search position, focus search)
+//   layout.prepare(anchor, side): void  closed menu (popup prebuild): build the start view for that anchor now
 //   layout.onClosed(): void            menu was hidden (clear search, release caches)
 //   layout.handleKey(event): boolean   Escape routing: true when the layout consumed the key
 //   layout.search(query): void         put `query` in the search entry (dev / D-Bus hook)
@@ -65,7 +66,7 @@ import {PlaceRow} from './widgets/placeRow.js';
 import {PowerBar} from './widgets/powerBar.js';
 import {ResultList, type ResultHost} from './widgets/resultList.js';
 import {SearchBox} from './widgets/searchBox.js';
-import {ShortcutRow, type ShortcutHost} from './widgets/shortcutRow.js';
+import {resolveShortcut, ShortcutRow, type ShortcutHost} from './widgets/shortcutRow.js';
 import {TileGrid} from './widgets/tileGrid.js';
 import {TooltipManager} from './widgets/tooltip.js';
 import {UndoBanner} from './widgets/undoBanner.js';
@@ -347,6 +348,12 @@ export class SpawnLayout implements ShortcutHost {
 
         // search wiring
         this._search.onTextChanged(scope, text => this._onSearchText(text));
+        // An app installed or removed while results are showing: search again, so a new app shows up
+        // and a removed one cannot be launched from a stale row.
+        services.appIndex.onChanged(scope, () => {
+            if (this._isOpen && this._view === 'results' && this._search.text.trim().length > 0)
+                this._onSearchText(this._search.text);
+        });
         this._search.onActivate(scope, () => this._onSearchActivate());
         this._search.onNavigate(scope, (key, shift) => this._onSearchKey(key, shift));
 
@@ -418,6 +425,26 @@ export class SpawnLayout implements ShortcutHost {
                 this._focusMain();
         } catch (e) {
             error('layout onOpen failed', e);
+        }
+    }
+
+    /**
+     * Popup prebuild (closed menu, idle after startup): build the start view for `anchor`'s work area, so
+     * the first open only has to show it. Changes nothing the user can see; onOpen() still runs on open.
+     */
+    prepare(anchor: St.Widget | null, side: St.Side): void {
+        if (this._destroyed || this._isOpen)
+            return;
+        try {
+            this._anchor = anchor;
+            this._side = side;
+            if (this._applyMetrics())
+                this._pinnedDirty = true;
+            if (this._searchOnTop() !== this._searchTop)
+                this._arrangeLeft();
+            this._setView(this._defaultView());
+        } catch (e) {
+            error('layout prepare failed', e);
         }
     }
 
@@ -1268,8 +1295,10 @@ export class SpawnLayout implements ShortcutHost {
                 const {scope, release} = ownedScope(this._scope, key);
                 const id = item.entry.id;
                 const Action = list ? ActionRow : ActionTile;
-                const tile = new Action(item.entry.name || id, item.entry.icon || 'application-x-executable',
-                    () => this._runCustom(id), {tooltips: this._tooltips},
+                // Built-in shortcuts, folders and URIs show their own name and icon; a plain command keeps the generic look.
+                const builtin = /^(Spawn_|ArcMenu_|\/|[a-z][a-z0-9+.-]*:\/\/)/.test(id) ? resolveShortcut(item.entry) : null;
+                const tile = new Action(builtin?.name || item.entry.name || id, builtin?.icon || item.entry.icon || 'application-x-executable',
+                    () => this._runCustom(item.entry), {tooltips: this._tooltips},
                     {...tileOpts, context: () => this._context.open(tile.actor, {kind: 'custom', id})});
                 enableDrag(scope, tile.actor, {id, isCustom: true});
                 acceptDrops(scope, tile.actor, store, {kind: 'app', id, isCustom: true}, dropOpts);
@@ -1299,7 +1328,19 @@ export class SpawnLayout implements ShortcutHost {
         this._grid.setTiles(tiles, list ? 1 : this._cols, list ? -1 : this._tileWidth, size);
     }
 
-    private _runCustom(id: string): void {
+    private _runCustom(entry: Entry): void {
+        const id = entry.id;
+        // Pinned shortcuts (Spawn_*, folders, URIs) run through the shared resolver, which closes the menu itself
+        // (Spawn_ShowAllApplications must keep it open).
+        const resolved = resolveShortcut(entry);
+        if (resolved) {
+            try {
+                resolved.run({close: () => this._host.close(), showAllApps: () => this._openAllApps()}, this._scope);
+            } catch (e) {
+                error(`could not run ${id}`, e);
+            }
+            return;
+        }
         this._host.close();
         try {
             if (id === ShortcutId.SHOW_ALL_APPS) {

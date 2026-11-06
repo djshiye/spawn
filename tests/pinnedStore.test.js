@@ -64,6 +64,19 @@ test('missing apps are skipped, flagged on request, and never deleted from setti
     scope.dispose();
 });
 
+test('a folder entry with an unusable id does not shift the indices of what follows', () => {
+    const bad = {id: 'bad/id', isFolder: 'true'};
+    const a = fixture([bad, app('a'), app('b'), app('c')]);
+    assertEquals(a.store.items().map(i => i.id), ['a.desktop', 'b.desktop', 'c.desktop']);
+    a.store.move(0, 2);
+    assertEquals(a.settings.get('pinned-apps').map(e => e.id), ['bad/id', 'b.desktop', 'c.desktop', 'a.desktop']);
+    a.scope.dispose();
+    const b = fixture([bad, app('a'), app('b'), app('c')]);
+    b.store.pin('z.desktop', 1);
+    assertEquals(b.settings.get('pinned-apps').map(e => e.id), ['bad/id', 'a.desktop', 'z.desktop', 'b.desktop', 'c.desktop']);
+    b.scope.dispose();
+});
+
 test('pin / unpin / isPinned write through', () => {
     const {store, settings, scope} = fixture([app('a')]);
     store.pin('b.desktop');

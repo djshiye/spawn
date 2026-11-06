@@ -128,9 +128,10 @@ export class SearchBox {
     deleteBackward(): void {
         this.focus();
         const ct = this.actor.clutter_text;
-        const len = ct.text.length;
-        if (len > 0)
-            ct.delete_text(len - 1, len);
+        // delete_text counts characters, not UTF-16 units (emoji).
+        const n = [...ct.text].length;
+        if (n > 0)
+            ct.delete_text(n - 1, n);
     }
 
     /** Set the text without notifying listeners. */

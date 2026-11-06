@@ -30,8 +30,13 @@
 //     views "all" and "frequent" are NOT in that list; use apps() / frequent(), or
 //     categoryApps(id, limit) which understands 'all' and 'frequent' as well.
 //   * frequent() is read live from Shell.AppUsage (cheap); limit <= 0 means unlimited.
+//   * A rebuild after a change signal skips apps whose desktop file no longer exists. After a file
+//     is deleted the GMenu tree reloads first, while Shell.AppSystem's list (GIO's desktop-file
+//     cache) lags a few seconds behind and would keep listing the removed app until its own change
+//     signal. The first build skips that check (one stat per app, ~7 ms for 300 apps).
 
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import GMenu from 'gi://GMenu';
 import Shell from 'gi://Shell';
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
@@ -245,7 +250,7 @@ export class AppIndex {
     private _rebuildAndNotify(): void {
         if (!this._built)
             return;
-        this._rebuild();
+        this._rebuild(true);
         for (const cb of [...this._listeners]) {
             try {
                 cb();
@@ -264,7 +269,17 @@ export class AppIndex {
         apps.sort((a, b) => this._collator.compare(names.get(a) ?? '', names.get(b) ?? ''));
     }
 
-    private _appFor(id: string, entry?: GMenu.TreeEntry): Shell.App | null {
+    /** The desktop file was deleted (the GIO cache behind Shell.AppSystem may not know yet). */
+    private _gone(app: Shell.App): boolean {
+        try {
+            const file = appInfoOf(app)?.get_filename();
+            return Boolean(file) && !GLib.file_test(file as string, GLib.FileTest.EXISTS);
+        } catch {
+            return false;
+        }
+    }
+
+    private _appFor(id: string, entry: GMenu.TreeEntry | undefined, checkFiles: boolean): Shell.App | null {
         let app = this._appSystem?.lookup_app(id) ?? null;
         if (!app && entry) {
             try {
@@ -273,10 +288,10 @@ export class AppIndex {
                 app = null;
             }
         }
-        return appInfoOf(app)?.should_show() ? app : null;
+        return app && appInfoOf(app)?.should_show() && !(checkFiles && this._gone(app)) ? app : null;
     }
 
-    private _rebuild(): void {
+    private _rebuild(checkFiles = false): void {
         const byId = new Map<string, Shell.App>();
         const categories: AppCategory[] = [];
 
@@ -293,7 +308,7 @@ export class AppIndex {
                     } catch {
                         continue;
                     }
-                    const app = this._appFor(id, entry);
+                    const app = this._appFor(id, entry, checkFiles);
                     if (!app)
                         continue;
                     const appId = app.get_id() ?? id;
@@ -346,7 +361,7 @@ export class AppIndex {
                 if (!id || byId.has(id) || !info.should_show())
                     continue;
                 const app = this._appSystem?.lookup_app(id);
-                if (!app)
+                if (!app || (checkFiles && this._gone(app)))
                     continue;
                 byId.set(id, app);
                 orphans.push(app);

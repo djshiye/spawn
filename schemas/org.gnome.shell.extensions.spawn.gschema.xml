@@ -385,6 +385,7 @@
       <description>Auto puts the search entry nearest the panel the menu opens from</description>
     </key>
     <key name="max-search-results" type="i">
+      <range min="1" max="50"/>
       <default>5</default>
       <summary>Maximum results shown per provider</summary>
     </key>

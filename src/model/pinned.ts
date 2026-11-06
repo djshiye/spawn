@@ -365,8 +365,9 @@ export class PinnedStore {
     private _visibleRaw(s: ops.PinnedSnapshot): number[] {
         const out: number[] = [];
         s.top.forEach((e, i) => {
-            if (!isAppEntry(e) || this._exists(e.id))
-                out.push(i);
+            if (ops.isFolderEntry(e) ? !isValidFolderId(e.id) : isAppEntry(e) && !this._exists(e.id))
+                return; // not in items(): same filter, or the UI's indices drift
+            out.push(i);
         });
         return out;
     }
