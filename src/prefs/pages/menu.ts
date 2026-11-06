@@ -16,6 +16,7 @@ import {
     type Option,
     optionalSpinRow,
     spinAdjustment,
+    showSpecialValues,
     spinRow,
     switchRow,
     watch,
@@ -43,9 +44,10 @@ function gridRows(ctx: PrefsContext): Adw.SpinRow[] {
         const read = (): number => ctx.settings.get('icon-size-grid')[part] ?? -1;
         const row = new Adw.SpinRow({
             title,
-            subtitle: '-1 uses the default',
+            subtitle: 'In pixels',
             adjustment: spinAdjustment(read(), -1, 256),
         });
+        showSpecialValues(row, [{value: -1, label: 'Default'}]);
         row.connect('notify::value', () => {
             const value = Math.round(row.value);
             if (value === read())
@@ -84,7 +86,7 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
             ['Compact', 'Compact'],
             ['Comfortable', 'Comfortable'],
             ['Large', 'Large'],
-        ], 'Bigger rows and tiles are easier to hit; the space between items is always clickable'),
+        ], 'Bigger rows and tiles are easier to click'),
         enumRow(ctx, 'all-apps-button-action', '"All Apps" button shows', [
             ['Categories_List', 'Categories'],
             ['All_Programs', 'All apps in one list'],
@@ -180,14 +182,14 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
         'icon-size-apps', 'icon-size-shortcuts', 'icon-size-categories', 'icon-size-buttons', 'icon-size-misc',
         'icon-size-grid',
     ];
-    const hint = '-1 uses the default';
-    const hintHide = '-1 uses the default, 0 hides the icons';
+    const hint = {subtitle: 'In pixels', special: [{value: -1, label: 'Default'}]};
+    const hintHide = {subtitle: 'In pixels', special: [{value: -1, label: 'Default'}, {value: 0, label: 'Hidden'}]};
     page.add(group(ctx, 'Icon sizes', [
-        spinRow(ctx, 'icon-size-apps', 'App list icons', -1, 64, {subtitle: hint}),
-        spinRow(ctx, 'icon-size-shortcuts', 'Shortcut icons', -1, 64, {subtitle: hintHide}),
-        spinRow(ctx, 'icon-size-categories', 'Category icons', -1, 64, {subtitle: hintHide}),
-        spinRow(ctx, 'icon-size-buttons', 'Power button icons', -1, 64, {subtitle: hint}),
-        spinRow(ctx, 'icon-size-misc', 'Search and Back / All Apps icons', -1, 64, {subtitle: hint}),
+        spinRow(ctx, 'icon-size-apps', 'App list icons', -1, 64, hint),
+        spinRow(ctx, 'icon-size-shortcuts', 'Shortcut icons', -1, 64, hintHide),
+        spinRow(ctx, 'icon-size-categories', 'Category icons', -1, 64, hintHide),
+        spinRow(ctx, 'icon-size-buttons', 'Power button icons', -1, 64, hint),
+        spinRow(ctx, 'icon-size-misc', 'Search and Back / All Apps icons', -1, 64, hint),
         ...gridRows(ctx),
     ], {reset: iconKeys, description: 'Pinned app tiles use the last three values.'}));
 

@@ -660,10 +660,17 @@ export class SpawnLayout implements ShortcutHost {
         const button = makeItemButton('spawn-nav-button');
         const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
         const navIcon = new St.Icon({icon_name: iconName, icon_size: iconSizeFor(this._services.settings, 'icon-size-misc', 16), y_align: Clutter.ActorAlign.CENTER});
-        this._services.settings.onChanged(this._scope, ['icon-size-misc'], () => {
+        // The small icon sits centred in a slot as wide as a list row's icon, so "All Apps" / "Back"
+        // start on the same text column as the app names above them.
+        navIcon.x_align = Clutter.ActorAlign.CENTER;
+        const slot = new St.Bin({child: navIcon, x_expand: false, y_align: Clutter.ActorAlign.CENTER});
+        const sync = (): void => {
             navIcon.icon_size = iconSizeFor(this._services.settings, 'icon-size-misc', 16);
-        });
-        box.add_child(navIcon);
+            slot.set_style(`width: ${Math.max(navIcon.icon_size, this._rowIconSize())}px;`); // CSS px: St scales them
+        };
+        sync();
+        this._services.settings.onChanged(this._scope, ['icon-size-misc', 'icon-size-apps', 'pinned-item-size'], sync);
+        box.add_child(slot);
         box.add_child(new St.Label({text, y_align: Clutter.ActorAlign.CENTER}));
         button.set_child(makeFace('spawn-nav-surface', box));
         wireItem(button, {activate: () => cb()});
@@ -1455,7 +1462,7 @@ export class SpawnLayout implements ShortcutHost {
         this._resultsScroll?.vadjustment.set_value(0);
         // Keep the previous rows (dimmed) until the first batch of this query arrives: no blank
         // flash between keystrokes.
-        results.beginQuery();
+        results.beginQuery(query);
         results.setSelectionVisible(true);
         const token = this._searchToken;
         try {

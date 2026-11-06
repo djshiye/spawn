@@ -330,6 +330,32 @@
     padding: 24px;
 }
 
+/* search with no results: icon, "No results for “query”", hint; centred a little above the middle */
+.spawn-empty-state {
+    spacing: 6px;
+    padding: 24px 24px 48px;
+}
+
+.spawn-empty-state.spawn-empty-compact {
+    padding: 16px 24px;
+}
+
+.spawn-empty-icon {
+    icon-size: 48px;
+    color: rgba(255, 255, 255, 0.25);
+    margin-bottom: 6px;
+}
+
+.spawn-empty-title {
+    color: rgba(255, 255, 255, 0.85);
+    font-weight: bold;
+}
+
+.spawn-empty-hint {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.9em;
+}
+
 /* ---- pinned grid ---- */
 
 .spawn-pinned-box {
@@ -919,9 +945,18 @@
 
 .spawn-light .spawn-section-title,
 .spawn-light .spawn-empty-label,
+.spawn-light .spawn-empty-hint,
 .spawn-light .spawn-row-description,
 .spawn-light .spawn-folder-hint {
     color: rgba(0, 0, 0, 0.6);
+}
+
+.spawn-light .spawn-empty-title {
+    color: rgba(0, 0, 0, 0.8);
+}
+
+.spawn-light .spawn-empty-icon {
+    color: rgba(0, 0, 0, 0.25);
 }
 
 .spawn-light .spawn-folder-edit-icon {

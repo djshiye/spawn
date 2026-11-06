@@ -174,7 +174,7 @@ export class PowerBar {
                 const surface = makeFace('spawn-power-surface', icon);
                 button.set_child(surface);
                 button.accessible_name = info.name;
-                this._host.tooltips?.attach(button, null, () => info.name, {delay: TOOLTIP_DELAY_MS});
+                this._host.tooltips?.attach(button, null, () => info.name, {delay: TOOLTIP_DELAY_MS, above: true});
                 wireItem(button, {activate: () => runPowerAction(type, this._host, this._scope)});
                 this._row.add_child(button);
                 this._buttons.push({type, actor: button, surface});
@@ -201,7 +201,7 @@ export class PowerBar {
         const surface = makeFace('spawn-power-surface', icon);
         button.set_child(surface);
         button.accessible_name = _('More');
-        this._host.tooltips?.attach(button, null, () => _('More'), {delay: TOOLTIP_DELAY_MS});
+        this._host.tooltips?.attach(button, null, () => _('More'), {delay: TOOLTIP_DELAY_MS, above: true});
         button.visible = false;
         if (spacer)
             this._row.insert_child_below(button, spacer);

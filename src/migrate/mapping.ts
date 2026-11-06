@@ -710,6 +710,8 @@ export function describeValue(value: unknown, key?: string): string {
     }
     if (value !== null && typeof value === 'object')
         return JSON.stringify(value);
+    if (typeof value === 'boolean')
+        return value ? 'On' : 'Off';
     return String(value);
 }
 

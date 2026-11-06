@@ -210,7 +210,7 @@ export class SpawnRunner {
 
             const tooltips = new TooltipManager(scope, settings);
             const search = new SearchBox(scope, settings);
-            const results = new ResultList(scope, settings, {close: () => this.close(), tooltips});
+            const results = new ResultList(scope, settings, {close: () => this.close(), tooltips, compactEmpty: true});
             const defaultBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-list'});
             const body = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, y_expand: true});
             body.add_child(defaultBox);
@@ -397,7 +397,7 @@ export class SpawnRunner {
             return;
         }
         this._showView(ui, true);
-        ui.results.beginQuery();
+        ui.results.beginQuery(query);
         ui.results.setSelectionVisible(true);
         const token = this._searchToken;
         try {

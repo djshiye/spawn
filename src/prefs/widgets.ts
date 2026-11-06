@@ -140,13 +140,30 @@ export function spinAdjustment(value: number, min: number, max: number, step = 1
     return new Gtk.Adjustment({lower: min, upper: max, step_increment: step, page_increment: step * 5, value});
 }
 
+/** A spin value that displays as a word (e.g. -1 as "Default"); the stored number is unchanged. */
+export interface SpecialValue {value: number; label: string}
+
+/** Shows `special.label` instead of the number when the row's value equals `special.value`. */
+export function showSpecialValues(row: Adw.SpinRow, specials: readonly SpecialValue[]): void {
+    if (specials.length === 0)
+        return;
+    row.set_width_chars(9);
+    row.connect('output', () => {
+        const hit = specials.find(s => s.value === Math.round(row.value));
+        if (!hit)
+            return false;
+        row.set_text(hit.label);
+        return true;
+    });
+}
+
 export function spinRow(
     ctx: PrefsContext,
     key: SettingKey,
     title: string,
     min: number,
     max: number,
-    opts: {step?: number; subtitle?: string} = {},
+    opts: {step?: number; subtitle?: string; special?: readonly SpecialValue[]} = {},
 ): Adw.SpinRow {
     const row = new Adw.SpinRow({
         title,
@@ -155,6 +172,7 @@ export function spinRow(
     if (opts.subtitle)
         row.set_subtitle(opts.subtitle);
     ctx.settings.raw.bind(key, row, 'value', Gio.SettingsBindFlags.DEFAULT);
+    showSpecialValues(row, opts.special ?? []);
     return row;
 }
 

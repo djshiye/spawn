@@ -31,7 +31,7 @@ export function createButtonPage(ctx: PrefsContext): Adw.PreferencesPage {
     const text = entryRow(ctx, 'menu-button-text', 'Label');
     const iconRow = createIconRow(ctx);
     const iconSize = spinRow(ctx, 'menu-button-icon-size', 'Icon size', 14, 64);
-    const padding = spinRow(ctx, 'menu-button-padding', 'Horizontal padding', -1, 25, {subtitle: '-1 uses the theme default'});
+    const padding = spinRow(ctx, 'menu-button-padding', 'Horizontal padding', -1, 25, {subtitle: 'In pixels', special: [{value: -1, label: 'Default'}]});
 
     page.add(group(ctx, 'Appearance', [appearance, text, iconRow, iconSize, padding], {
         reset: ['menu-button-appearance', 'menu-button-text', 'menu-button-icon', 'menu-button-icon-size', 'menu-button-padding'],
