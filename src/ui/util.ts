@@ -62,6 +62,15 @@ export function launchApp(app: Shell.App, settings: SpawnSettings, newWindow: bo
         app.activate();
 }
 
+/**
+ * One "Show descriptions" switch in the prefs drives both keys (app lists: apps-show-extra-details, search
+ * results: show-search-result-details); either one on (e.g. from an older version or an ArcMenu import)
+ * shows them everywhere, so the menu always matches the switch.
+ */
+export function showDescriptions(settings: SpawnSettings): boolean {
+    return settings.get('apps-show-extra-details') || settings.get('show-search-result-details');
+}
+
 export function iconSizeFor(settings: SpawnSettings, key: 'icon-size-apps' | 'icon-size-shortcuts' | 'icon-size-categories' | 'icon-size-buttons' | 'icon-size-misc', fallback: number): number {
     const v = settings.get(key);
     return v > 0 ? v : fallback;

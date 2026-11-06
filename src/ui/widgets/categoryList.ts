@@ -25,7 +25,7 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 import {error} from '../../core/log.js';
 import type {Scope} from '../../core/scope.js';
 import type {Services} from '../../core/services.js';
-import {applyScrollSettings, displayName, iconSizeFor, iconSizeOrHidden} from '../util.js';
+import {applyScrollSettings, displayName, iconSizeFor, iconSizeOrHidden, showDescriptions} from '../util.js';
 import {AppRow} from './appRow.js';
 import type {TileHost} from './appTile.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
@@ -261,7 +261,7 @@ export class CategoryList {
             const apps = this._services.appIndex.categoryApps(id, limit);
             const opts = {
                 iconSize: iconSizeFor(settings, 'icon-size-apps', 28),
-                description: settings.get('apps-show-extra-details'),
+                description: showDescriptions(settings),
             };
             for (const app of apps)
                 box.add_child(new AppRow(app, this._host, {...opts, name: displayName(app, settings)}).actor);

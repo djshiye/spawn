@@ -11,7 +11,8 @@
 //                                            checked (or null: always show `extra`);
 //                                            `extra()` may return text to show instead/also;
 //                                            opts.delay: hover delay in ms (default 450; the
-//                                            icon-only power buttons use 200)
+//                                            icon-only power buttons use 200);
+//                                            opts.above: prefer above the widget (power bar)
 //   tooltips.hide()
 
 import Clutter from 'gi://Clutter';
@@ -29,6 +30,8 @@ const SHOW_DELAY_MS = 450;
 export interface TooltipOptions {
     /** Hover delay in ms before the tooltip shows. */
     delay?: number;
+    /** Show above the widget instead of below (the power bar sits on the menu's bottom edge). */
+    above?: boolean;
 }
 
 export class TooltipManager {
@@ -47,7 +50,7 @@ export class TooltipManager {
     attach(widget: St.Widget, label: St.Label | null, extra?: () => string | null, opts: TooltipOptions = {}): void {
         widget.connect('notify::hover', () => {
             if (widget.hover)
-                this._schedule(widget, label, extra, opts.delay ?? SHOW_DELAY_MS);
+                this._schedule(widget, label, extra, opts);
             else if (this._owner === widget || !this._owner)
                 this.hide();
         });
@@ -55,7 +58,7 @@ export class TooltipManager {
         // case is handled by notify::hover; `hover` is skipped here so clicks do not re-trigger it).
         widget.connect('key-focus-in', () => {
             if (!widget.hover)
-                this._schedule(widget, label, extra, opts.delay ?? SHOW_DELAY_MS);
+                this._schedule(widget, label, extra, opts);
         });
         widget.connect('key-focus-out', () => {
             if (this._owner === widget || !this._owner)
@@ -82,12 +85,12 @@ export class TooltipManager {
         }
     }
 
-    private _schedule(widget: St.Widget, label: St.Label | null, extra: (() => string | null) | undefined, delay: number): void {
+    private _schedule(widget: St.Widget, label: St.Label | null, extra: (() => string | null) | undefined, opts: TooltipOptions): void {
         this._cancel?.();
         this._cancel = null;
         if (!this._settings.get('show-tooltips'))
             return;
-        this._cancel = this._scope.timeout(delay, () => {
+        this._cancel = this._scope.timeout(opts.delay ?? SHOW_DELAY_MS, () => {
             this._cancel = null;
             if (!widget.get_stage() || !(widget.hover || widget.has_key_focus()))
                 return;
@@ -95,11 +98,11 @@ export class TooltipManager {
             if (!text && label && isTruncated(label))
                 text = label.text;
             if (text)
-                this._show(widget, text);
+                this._show(widget, text, !!opts.above);
         });
     }
 
-    private _show(widget: St.Widget, text: string): void {
+    private _show(widget: St.Widget, text: string, above: boolean): void {
         if (!this._label) {
             this._label = new St.Label({style_class: 'dash-label spawn-tooltip', visible: false});
             this._label.clutter_text.line_wrap = true;
@@ -111,7 +114,8 @@ export class TooltipManager {
         Main.uiGroup.set_child_above_sibling(tip, null);
         tip.show();
 
-        // below the visible face, not the transparent hit area around it
+        // below (or above) the visible face, not the transparent hit area around it; flipped when it
+        // would leave the monitor
         const face = surfaceOf(widget);
         const [x, y] = face.get_transformed_position();
         const [w, h] = face.get_transformed_size();
@@ -119,11 +123,15 @@ export class TooltipManager {
         const [, natW] = tip.get_preferred_width(-1);
         const [, natH] = tip.get_preferred_height(natW);
         let tx = Math.floor(x + (w - natW) / 2);
-        let ty = Math.floor(y + h + 4);
+        const below = Math.floor(y + h + 4);
+        const over = Math.floor(y - natH - 4);
+        let ty = above ? over : below;
         if (monitor) {
             tx = Math.max(monitor.x + 4, Math.min(tx, monitor.x + monitor.width - natW - 4));
-            if (ty + natH > monitor.y + monitor.height - 4)
-                ty = Math.floor(y - natH - 4);
+            if (above && ty < monitor.y + 4)
+                ty = below;
+            else if (!above && ty + natH > monitor.y + monitor.height - 4)
+                ty = over;
         }
         tip.set_position(tx, ty);
         tip.opacity = 0;

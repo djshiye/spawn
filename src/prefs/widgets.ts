@@ -6,7 +6,7 @@
 //   onWindowClose(ctx, fn)             run fn once when the prefs window closes
 //   label(widget, text)                sets the accessible label of a widget
 //   switchRow / spinRow / enumRow / entryRow / colorRow
-//   optionalColorRow / optionalSpinRow  (title is appended to "Use custom " for the switch label) rows for the (bs) / (bi) override keys
+//   optionalColorRow / optionalSpinRow  expander rows with an enable switch for the (bs) / (bi) override keys
 //   group(title, rows, {description?, reset?})   PreferencesGroup with an optional Reset button
 //   resetKeys(ctx, keys)               resets keys (one SpawnSettings.batch(); ctx.settings.raw is never delayed)
 //   resetWithUndo(ctx, keys, message)  resetKeys + a toast whose Undo button restores the old values
@@ -140,13 +140,30 @@ export function spinAdjustment(value: number, min: number, max: number, step = 1
     return new Gtk.Adjustment({lower: min, upper: max, step_increment: step, page_increment: step * 5, value});
 }
 
+/** A spin value that displays as a word (e.g. -1 as "Default"); the stored number is unchanged. */
+export interface SpecialValue {value: number; label: string}
+
+/** Shows `special.label` instead of the number when the row's value equals `special.value`. */
+export function showSpecialValues(row: Adw.SpinRow, specials: readonly SpecialValue[]): void {
+    if (specials.length === 0)
+        return;
+    row.set_width_chars(9);
+    row.connect('output', () => {
+        const hit = specials.find(s => s.value === Math.round(row.value));
+        if (!hit)
+            return false;
+        row.set_text(hit.label);
+        return true;
+    });
+}
+
 export function spinRow(
     ctx: PrefsContext,
     key: SettingKey,
     title: string,
     min: number,
     max: number,
-    opts: {step?: number; subtitle?: string} = {},
+    opts: {step?: number; subtitle?: string; special?: readonly SpecialValue[]} = {},
 ): Adw.SpinRow {
     const row = new Adw.SpinRow({
         title,
@@ -155,6 +172,7 @@ export function spinRow(
     if (opts.subtitle)
         row.set_subtitle(opts.subtitle);
     ctx.settings.raw.bind(key, row, 'value', Gio.SettingsBindFlags.DEFAULT);
+    showSpecialValues(row, opts.special ?? []);
     return row;
 }
 
@@ -232,63 +250,70 @@ export function colorRow(ctx: PrefsContext, key: SettingKey, title: string, subt
 }
 
 /** Row for a `(bs)` key: a switch that turns the override on plus a colour button. */
-export function optionalColorRow(ctx: PrefsContext, key: SettingKey, title: string, groupTitle?: string): Adw.ActionRow {
+/**
+ * Row for a `(bs)` key: GNOME's pattern for an optional override, an expander row whose header switch turns
+ * it on (one control per row) with the colour inside. The subtitle says what is used now.
+ */
+export function optionalColorRow(ctx: PrefsContext, key: SettingKey, title: string, groupTitle?: string): Adw.ExpanderRow {
     const read = (): [boolean, string] => ctx.settings.get(key) as [boolean, string];
-    const row = new Adw.ActionRow({title});
-    const toggle = new Gtk.Switch({valign: Gtk.Align.CENTER, active: read()[0]});
+    const row = new Adw.ExpanderRow({title, show_enable_switch: true, enable_expansion: read()[0]});
     const c = colorButton(title, read()[1], css => {
         const [on, current] = read();
         if (current !== css)
             ctx.settings.set(key, [on, css] as never);
     }, `Choose ${groupTitle ? `${groupTitle} ` : ''}${title} Colour`);
-    c.button.set_sensitive(toggle.active);
     label(c.button, groupTitle ? `${groupTitle}: ${title}` : title);
-    label(toggle, `Use custom ${groupTitle ? `${groupTitle.toLowerCase()} ` : ''}${title.toLowerCase()}`);
-    toggle.connect('notify::active', () => {
+    const inner = new Adw.ActionRow({title: 'Colour', activatable_widget: c.button});
+    inner.add_suffix(c.button);
+    row.add_row(inner);
+    const subtitle = (): void => row.set_subtitle(read()[0] ? 'Custom' : 'Theme default');
+    subtitle();
+    row.connect('notify::enable-expansion', () => {
         const [on, css] = read();
-        if (on !== toggle.active)
-            ctx.settings.set(key, [toggle.active, css] as never);
-        c.button.set_sensitive(toggle.active);
+        if (on !== row.enable_expansion)
+            ctx.settings.set(key, [row.enable_expansion, css] as never);
+        subtitle();
     });
-    row.add_suffix(c.button);
-    row.add_suffix(toggle);
-    row.set_activatable_widget(toggle);
     watch(ctx, row, [key], () => {
         const [on, css] = read();
-        toggle.set_active(on);
+        if (row.enable_expansion !== on)
+            row.set_enable_expansion(on);
         c.set(css);
+        subtitle();
     });
     return row;
 }
 
-/** Row for a `(bi)` key: a switch that turns the override on plus a spin button. */
-export function optionalSpinRow(ctx: PrefsContext, key: SettingKey, title: string, min: number, max: number): Adw.ActionRow {
+/** Row for a `(bi)` key: like optionalColorRow, with a spin row inside (`unit` is shown in the subtitle). */
+export function optionalSpinRow(ctx: PrefsContext, key: SettingKey, title: string, min: number, max: number, inner = 'Size', unit = 'px'): Adw.ExpanderRow {
     const read = (): [boolean, number] => ctx.settings.get(key) as [boolean, number];
-    const row = new Adw.ActionRow({title});
-    const toggle = new Gtk.Switch({valign: Gtk.Align.CENTER, active: read()[0]});
-    const spin = new Gtk.SpinButton({valign: Gtk.Align.CENTER, adjustment: spinAdjustment(read()[1], min, max)});
-    spin.set_sensitive(toggle.active);
-    label(spin, title);
-    label(toggle, `Use custom ${title.toLowerCase()}`);
-    toggle.connect('notify::active', () => {
+    const row = new Adw.ExpanderRow({title, show_enable_switch: true, enable_expansion: read()[0]});
+    const spin = new Adw.SpinRow({title: inner, adjustment: spinAdjustment(read()[1], min, max)});
+    row.add_row(spin);
+    const subtitle = (): void => {
         const [on, value] = read();
-        if (on !== toggle.active)
-            ctx.settings.set(key, [toggle.active, value] as never);
-        spin.set_sensitive(toggle.active);
-    });
-    spin.connect('value-changed', () => {
+        row.set_subtitle(on ? `${value} ${unit}` : 'Theme default');
+    };
+    subtitle();
+    row.connect('notify::enable-expansion', () => {
         const [on, value] = read();
-        if (value !== spin.get_value_as_int())
-            ctx.settings.set(key, [on, spin.get_value_as_int()] as never);
+        if (on !== row.enable_expansion)
+            ctx.settings.set(key, [row.enable_expansion, value] as never);
+        subtitle();
     });
-    row.add_suffix(spin);
-    row.add_suffix(toggle);
-    row.set_activatable_widget(toggle);
+    spin.connect('notify::value', () => {
+        const [on, value] = read();
+        const v = Math.round(spin.value);
+        if (value !== v)
+            ctx.settings.set(key, [on, v] as never);
+    });
     watch(ctx, row, [key], () => {
         const [on, value] = read();
-        toggle.set_active(on);
-        if (spin.get_value_as_int() !== value)
+        if (row.enable_expansion !== on)
+            row.set_enable_expansion(on);
+        if (Math.round(spin.value) !== value)
             spin.set_value(value);
+        subtitle();
     });
     return row;
 }

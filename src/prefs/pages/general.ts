@@ -125,7 +125,7 @@ function hotkeyGroup(ctx: PrefsContext): Adw.PreferencesGroup {
 function runnerHotkeyGroup(ctx: PrefsContext): Adw.PreferencesGroup {
     const g = new Adw.PreferencesGroup({
         title: 'Runner',
-        description: 'A search-only popup on the monitor under the pointer. It can also be opened with the D-Bus method ToggleRunner of io.github.djshiye.Spawn',
+        description: 'A search-only popup that opens on the monitor under the pointer.',
     });
     acceleratorRows(ctx, g, {
         key: 'runner-hotkey',
@@ -188,7 +188,7 @@ export function createGeneralPage(ctx: PrefsContext): Adw.PreferencesPage {
         enumRow(ctx, 'runner-position', 'Position', [['Top', 'Top'], ['Centered', 'Centred']], 'Where the runner opens on the monitor'),
         spinRow(ctx, 'runner-menu-width', 'Width', 300, 2000, {step: 10, subtitle: 'In pixels'}),
         spinRow(ctx, 'runner-menu-height', 'Maximum height', 300, 1000, {step: 10, subtitle: 'The runner grows with its results up to this height'}),
-        spinRow(ctx, 'runner-font-size', 'Font size', 0, 30, {subtitle: 'In points; 0 uses the menu font'}),
+        spinRow(ctx, 'runner-font-size', 'Font size', 0, 30, {subtitle: 'In points', special: [{value: 0, label: 'Menu font'}]}),
         enumRow(ctx, 'runner-default-view', 'Before typing', [['Default', 'Nothing'], ['Pinned_Apps', 'Pinned apps'], ['Frequent_Apps', 'Frequent apps']]),
     ], {
         reset: ['runner-position', 'runner-menu-width', 'runner-menu-height', 'runner-font-size', 'runner-default-view'],

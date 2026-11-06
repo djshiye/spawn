@@ -50,7 +50,7 @@ import type {Services} from '../core/services.js';
 import type {SearchHandle} from '../search/engine.js';
 import {closeMenu, openMenu, silenceSourceKeys} from './menuParams.js';
 import {
-    applyScrollSettings, applyTone, displayName, iconSizeFor, launchApp, lookupApp, scrollIntoView,
+    applyScrollSettings, applyTone, displayName, iconSizeFor, launchApp, lookupApp, scrollIntoView, showDescriptions,
 } from './util.js';
 import {AppRow, DEFAULT_ROW_ICON_SIZE} from './widgets/appRow.js';
 import {ResultList} from './widgets/resultList.js';
@@ -210,7 +210,7 @@ export class SpawnRunner {
 
             const tooltips = new TooltipManager(scope, settings);
             const search = new SearchBox(scope, settings);
-            const results = new ResultList(scope, settings, {close: () => this.close(), tooltips});
+            const results = new ResultList(scope, settings, {close: () => this.close(), tooltips, compactEmpty: true});
             const defaultBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-list'});
             const body = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, y_expand: true});
             body.add_child(defaultBox);
@@ -355,7 +355,7 @@ export class SpawnRunner {
                 openContext: () => {},
                 tooltips: ui.tooltips,
             };
-            const opts = {iconSize: iconSizeFor(s, 'icon-size-apps', DEFAULT_ROW_ICON_SIZE), description: s.get('apps-show-extra-details')};
+            const opts = {iconSize: iconSizeFor(s, 'icon-size-apps', DEFAULT_ROW_ICON_SIZE), description: showDescriptions(s)};
             for (const app of apps) {
                 const row = new AppRow(app, host, {...opts, name: displayName(app, s)});
                 ui.defaultBox.add_child(row.actor);
@@ -397,7 +397,7 @@ export class SpawnRunner {
             return;
         }
         this._showView(ui, true);
-        ui.results.beginQuery();
+        ui.results.beginQuery(query);
         ui.results.setSelectionVisible(true);
         const token = this._searchToken;
         try {

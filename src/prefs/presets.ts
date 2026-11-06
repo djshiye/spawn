@@ -27,7 +27,7 @@ import type {PrefsContext} from './context.js';
 import {promptText} from './lists.js';
 import {connectDisposable, label, onWindowClose, toast, watch} from './widgets.js';
 
-const FOLLOW = 'Follow the desktop theme';
+const FOLLOW = 'Desktop theme';
 const CUSTOM = 'Custom colours';
 
 /** Every key choosing a preset may change (the snapshot for Undo). */

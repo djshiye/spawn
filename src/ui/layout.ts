@@ -71,7 +71,7 @@ import {TileGrid} from './widgets/tileGrid.js';
 import {TooltipManager} from './widgets/tooltip.js';
 import {UndoBanner} from './widgets/undoBanner.js';
 import {UserCard} from './widgets/userCard.js';
-import {applyScrollSettings, displayName, iconSizeFor, iconSizeOrHidden, launchApp, lookupApp, ownedScope, scrollIntoView} from './util.js';
+import {applyScrollSettings, displayName, iconSizeFor, iconSizeOrHidden, launchApp, lookupApp, ownedScope, scrollIntoView, showDescriptions} from './util.js';
 
 export interface LayoutHost {
     /** Close the popup (e.g. after launching an app). */
@@ -117,7 +117,7 @@ const RELAYOUT_KEYS = [
 
 /** Read once when a view is built: a change rebuilds the lists. */
 const VIEW_KEYS = [
-    'icon-size-apps', 'apps-show-extra-details', 'apps-show-generic-names', 'max-frequent-apps',
+    'icon-size-apps', 'apps-show-extra-details', 'show-search-result-details', 'apps-show-generic-names', 'max-frequent-apps',
     'icon-size-categories', 'icon-style-categories',
 ] as const;
 
@@ -687,10 +687,17 @@ export class SpawnLayout implements ShortcutHost {
         const button = makeItemButton('spawn-nav-button');
         const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
         const navIcon = new St.Icon({icon_name: iconName, icon_size: iconSizeFor(this._services.settings, 'icon-size-misc', 16), y_align: Clutter.ActorAlign.CENTER});
-        this._services.settings.onChanged(this._scope, ['icon-size-misc'], () => {
+        // The small icon sits centred in a slot as wide as a list row's icon, so "All Apps" / "Back"
+        // start on the same text column as the app names above them.
+        navIcon.x_align = Clutter.ActorAlign.CENTER;
+        const slot = new St.Bin({child: navIcon, x_expand: false, y_align: Clutter.ActorAlign.CENTER});
+        const sync = (): void => {
             navIcon.icon_size = iconSizeFor(this._services.settings, 'icon-size-misc', 16);
-        });
-        box.add_child(navIcon);
+            slot.set_style(`width: ${Math.max(navIcon.icon_size, this._rowIconSize())}px;`); // CSS px: St scales them
+        };
+        sync();
+        this._services.settings.onChanged(this._scope, ['icon-size-misc', 'icon-size-apps', 'pinned-item-size'], sync);
+        box.add_child(slot);
         box.add_child(new St.Label({text, y_align: Clutter.ActorAlign.CENTER}));
         button.set_child(makeFace('spawn-nav-surface', box));
         wireItem(button, {activate: () => cb()});
@@ -1118,7 +1125,7 @@ export class SpawnLayout implements ShortcutHost {
         for (const c of box.get_children())
             c.destroy();
         const s = this._services.settings;
-        const opts = {iconSize: iconSizeFor(s, 'icon-size-apps', 28), description: s.get('apps-show-extra-details')};
+        const opts = {iconSize: iconSizeFor(s, 'icon-size-apps', 28), description: showDescriptions(s)};
         const apps = this._services.appIndex.frequent(this._frequentLimit());
         for (const app of apps)
             box.add_child(new AppRow(app, this._tileHostWithTips(), {...opts, name: displayName(app, s)}).actor);
@@ -1496,7 +1503,7 @@ export class SpawnLayout implements ShortcutHost {
         this._resultsScroll?.vadjustment.set_value(0);
         // Keep the previous rows (dimmed) until the first batch of this query arrives: no blank
         // flash between keystrokes.
-        results.beginQuery();
+        results.beginQuery(query);
         results.setSelectionVisible(true);
         const token = this._searchToken;
         try {

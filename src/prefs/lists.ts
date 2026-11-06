@@ -114,7 +114,14 @@ function spawnIcon(ctx: PrefsContext | undefined): Gio.Icon | string {
     return resolved.name.trim() === '' ? 'start-here-symbolic' : resolved.name;
 }
 
-export function describeEntry(entry: Entry, ctx?: PrefsContext): {title: string; subtitle?: string; icon: Gio.Icon | string} {
+/** 'org.gnome.Extensions.desktop' -> 'Extensions', 'firefox.desktop' -> 'Firefox'. */
+function friendlyAppName(id: string): string {
+    const parts = id.replace(/\.desktop$/, '').split('.');
+    const base = (parts.length >= 3 ? parts[parts.length - 1]! : parts.join('.')).replace(/[-_]+/g, ' ').trim();
+    return base ? base.charAt(0).toUpperCase() + base.slice(1) : id;
+}
+
+export function describeEntry(entry: Entry, ctx?: PrefsContext): {title: string; subtitle?: string; tooltip?: string; icon: Gio.Icon | string} {
     if (entry.isFolder === 'true')
         return {title: entry.name || 'Folder', subtitle: 'Folder', icon: 'folder-symbolic'};
     const builtin = BUILTINS.get(entry.id);
@@ -125,8 +132,8 @@ export function describeEntry(entry: Entry, ctx?: PrefsContext): {title: string;
     if (entry.id.endsWith('.desktop')) {
         const info = GioUnix.DesktopAppInfo.new(entry.id);
         if (info)
-            return {title: entry.name || info.get_display_name(), subtitle: entry.id, icon: info.get_icon() ?? 'application-x-executable'};
-        return {title: entry.name || entry.id, subtitle: 'Not installed', icon: 'dialog-question-symbolic'};
+            return {title: entry.name || info.get_display_name(), tooltip: entry.id, icon: info.get_icon() ?? 'application-x-executable'};
+        return {title: entry.name || friendlyAppName(entry.id), subtitle: 'Not installed', tooltip: entry.id, icon: 'dialog-question-symbolic'};
     }
     return {title: entry.name || entry.id, subtitle: entry.id, icon: entry.icon && !entry.icon.startsWith('Spawn_') ? entry.icon : 'application-x-executable-symbolic'};
 }
@@ -378,6 +385,8 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
             const row = new Adw.ActionRow({title: GLib.markup_escape_text(d.title, -1)});
             if (d.subtitle)
                 row.set_subtitle(GLib.markup_escape_text(d.subtitle, -1));
+            if ('tooltip' in d && d.tooltip)
+                row.set_tooltip_text(d.tooltip);
             const icon = iconWidget(d.icon);
             icon.set_pixel_size(24);
             row.add_prefix(icon);

@@ -26,7 +26,7 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 import {error} from '../../core/log.js';
 import type {Services} from '../../core/services.js';
 import type {RecentItem} from '../../search/providers/recentFiles.js';
-import {displayName, iconSizeFor} from '../util.js';
+import {displayName, iconSizeFor, showDescriptions} from '../util.js';
 import {AppRow} from './appRow.js';
 import type {TileHost} from './appTile.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
@@ -85,7 +85,7 @@ export class ExtraList {
 
     private _fillFavorites(): void {
         const s = this._services.settings;
-        const opts = {iconSize: iconSizeFor(s, 'icon-size-apps', 28), description: s.get('apps-show-extra-details')};
+        const opts = {iconSize: iconSizeFor(s, 'icon-size-apps', 28), description: showDescriptions(s)};
         const apps = this._services.appIndex.favorites();
         for (const app of apps)
             this.actor.add_child(new AppRow(app, this._host, {...opts, name: displayName(app, s)}).actor);

@@ -5,8 +5,8 @@
 # hit test (Ui.HitSweepIn: PickMode.REACTIVE, each point must belong to an item; items must touch except
 # where a section title / separator sits between them) in List and Grid mode.
 # Left dead on purpose: the 1 px separator between the category column and its apps, the gap beside a
-# section title / divider, the flexible spacer between the harmless and the destructive power buttons
-# (a stray click must not restart the machine) and the folder header's 8 px side margins.
+# section title / divider and the folder header's 8 px side margins. The power buttons are spread evenly
+# and touch: no dead gap between them (Restart / Power Off ask for confirmation).
 K=/org/gnome/shell/extensions/spawn
 FREQ="org.gnome.Calculator.desktop,org.gnome.Calendar.desktop,org.gnome.Characters.desktop,org.gnome.Contacts.desktop,org.gnome.Maps.desktop,org.gnome.Weather.desktop,org.gnome.Nautilus.desktop,org.gnome.Settings.desktop"
 leave_overview
@@ -165,13 +165,18 @@ print("power buttons:", [(b["x"], b["w"]) for b in bs], "pane", pane["x"], pane[
 ok = len(bs) >= 3
 gaps = [round(b["x"] - (a["x"] + a["w"]), 1) for a, b in zip(bs, bs[1:])]
 spacer = [g for g in gaps if g > 0.5]
-print("gaps between buttons:", gaps, "(one flexible spacer is intended)")
-ok = ok and len(spacer) <= 1
+print("gaps between buttons:", gaps, "(none: evenly spread, touching)")
+ok = ok and len(spacer) == 0
+# evenly spread: the surfaces' centres are (nearly) equally far apart
+cs = [b["x"] + b["w"] / 2 for b in bs]
+steps = [round(q - p, 1) for p, q in zip(cs, cs[1:])]
+print("centre steps:", steps)
+ok = ok and (max(steps) - min(steps) <= 6 if steps else True)
 ok = ok and abs(bs[0]["x"] - pane["x"]) <= 0.5 and abs(bs[-1]["x"] + bs[-1]["w"] - (pane["x"] + pane["w"])) <= 0.5
 ok = ok and all(abs(b["y"] + b["h"] - (pane["y"] + pane["h"])) <= 0.5 for b in bs)
 sys.exit(0 if ok else 1)
 PY
-    check "$disp: power buttons touch each other (but for the spacer) and reach the pane's left / right / bottom edge" $?
+    check "$disp: power buttons are evenly spread, touch each other and reach the pane's left / right / bottom edge" $?
     pick_is "$disp: left edge of the pane, level with the first power button" $(pane_point spawn-right-pane 1 spawn-power-button) spawn-power
     pick_is "$disp: right edge of the pane, level with the last power button" $(pane_point spawn-right-pane -2 spawn-power-button 2) spawn-power
     read -r gx gy < <(python3 -c '

@@ -47,11 +47,13 @@ import type {SpawnSettings} from '../../core/settings.js';
 import type {SearchBatch, SearchResult} from '../../search/engine.js';
 import {error} from '../../core/log.js';
 import {highlightMarkup} from '../../search/highlight.js';
-import {iconSizeFor} from '../util.js';
+import {iconSizeFor, showDescriptions} from '../util.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
 import type {ShortcutHost} from './shortcutRow.js';
 
 export type ResultHost = ShortcutHost & {
+    /** One-line "No results" without icon and hint (the runner, which sizes itself to its content). */
+    compactEmpty?: boolean;
     openResultContext?(row: St.Widget, result: SearchResult): void;
 };
 
@@ -74,7 +76,9 @@ export class ResultList {
     private readonly _settings: SpawnSettings;
     private readonly _host: ResultHost;
     private readonly _sections: Section[] = [];
-    private readonly _empty: St.Label;
+    private readonly _empty: St.BoxLayout;
+    private readonly _emptyTitle: St.Label;
+    private _query = '';
     private readonly _results = new Map<St.Button, SearchResult>();
     private _cancelEmpty: (() => void) | null = null;
     private _cancelStale: (() => void) | null = null;
@@ -93,14 +97,25 @@ export class ResultList {
             x_expand: true,
             y_expand: true,
         });
-        this._empty = new St.Label({
-            text: _('No results'),
-            style_class: 'spawn-empty-label',
+        // Empty state: a soft icon, "No results for “query”" and a hint. The runner sizes itself to its
+        // content, so it gets the compact one-line version (no icon, no hint).
+        const compact = !!host.compactEmpty;
+        this._empty = new St.BoxLayout({
+            style_class: compact ? 'spawn-empty-state spawn-empty-compact' : 'spawn-empty-state',
+            orientation: Clutter.Orientation.VERTICAL,
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
+            x_expand: true,
             y_expand: true,
             visible: false,
         });
+        if (!compact)
+            this._empty.add_child(new St.Icon({icon_name: 'edit-find-symbolic', style_class: 'spawn-empty-icon', x_align: Clutter.ActorAlign.CENTER}));
+        this._emptyTitle = new St.Label({text: _('No results'), style_class: 'spawn-empty-title', x_align: Clutter.ActorAlign.CENTER});
+        this._emptyTitle.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        this._empty.add_child(this._emptyTitle);
+        if (!compact)
+            this._empty.add_child(new St.Label({text: _('Try a different or shorter word'), style_class: 'spawn-empty-hint', x_align: Clutter.ActorAlign.CENTER}));
         this.actor.add_child(this._empty);
         scope.add(() => {
             this._cancelEmpty?.();
@@ -117,7 +132,8 @@ export class ResultList {
         return this._pending;
     }
 
-    beginQuery(): void {
+    beginQuery(query = ''): void {
+        this._query = query.trim();
         this._host.tooltips?.hide();
         this._pending = true;
         this._empty.hide();
@@ -249,6 +265,10 @@ export class ResultList {
         this._cancelEmpty?.();
         this._cancelEmpty = this._scope.timeout(EMPTY_DELAY_MS, () => {
             this._cancelEmpty = null;
+            if (!this.hasResults) {
+                // \u201C \u201D: curly quotes around the query
+                this._emptyTitle.text = this._query ? _('No results for \u201C%s\u201D').replace('%s', this._query) : _('No results');
+            }
             this._empty.visible = !this.hasResults;
         });
     }
@@ -312,7 +332,7 @@ export class ResultList {
             title.text = result.title;
         title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         text.add_child(title);
-        if (result.description && (result.alwaysShowDescription || this._settings.get('show-search-result-details'))) {
+        if (result.description && (result.alwaysShowDescription || showDescriptions(this._settings))) {
             const d = new St.Label({text: result.description, style_class: 'spawn-row-description'});
             d.clutter_text.ellipsize = Pango.EllipsizeMode.END;
             text.add_child(d);

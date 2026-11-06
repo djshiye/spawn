@@ -59,10 +59,10 @@ export function createAppearancePage(ctx: PrefsContext): Adw.PreferencesPage {
 
     // Independent of the custom colours: moves the popup away from (or towards) the panel.
     page.add(group(ctx, 'Menu placement', [
-        optionalSpinRow(ctx, 'menu-arrow-rise', 'Distance from the panel', 0, 50),
+        optionalSpinRow(ctx, 'menu-arrow-rise', 'Distance from the panel', 0, 50, 'Distance'),
     ], {
         reset: ['menu-arrow-rise'],
-        description: 'Used only while its switch is on. The space between the panel and the menu, in pixels.',
+        description: 'The space between the panel and the menu.',
     }));
 
     const buttonKeys: SettingKey[] = [
@@ -78,11 +78,11 @@ export function createAppearancePage(ctx: PrefsContext): Adw.PreferencesPage {
         optionalColorRow(ctx, 'menu-button-active-fg-color', 'Pressed text', 'Panel button'),
         optionalColorRow(ctx, 'menu-button-active-bg-color', 'Pressed background', 'Panel button'),
         optionalColorRow(ctx, 'menu-button-border-color', 'Border colour', 'Panel button'),
-        optionalSpinRow(ctx, 'menu-button-border-width', 'Border width', 0, 5),
-        optionalSpinRow(ctx, 'menu-button-border-radius', 'Corner radius', 0, 25),
+        optionalSpinRow(ctx, 'menu-button-border-width', 'Border width', 0, 5, 'Width'),
+        optionalSpinRow(ctx, 'menu-button-border-radius', 'Corner radius', 0, 25, 'Radius'),
     ], {
         reset: buttonKeys,
-        description: 'Each override is used only while its switch is on. Results may vary with third-party themes.',
+        description: 'Turn on an item to override the theme. Results may vary with third-party themes.',
     }));
     return page;
 }
