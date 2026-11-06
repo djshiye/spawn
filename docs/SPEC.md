@@ -194,7 +194,9 @@ data/migration/arcmenu/   compiled copy of ArcMenu's schema (GPL, credited)
   through Main.extensionManager / gnome-extensions D-Bus API).
 - No timers/idles without Scope ownership.
 - Lazy: popup + layout built on first open or on an idle after startup-complete;
-  AppIndex built once and patched on change.
+  that idle prebuild also attaches the hidden popup to the panel button, builds the
+  start view and resolves its styles (one step per idle), so the first open costs
+  about what later opens do. AppIndex built once and patched on change.
 
 ## Done for v1
 - Builds, lints, type-checks, unit tests pass.
