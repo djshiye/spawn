@@ -31,7 +31,7 @@ export interface LinksHost {
 
 export function linkInfo(id: number): {name: string; icon: string} {
     switch (id) {
-    case CategoryLink.FAVORITES: return {name: _('Favorites'), icon: 'emote-love-symbolic'};
+    case CategoryLink.FAVORITES: return {name: _('Favourites'), icon: 'emote-love-symbolic'};
     case CategoryLink.FREQUENT: return {name: _('Frequent Apps'), icon: 'user-bookmarks-symbolic'};
     case CategoryLink.ALL_PROGRAMS: return {name: _('All Apps'), icon: 'view-app-grid-symbolic'};
     case CategoryLink.PINNED: return {name: _('Pinned Apps'), icon: 'view-pin-symbolic'};

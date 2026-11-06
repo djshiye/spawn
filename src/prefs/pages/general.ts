@@ -147,7 +147,7 @@ function alignmentRow(ctx: PrefsContext): Adw.ActionRow {
         width_request: 220,
     });
     scale.add_mark(0, Gtk.PositionType.BOTTOM, 'Left');
-    scale.add_mark(50, Gtk.PositionType.BOTTOM, 'Center');
+    scale.add_mark(50, Gtk.PositionType.BOTTOM, 'Centre');
     scale.add_mark(100, Gtk.PositionType.BOTTOM, 'Right');
     label(scale, 'Menu alignment');
     ctx.settings.raw.bind('menu-position-alignment', scale.adjustment, 'value', Gio.SettingsBindFlags.DEFAULT);
@@ -173,7 +173,7 @@ export function createGeneralPage(ctx: PrefsContext): Adw.PreferencesPage {
     });
 
     page.add(group(ctx, 'Panel', [
-        enumRow(ctx, 'position-in-panel', 'Button position', [['Left', 'Left'], ['Center', 'Center'], ['Right', 'Right']]),
+        enumRow(ctx, 'position-in-panel', 'Button position', [['Left', 'Left'], ['Center', 'Centre'], ['Right', 'Right']]),
         alignmentRow(ctx),
         spinRow(ctx, 'menu-button-position-offset', 'Position offset', 0, 20, {
             subtitle: 'Number of panel items to skip from the chosen edge',
@@ -185,7 +185,7 @@ export function createGeneralPage(ctx: PrefsContext): Adw.PreferencesPage {
     page.add(hotkeyGroup(ctx));
     page.add(runnerHotkeyGroup(ctx));
     page.add(group(ctx, 'Runner layout', [
-        enumRow(ctx, 'runner-position', 'Position', [['Top', 'Top'], ['Centered', 'Centered']], 'Where the runner opens on the monitor'),
+        enumRow(ctx, 'runner-position', 'Position', [['Top', 'Top'], ['Centered', 'Centred']], 'Where the runner opens on the monitor'),
         spinRow(ctx, 'runner-menu-width', 'Width', 300, 2000, {step: 10, subtitle: 'In pixels'}),
         spinRow(ctx, 'runner-menu-height', 'Maximum height', 300, 1000, {step: 10, subtitle: 'The runner grows with its results up to this height'}),
         spinRow(ctx, 'runner-font-size', 'Font size', 0, 30, {subtitle: 'In points; 0 uses the menu font'}),

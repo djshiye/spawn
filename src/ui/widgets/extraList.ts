@@ -90,7 +90,7 @@ export class ExtraList {
         for (const app of apps)
             this.actor.add_child(new AppRow(app, this._host, {...opts, name: displayName(app, s)}).actor);
         if (apps.length === 0)
-            this._empty(_('No favorites'));
+            this._empty(_('No favourites'));
     }
 
     private _fillRecent(): void {

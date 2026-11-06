@@ -24,7 +24,7 @@ import {
 const ICON_STYLE: readonly Option[] = [['Symbolic', 'Symbolic'], ['Full_Color', 'Full colour']];
 
 const LINKS: ReadonlyArray<readonly [number, string, string]> = [
-    [CategoryLink.FAVORITES, 'Favorites', 'emote-love-symbolic'],
+    [CategoryLink.FAVORITES, 'Favourites', 'emote-love-symbolic'],
     [CategoryLink.FREQUENT, 'Frequent Apps', 'user-bookmarks-symbolic'],
     [CategoryLink.ALL_PROGRAMS, 'All Apps', 'view-app-grid-symbolic'],
     [CategoryLink.PINNED, 'Pinned Apps', 'view-pin-symbolic'],

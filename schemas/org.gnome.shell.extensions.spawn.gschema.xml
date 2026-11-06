@@ -358,7 +358,7 @@
     <key name="arcmenu-extra-categories-links" type="a(ib)">
       <default>[(0, false), (1, false), (2, false), (3, false), (4, false)]</default>
       <summary>Category quick links</summary>
-      <description>Quick links on the start view: (id, enabled), in display order; ids 0 Favorites (GNOME favorites) 1 Frequent 2 All apps 3 Pinned 4 Recent files. The link of the current start view is never shown</description>
+      <description>Quick links on the start view: (id, enabled), in display order; ids 0 Favourites (GNOME favourites) 1 Frequent 2 All apps 3 Pinned 4 Recent files. The link of the current start view is never shown</description>
     </key>
     <key name="arcmenu-extra-categories-links-location" enum="org.gnome.shell.extensions.spawn.menuitem-location">
       <default>'Bottom'</default>
