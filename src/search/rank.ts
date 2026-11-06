@@ -10,6 +10,7 @@
 //   acronym                       540..620   ("vsc" -> Visual Studio Code, "vscode" too)
 //   doubled initial (2 letters)   470..497   ("ff" -> Firefox; display names only, see scoreInitials)
 //   substring                     400..460
+//   typo (one edit, apps only)    382..398   ("chorme" -> Chrome, "calculater" -> Calculator; see below)
 //   subsequence (fuzzy)           100..300
 // Score 0 means "no match". Within a tier shorter candidates (higher query/candidate
 // length ratio) and earlier matches score slightly higher.
@@ -19,6 +20,17 @@
 // The query separators - _ . count as spaces too: when a candidate scores below the substring
 // band with the query as typed, it is rescored with them replaced by spaces ("fl-studio",
 // "proton-up", "fl_studio").
+//
+// Typo tolerance (rankApps only): when no app matches at the substring tier or better, the query is
+// ranked a second time allowing ONE edit per term (a swapped pair of letters, a wrong, missing or extra
+// letter) against the text starting at any word of a name or key. Terms of 4 letters only forgive a
+// swapped pair; shorter terms never. The first letter must be right (or swapped with the second).
+// Because it only runs when nothing matched well, a typo never pushes aside a real match.
+//
+// Prefilter: every candidate keeps a 32-bit mask of the characters it contains. A query character
+// missing from an item's mask means the item cannot match, so it is skipped without scoring (the
+// typo pass allows one missing character per term). Bits are shared by a few characters, so the
+// mask only ever lets too much through, never too little.
 //
 // Public API:
 //   normalize(s): string                  lower-case + fold diacritics + collapse whitespace
@@ -63,6 +75,12 @@
 //                                          tier always wins and no usage at all changes nothing
 //   hasAlnum(query): boolean              false for punctuation-only queries ("." "-"), which
 //                                          providers should not rank at all
+//   candidate(raw): Candidate             a string prepared once for repeated scoring (cache it per item)
+//   rankFields<T>(query, items, fieldsOf, limit?)  rank items by weighted fields ({candidate, weight}[]):
+//                                          the best weighted field wins; a multi-word query no single
+//                                          field matches is retried with every term matched in any field
+//                                          (worst term * 0.8, e.g. app name + window title). Stable,
+//                                          best first. Used by the windows and recent files providers
 
 export interface Ranked<T> {
     item: T;
@@ -227,6 +245,11 @@ interface Prepared {
     boundary: boolean[];
     /** Lower-case words (see wordsOf); filled on first use, most candidates never need them. */
     words: string[] | null;
+    /** Characters present (see charMask). */
+    mask: number;
+    /** The words joined without separators and where each word starts in it (typo pass only). */
+    compact: string | null;
+    starts: number[] | null;
 }
 
 /** null when nothing is left to match (empty / whitespace-only). */
@@ -239,7 +262,114 @@ function prepare(candidate: string): Prepared | null {
     let lower = folded.toLowerCase();
     if (lower.length !== folded.length)
         lower = folded; // exotic case mapping changed the length; give up on camelCase
-    return {folded, lower, boundary: wordBoundaries(folded), words: null};
+    return {folded, lower, boundary: wordBoundaries(folded), words: null, mask: charMask(lower), compact: null, starts: null};
+}
+
+/** Bit for one character: a-z own bits (case-insensitive), digits share 5 bits, everything else bit 31. */
+function charBit(code: number): number {
+    if (code >= 97 && code <= 122)
+        return 1 << (code - 97);
+    if (code >= 65 && code <= 90)
+        return 1 << (code - 65);
+    if (code >= 48 && code <= 57)
+        return 1 << (26 + (code - 48) % 5);
+    return 1 << 31;
+}
+
+/** Characters present in `s`, as bits. Space and the query separators - _ . are left out. */
+function charMask(s: string): number {
+    let m = 0;
+    for (let i = 0; i < s.length; i++) {
+        const code = s.charCodeAt(i);
+        if (code === 32 || code === 45 || code === 95 || code === 46)
+            continue;
+        m |= charBit(code);
+    }
+    return m;
+}
+
+let prefilter = true;
+
+/** Tests only: turn the character-mask prefilter off, to prove it never changes a result. */
+export function setPrefilterForTests(on: boolean): void {
+    prefilter = on;
+}
+
+/** How many bits of `need` are missing from `have` (always 0 with the prefilter off). */
+function missingBits(need: number, have: number): number {
+    if (!prefilter)
+        return 0;
+    let m = need & ~have;
+    let n = 0;
+    while (m !== 0) {
+        m &= m - 1;
+        n++;
+    }
+    return n;
+}
+
+const TYPO_BAND = 382;
+const TYPO_MIN = 4;
+/** Below this length a term only forgives a swapped pair of letters (an edit matches too much). */
+const TYPO_ANY_EDIT_MIN = 5;
+
+/** Are `a` and `b` (a !== b) at most one edit apart: a swap of neighbours, or one wrong / missing / extra letter? */
+function oneEdit(a: string, b: string, swapOnly: boolean): boolean {
+    const la = a.length;
+    const lb = b.length;
+    if (swapOnly && la !== lb)
+        return false;
+    if (Math.abs(la - lb) > 1)
+        return false;
+    let i = 0;
+    while (i < la && i < lb && a[i] === b[i])
+        i++;
+    if (la === lb) {
+        if (i === la)
+            return true;
+        if (i + 1 < la && a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2))
+            return true;
+        return !swapOnly && a.slice(i + 1) === b.slice(i + 1);
+    }
+    return la > lb ? a.slice(i + 1) === b.slice(i) : a.slice(i) === b.slice(i + 1);
+}
+
+/**
+ * One-edit match of term `q` against the text starting at some word of `p` (words joined, so a typo
+ * may span them: "libreofice"). 0 when there is none; otherwise in the typo band, earlier words and
+ * shorter candidates a little higher.
+ */
+function scoreTypo(q: string, p: Prepared): number {
+    const n = q.length;
+    if (n < TYPO_MIN)
+        return 0;
+    if (!p.compact || !p.starts) {
+        if (!p.words)
+            p.words = wordsOf(p.lower, p.boundary);
+        const starts: number[] = [];
+        let compact = '';
+        for (const w of p.words) {
+            starts.push(compact.length);
+            compact += w;
+        }
+        p.compact = compact;
+        p.starts = starts;
+    }
+    const {compact, starts} = p;
+    const swapOnly = n < TYPO_ANY_EDIT_MIN;
+    for (let wi = 0; wi < starts.length; wi++) {
+        const s = starts[wi];
+        const c0 = compact[s];
+        if (c0 !== q[0] && !(c0 === q[1] && compact[s + 1] === q[0]))
+            continue;
+        for (let len = n - 1; len <= n + 1; len++) {
+            if (len < TYPO_MIN - 1 || s + len > compact.length)
+                continue;
+            if (oneEdit(q, compact.slice(s, s + len), swapOnly))
+                return Math.round(TYPO_BAND + 10 * Math.min(1, n / p.lower.length) + (wi === 0 ? 6 : 0));
+        }
+    }
+    return 0;
 }
 
 /** Is `q` a subsequence of `c`? Every non-zero scoreOne result consumes the characters of q in order. */
@@ -252,8 +382,15 @@ function isSubsequence(q: string, c: string): boolean {
     return qi === q.length;
 }
 
-/** Score a single term (no spaces) or a contiguous phrase. */
-function scoreOne(q: string, p: Prepared, phrase: boolean, initials: boolean): number {
+/** Score a single term (no spaces) or a contiguous phrase; `typo` allows one edit (see scoreTypo). */
+function scoreOne(q: string, p: Prepared, phrase: boolean, initials: boolean, typo = false): number {
+    const s = scoreExact(q, p, phrase, initials);
+    if (!typo || phrase || s >= SUBSTRING_BAND)
+        return s;
+    return Math.max(s, scoreTypo(q, p));
+}
+
+function scoreExact(q: string, p: Prepared, phrase: boolean, initials: boolean): number {
     const {folded, lower, boundary} = p;
     const ratio = q.length / lower.length;
     if (lower === q)
@@ -331,6 +468,10 @@ interface PreparedQuery {
     terms: string[] | null;
     /** The query with its separators - _ . turned into spaces, when that differs from `q`. */
     spaced: PreparedQuery | null;
+    /** Characters every match must contain (see charMask); 0 for an empty query. */
+    mask: number;
+    /** Terms long enough for the typo pass (see scoreTypo). */
+    typoTerms: number;
 }
 
 function prepareQuery(q: string, withSpaced = true): PreparedQuery {
@@ -340,7 +481,9 @@ function prepareQuery(q: string, withSpaced = true): PreparedQuery {
         if (t && t !== q)
             spaced = prepareQuery(t, false);
     }
-    return {q, terms: q.includes(' ') ? q.split(' ') : null, spaced};
+    const terms = q.includes(' ') ? q.split(' ') : null;
+    const typoTerms = (terms ?? [q]).filter(t => t.length >= TYPO_MIN).length;
+    return {q, terms, spaced, mask: charMask(q), typoTerms};
 }
 
 /** `q` must already be normalised; `candidate` may be raw (case gives camelCase boundaries). */
@@ -349,25 +492,29 @@ export function scoreNormalized(q: string, candidate: string, initials = false):
     return p && q ? scoreCandidate(prepareQuery(q), p, initials) : 0;
 }
 
-function scoreCandidate(pq: PreparedQuery, p: Prepared | null, initials: boolean): number {
+function scoreCandidate(pq: PreparedQuery, p: Prepared | null, initials: boolean, typo = false): number {
     if (!p)
         return 0;
-    const s = scoreAsTyped(pq, p, initials);
+    // Every match consumes all query characters from this one candidate (the typo pass: all but one per term).
+    const missing = missingBits(pq.mask, p.mask);
+    if (missing > 0 && (!typo || missing > pq.typoTerms))
+        return 0;
+    const s = scoreAsTyped(pq, p, initials, typo);
     if (s >= SUBSTRING_BAND || !pq.spaced)
         return s;
-    return Math.max(s, scoreAsTyped(pq.spaced, p, initials));
+    return Math.max(s, scoreAsTyped(pq.spaced, p, initials, typo));
 }
 
-function scoreAsTyped(pq: PreparedQuery, p: Prepared, initials: boolean): number {
+function scoreAsTyped(pq: PreparedQuery, p: Prepared, initials: boolean, typo: boolean): number {
     if (!pq.q)
         return 0;
     if (!pq.terms)
-        return scoreOne(pq.q, p, false, initials);
+        return scoreOne(pq.q, p, false, initials, typo);
 
     const phrase = scoreOne(pq.q, p, true, initials);
     let terms = Infinity;
     for (const term of pq.terms) {
-        const s = scoreOne(term, p, false, initials);
+        const s = scoreOne(term, p, false, initials, typo);
         if (s === 0) {
             terms = 0;
             break;
@@ -435,10 +582,18 @@ interface PreparedApp {
     pkeys: Array<Prepared | null>;
     /** The description split into words; filled on first use. */
     words: string[] | null;
+    /** Every character of the name and keys, and of the description (see charMask). */
+    mask: number;
+    descMask: number;
 }
 
 function prepareApp(name: string, keys: readonly string[], description: string): PreparedApp {
-    return {name, keys, description, pname: prepare(name), pkeys: keys.map(prepare), words: null};
+    const pname = prepare(name);
+    const pkeys = keys.map(prepare);
+    let mask = pname?.mask ?? 0;
+    for (const k of pkeys)
+        mask |= k?.mask ?? 0;
+    return {name, keys, description, pname, pkeys, words: null, mask, descMask: charMask(description)};
 }
 
 /** A query with what scoreApp needs beyond PreparedQuery. */
@@ -447,12 +602,19 @@ interface AppQuery {
     /** Terms of the cross-key match; null when the query does not qualify (see scoreAcrossKeys). */
     across: PreparedQuery[] | null;
     descTerms: string[] | null;
+    /** Characters of the query and of its description terms (stop words dropped; see charMask). */
+    mask: number;
+    descMask: number;
+    /** Terms long enough for a typo (the typo pass allows one missing character per such term). */
+    typoTerms: number;
 }
 
 function prepareAppQuery(q: string): AppQuery {
     const terms = spaceSeparators(q).split(' ');
     const across = terms.length < 2 || terms.some(t => t.length < 2) ? null : terms.map(t => prepareQuery(t));
-    return {pq: prepareQuery(q), across, descTerms: descriptionTerms(q)};
+    const pq = prepareQuery(q);
+    const descTerms = descriptionTerms(q);
+    return {pq, across, descTerms, mask: pq.mask, descMask: charMask(descTerms?.join('') ?? ''), typoTerms: terms.filter(t => t.length >= TYPO_MIN).length};
 }
 
 /** Name (raw) at full weight, other keys at `keyWeight`, description word by word at DESCRIPTION_WEIGHT. */
@@ -460,11 +622,16 @@ export function scoreApp(q: string, name: string, keys: readonly string[], keyWe
     return scoreAppPrepared(prepareAppQuery(q), prepareApp(name, keys, description), keyWeight);
 }
 
-function scoreAppPrepared(aq: AppQuery, app: PreparedApp, keyWeight: number): number {
-    let s = scoreKeysPrepared(aq.pq, app, keyWeight);
-    if (s < SUBSTRING_BAND)
-        s = Math.max(s, scoreAcrossKeys(aq, app, keyWeight));
-    if (!aq.descTerms || !app.description)
+function scoreAppPrepared(aq: AppQuery, app: PreparedApp, keyWeight: number, typo = false): number {
+    // A query character that neither the name nor any key has: only the description can still match.
+    const missing = missingBits(aq.mask, app.mask);
+    let s = 0;
+    if (missing === 0 || (typo && missing <= aq.typoTerms)) {
+        s = scoreKeysPrepared(aq.pq, app, keyWeight, typo);
+        if (s < SUBSTRING_BAND)
+            s = Math.max(s, scoreAcrossKeys(aq, app, keyWeight, typo));
+    }
+    if (!aq.descTerms || !app.description || missingBits(aq.descMask, app.descMask) > 0)
         return s;
     if (!app.words)
         app.words = splitWords(app.description);
@@ -476,12 +643,12 @@ function scoreAppPrepared(aq: AppQuery, app: PreparedApp, keyWeight: number): nu
  * "minecraft"): every term (>= 2 chars) must match name or a key above the fuzzy band; the worst
  * decides. A lone letter matches too much to be a cross-key term ("fl s" is a plain name match).
  */
-function scoreAcrossKeys(aq: AppQuery, app: PreparedApp, keyWeight: number): number {
+function scoreAcrossKeys(aq: AppQuery, app: PreparedApp, keyWeight: number, typo = false): number {
     if (!aq.across)
         return 0;
     let worst = Infinity;
     for (const term of aq.across) {
-        const s = scoreKeysPrepared(term, app, keyWeight);
+        const s = scoreKeysPrepared(term, app, keyWeight, typo);
         if (s <= FUZZY_MAX)
             return 0;
         worst = Math.min(worst, s);
@@ -494,10 +661,10 @@ export function scoreKeys(q: string, name: string, keys: readonly string[], keyW
     return scoreKeysPrepared(prepareQuery(q), prepareApp(name, keys, ''), keyWeight);
 }
 
-function scoreKeysPrepared(pq: PreparedQuery, app: PreparedApp, keyWeight: number): number {
-    let best = scoreCandidate(pq, app.pname, true);
+function scoreKeysPrepared(pq: PreparedQuery, app: PreparedApp, keyWeight: number, typo = false): number {
+    let best = scoreCandidate(pq, app.pname, true, typo);
     for (const key of app.pkeys) {
-        const s = Math.round(scoreCandidate(pq, key, false) * keyWeight);
+        const s = Math.round(scoreCandidate(pq, key, false, typo) * keyWeight);
         if (s > best)
             best = s;
     }
@@ -564,7 +731,7 @@ export type UsageOf = (id: string) => number;
 /** Most points usage can add to a text score. */
 export const USAGE_BOOST_MAX = 6;
 /** Lower edge of every score tier (see the header). Usage never lifts a score into the next tier. */
-const TIER_FLOORS = [1000, 850, 700, 540, 470, 400, 100];
+const TIER_FLOORS = [1000, 850, 700, 540, 470, 400, TYPO_BAND, 100];
 
 function tierCeiling(score: number): number {
     let ceiling = Infinity;
@@ -616,14 +783,78 @@ export function prepareApps(items: readonly AppRankable[]): void {
 export function rankApps<T extends AppRankable>(query: string, items: readonly T[], limit?: number, usageOf?: UsageOf): Ranked<T>[] {
     let aq: AppQuery | null = null;
     let aqFor = '';
-    const ranked = rankItemsBy(query, items, (item, q) => {
+    const pass = (typo: boolean) => rankItemsBy(query, items, (item, q) => {
         if (!aq || aqFor !== q) {
             aq = prepareAppQuery(q);
             aqFor = q;
         }
-        return scoreAppPrepared(aq, preparedApp(item), APP_KEY_WEIGHT);
+        return scoreAppPrepared(aq, preparedApp(item), APP_KEY_WEIGHT, typo);
     });
+    let ranked = pass(false);
+    // Nothing matched at the substring tier or better: allow one typo per term (see the header).
+    if ((ranked[0]?.score ?? 0) < SUBSTRING_BAND && aq !== null && (aq as AppQuery).pq.typoTerms > 0)
+        ranked = pass(true);
     const cut = applyRelativeCutoff(ranked);
     const ordered = usageOf ? applyUsageBoost(cut, usageOf) : cut;
     return limit !== undefined && limit >= 0 ? ordered.slice(0, limit) : ordered;
+}
+
+/** A string prepared once for repeated scoring with rankFields (see candidate()). */
+export interface Candidate {
+    readonly prepared: Prepared | null;
+}
+
+export interface Field {
+    candidate: Candidate;
+    /** 1 = full weight (a name); lower for secondary text such as a folder or an app name. */
+    weight: number;
+}
+
+export function candidate(raw: string): Candidate {
+    return {prepared: prepare(raw)};
+}
+
+/** Weighted fields (see the header); the multi-word retry needs every term (>= 2 chars) above the fuzzy band. */
+export function rankFields<T>(query: string, items: readonly T[], fieldsOf: (item: T) => readonly Field[], limit?: number): Ranked<T>[] {
+    let pq: PreparedQuery | null = null;
+    let across: PreparedQuery[] | null = null;
+    let mask = 0;
+    return rankItemsBy(query, items, (item, q) => {
+        if (!pq || pq.q !== q) {
+            pq = prepareQuery(q);
+            const terms = spaceSeparators(q).split(' ');
+            across = terms.length < 2 || terms.some(t => t.length < 2) ? null : terms.map(t => prepareQuery(t));
+            mask = charMask(q);
+        }
+        const fields = fieldsOf(item);
+        let have = 0;
+        for (const f of fields)
+            have |= f.candidate.prepared?.mask ?? 0;
+        if (missingBits(mask, have) > 0)
+            return 0;
+        const weighted = (query_: PreparedQuery): number => {
+            let best = 0;
+            for (const f of fields) {
+                const s = Math.round(scoreCandidate(query_, f.candidate.prepared, false) * f.weight);
+                if (s > best)
+                    best = s;
+            }
+            return best;
+        };
+        let s = weighted(pq);
+        if (s < SUBSTRING_BAND && across && fields.length > 1) {
+            let worst = Infinity;
+            for (const term of across as PreparedQuery[]) {
+                const t = weighted(term);
+                if (t <= FUZZY_MAX) {
+                    worst = 0;
+                    break;
+                }
+                worst = Math.min(worst, t);
+            }
+            if (worst > 0 && worst !== Infinity)
+                s = Math.max(s, Math.round(worst * ACROSS_KEYS_FACTOR));
+        }
+        return s;
+    }, limit);
 }
