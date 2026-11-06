@@ -108,8 +108,9 @@ PY
     key Escape 0.6
 
     echo "-- nav button at the pane's edge"
-    edge "the All Apps button" spawn-nav-button spawn-left-pane left
+    edge "the All Apps button" spawn-nav-button spawn-left-pane both
     pick_is "$disp: the pointer on the pane's left edge, level with All Apps, hits the button" $(pane_point spawn-left-pane 1 spawn-nav-button) spawn-nav
+    pick_is "$disp: ... and on the right edge (the whole row is the button)" $(pane_point spawn-left-pane -2 spawn-nav-button) spawn-nav
 
     echo "-- Pinned_And_Frequent_Apps, $disp"
     dconf write $K/default-menu-view "'Pinned_And_Frequent_Apps'"
