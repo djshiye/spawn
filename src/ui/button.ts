@@ -119,7 +119,8 @@ export class MenuButton extends PanelMenu.Button {
 
         const gesture = new Clutter.ClickGesture();
         gesture.set_recognize_on_press(true);
-        gesture.connect('recognize', () => this._onClick(gesture.get_button()));
+        // A touch tap reports button 0: treat it as the primary button.
+        gesture.connect('recognize', () => this._onClick(gesture.get_button() || 1));
         this.add_action(gesture);
 
         this._contextMenu = new ButtonMenu(this._scope, this, {

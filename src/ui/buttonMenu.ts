@@ -99,6 +99,8 @@ export class ButtonMenu {
     private readonly _deps: ButtonMenuDeps;
     private _openScope: {scope: Scope; release(): void} | null = null;
     private _menu: PopupMenu.PopupMenu | null = null;
+    /** Set when a row was activated, before its action runs; Escape / outside click leave it false. */
+    private _activated = false;
     private _logind: LogindInfo | null = null;
     private _probing = false;
     private _refreshers: Array<() => void> = [];
@@ -156,10 +158,7 @@ export class ButtonMenu {
 
             this._populate(menu, scope);
 
-            let activated = false;
-            scope.connect(menu, 'activate', () => {
-                activated = true;
-            });
+            this._activated = false;
             scope.connect(menu, 'open-state-changed', (_m: unknown, open: boolean) => {
                 if (open) {
                     button.add_style_pseudo_class('active');
@@ -167,7 +166,7 @@ export class ButtonMenu {
                 }
                 this._clearActive();
                 // Escape or an outside click after a keyboard open: the focus belongs on the button.
-                if (fromKeyboard && !activated)
+                if (fromKeyboard && !this._activated)
                     this._scope.idle(() => this._focusButton());
                 // Defer: destroying inside the close notification re-enters the manager.
                 this._scope.idle(() => {
@@ -279,6 +278,8 @@ export class ButtonMenu {
 
         const item = row.icon ? new PopupMenu.PopupImageMenuItem(row.label ?? '', row.icon) : new PopupMenu.PopupMenuItem(row.label ?? '');
         item.connect('activate', () => {
+            // Before run(): most rows close the menu synchronously, and open-state-changed must see this.
+            this._activated = true;
             try {
                 row.run?.(close);
             } catch (e) {

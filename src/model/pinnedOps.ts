@@ -106,9 +106,15 @@ function extract(m: Mutable, ids: readonly string[], keepFolder?: string): Entry
     const out: Entry[] = [];
     for (const id of ids) {
         let found: Entry | undefined;
-        const ti = m.top.findIndex(e => !isFolderEntry(e) && e.id === id);
-        if (ti >= 0)
-            found = m.top.splice(ti, 1)[0];
+        // Every top-level match goes (a hand-edited list may hold the id twice); the first one is returned.
+        for (let ti = 0; ti < m.top.length;) {
+            if (isFolderEntry(m.top[ti]) || m.top[ti].id !== id) {
+                ti++;
+                continue;
+            }
+            const [e] = m.top.splice(ti, 1);
+            found ??= e;
+        }
         for (const [uuid, list] of Object.entries(m.folders)) {
             const fi = list.findIndex(e => e.id === id);
             if (fi < 0)
