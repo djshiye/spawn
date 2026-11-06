@@ -1852,7 +1852,9 @@ export class SpawnLayout implements ShortcutHost {
             this._scope.idle(() => {
                 if (this._isOpen && !this._destroyed && !global.stage.key_focus && !this._context.isOpen) {
                     // A pinned tile was destroyed (Unpin, Delete Folder): focus its neighbour at the same index.
-                    const tiles = this._view === 'pinned' && lost && !lost.widget.get_stage() ? this._grid.tiles() : [];
+                    // Compare identities only: touching the destroyed tile itself logs a critical.
+                    const current = this._view === 'pinned' ? this._grid.tiles() : [];
+                    const tiles = lost && !current.includes(lost.widget as St.Widget) ? current : [];
                     const next = tiles[Math.min(lost?.index ?? 0, tiles.length - 1)];
                     if (next) {
                         next.grab_key_focus();
