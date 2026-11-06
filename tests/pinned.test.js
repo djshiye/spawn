@@ -45,6 +45,17 @@ test('unpin removes from the top level', () => {
     assert(ops.unpin(s, 'zzz.desktop') === s);
 });
 
+test('unpin removes every top-level duplicate of the id', () => {
+    const s = snap([app('a'), app('b'), app('a')]);
+    assertEquals(ids(ops.unpin(s, 'a.desktop')), ['b.desktop']);
+});
+
+test('createFolder takes every top-level duplicate into the folder (one place only)', () => {
+    const r = ops.createFolder(snap([app('a'), app('b'), app('a')]), 'F', 'Fold', ['a.desktop']);
+    assertEquals(ids(r), ['F', 'b.desktop']);
+    assertEquals(r.folders.F.map(e => e.id), ['a.desktop']);
+});
+
 test('unpin from inside a folder keeps a non-empty folder', () => {
     const r = ops.unpin(withFolder(), 'x.desktop');
     assertEquals(r.folders.F, [app('y')]);

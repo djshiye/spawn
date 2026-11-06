@@ -65,7 +65,7 @@ import {PlaceRow} from './widgets/placeRow.js';
 import {PowerBar} from './widgets/powerBar.js';
 import {ResultList, type ResultHost} from './widgets/resultList.js';
 import {SearchBox} from './widgets/searchBox.js';
-import {ShortcutRow, type ShortcutHost} from './widgets/shortcutRow.js';
+import {resolveShortcut, ShortcutRow, type ShortcutHost} from './widgets/shortcutRow.js';
 import {TileGrid} from './widgets/tileGrid.js';
 import {TooltipManager} from './widgets/tooltip.js';
 import {UndoBanner} from './widgets/undoBanner.js';
@@ -1267,8 +1267,10 @@ export class SpawnLayout implements ShortcutHost {
                 const {scope, release} = ownedScope(this._scope, key);
                 const id = item.entry.id;
                 const Action = list ? ActionRow : ActionTile;
-                const tile = new Action(item.entry.name || id, item.entry.icon || 'application-x-executable',
-                    () => this._runCustom(id), {tooltips: this._tooltips},
+                // Built-in shortcuts, folders and URIs show their own name and icon; a plain command keeps the generic look.
+                const builtin = /^(Spawn_|ArcMenu_|\/|[a-z][a-z0-9+.-]*:\/\/)/.test(id) ? resolveShortcut(item.entry) : null;
+                const tile = new Action(builtin?.name || item.entry.name || id, builtin?.icon || item.entry.icon || 'application-x-executable',
+                    () => this._runCustom(item.entry), {tooltips: this._tooltips},
                     {...tileOpts, context: () => this._context.open(tile.actor, {kind: 'custom', id})});
                 enableDrag(scope, tile.actor, {id, isCustom: true});
                 acceptDrops(scope, tile.actor, store, {kind: 'app', id, isCustom: true}, dropOpts);
@@ -1298,7 +1300,19 @@ export class SpawnLayout implements ShortcutHost {
         this._grid.setTiles(tiles, list ? 1 : this._cols, list ? -1 : this._tileWidth, size);
     }
 
-    private _runCustom(id: string): void {
+    private _runCustom(entry: Entry): void {
+        const id = entry.id;
+        // Pinned shortcuts (Spawn_*, folders, URIs) run through the shared resolver, which closes the menu itself
+        // (Spawn_ShowAllApplications must keep it open).
+        const resolved = resolveShortcut(entry);
+        if (resolved) {
+            try {
+                resolved.run({close: () => this._host.close(), showAllApps: () => this._openAllApps()}, this._scope);
+            } catch (e) {
+                error(`could not run ${id}`, e);
+            }
+            return;
+        }
         this._host.close();
         try {
             if (id === ShortcutId.SHOW_ALL_APPS) {

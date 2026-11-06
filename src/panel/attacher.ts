@@ -213,12 +213,6 @@ export class ButtonAttacher {
             }
         }
 
-        if (desired.length > 0) {
-            // Fallback attachments keep retrying the real targets in the background.
-            if (!fallback)
-                this._clearProblem();
-        }
-
         // 1. Remove attachments that are unhealthy, stale (panel object replaced), or no
         //    longer wanted. When nothing is desired yet we keep what still works.
         if (desired.length > 0) {
@@ -266,6 +260,11 @@ export class ButtonAttacher {
                 this._markProblem();
             }
         }
+
+        // Cleared only once everything is attached, so failing passes keep their growing backoff.
+        // Fallback attachments keep retrying the real targets in the background.
+        if (desired.length > 0 && !fallback && desired.every(t => this._attachments.has(t.key)))
+            this._clearProblem();
 
         // 3. Activities button (all current panels plus the shell's own).
         this._applyActivities(desired.map(t => t.panel));

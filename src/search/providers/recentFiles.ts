@@ -46,6 +46,7 @@ import {error, warn} from '../../core/log.js';
 import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
 import type {CancelToken, SearchProvider, SearchResult} from '../engine.js';
+import {maxSearchResults} from '../limit.js';
 import {candidate, hasAlnum, rankFields, type Field} from '../rank.js';
 
 const MAX_ITEMS = 2000;
@@ -159,14 +160,14 @@ export class RecentFilesProvider implements SearchProvider {
     }
 
     search(query: string, token: CancelToken): SearchResult[] {
-        if (!query.trim() || !hasAlnum(query))
-            return [];
+        if (!query.trim() || !hasAlnum(query) || !this._remembering())
+            return []; // File History off: nothing is read or shown, as in list()
         this._ensureLoaded();
         if (token.cancelled)
             return [];
 
         const showHidden = this._settings.get('show-hidden-recent-files');
-        const max = this._settings.get('max-search-results');
+        const max = maxSearchResults(this._settings);
         const items = showHidden ? this._items : this._items.filter(i => !i.hidden);
         const ranked = rankFields(query, items, item => this._fieldsOf(item));
 

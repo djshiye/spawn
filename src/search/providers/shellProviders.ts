@@ -36,6 +36,7 @@ import {error, warn} from '../../core/log.js';
 import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
 import type {CancelToken, SearchProvider, SearchResult} from '../engine.js';
+import {maxSearchResults} from '../limit.js';
 
 const REMOTE_SEARCH_MODULE = 'resource:///org/gnome/shell/ui/remoteSearch.js';
 const GNOME_SEARCH_SCHEMA = 'org.gnome.desktop.search-providers';
@@ -92,7 +93,7 @@ class ShellProviderBridge implements SearchProvider {
             if (token.cancelled || !Array.isArray(initial) || initial.length === 0)
                 return [];
 
-            const max = this._settings.get('max-search-results');
+            const max = maxSearchResults(this._settings);
             const ids = initial.filter((i): i is string => typeof i === 'string').slice(0, max);
             if (ids.length === 0)
                 return [];

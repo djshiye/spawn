@@ -15,6 +15,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {error} from '../../core/log.js';
 import type {SpawnSettings} from '../../core/settings.js';
 import type {CancelToken, SearchProvider, SearchResult} from '../engine.js';
+import {maxSearchResults} from '../limit.js';
 import {candidate, hasAlnum, rankFields} from '../rank.js';
 
 const APP_NAME_WEIGHT = 0.8;
@@ -50,7 +51,7 @@ export class WindowsProvider implements SearchProvider {
         const ranked = rankFields(query, windows, (info: WindowInfo) => [
             {candidate: candidate(info.title), weight: 1},
             {candidate: candidate(info.appName), weight: APP_NAME_WEIGHT},
-        ], this._settings.get('max-search-results'));
+        ], maxSearchResults(this._settings));
 
         return ranked.map(({item, score}) => ({
             id: String(item.window.get_id()),
