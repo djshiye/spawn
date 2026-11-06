@@ -84,7 +84,9 @@ export class PowerBar {
             for (const sig of powerSignalNames)
                 scope.connect(sa, sig, () => this._refresh());
         }
-        scope.connect(this._row, 'notify::width', () => this._scheduleFit());
+        // Not through the scope: the scope destroys the bar (and this row) before it would disconnect,
+        // and disconnecting from a destroyed actor logs a critical. The handler goes with the row.
+        this._row.connect('notify::width', () => this._scheduleFit());
         settings.onChanged(scope, ['power-options', 'power-display-style', 'icon-size-buttons', 'icon-style-buttons'], () => this._build());
         probeLogind().then(info => {
             if (this._destroyed)
