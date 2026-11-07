@@ -16,7 +16,9 @@ The RPM `Release` is `1.<commit count>.<dist>`, appended by `publish.sh`, so eve
 
 ## Cut a release
 
-1. Finish the work on `main`; `npm run typecheck && npm run lint && npm test && tools/dev-shell.sh all` must pass.
+1. Finish the work on `main`. CI (`.github/workflows/ci.yml`) must be green; it runs typecheck, lint, tests and the
+   `smoke` / `lifecycle` shell scenarios but not the whole harness, so also run `tools/dev-shell.sh all` locally.
+   Move the `CHANGELOG.md` "Unreleased" entries under the new version.
 2. `tools/bump-version.sh 1.1.0 "what changed"` (updates package.json, package-lock.json, metadata.json, the spec and its changelog), review and commit.
 3. If the supported shells changed: edit `shell-version` in `metadata.json` and `%global min_shell` in `build-aux/spawn.spec`
    (the RPM must not be installable on a shell the extension refuses to load on).

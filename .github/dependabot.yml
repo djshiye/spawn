@@ -1,0 +1,20 @@
+# tools/compat/49 and tools/compat/50 are deliberately not listed: they pin the GNOME Shell 49 / 50 typings
+# (and matching @girs overrides) exactly, and a bump would silently change what the compat typecheck means.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      npm:
+        patterns: ['*']
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns: ['*']
