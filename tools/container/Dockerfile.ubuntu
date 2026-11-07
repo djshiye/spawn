@@ -1,8 +1,10 @@
 # GNOME Shell 51 test image for CI (.github/workflows/ci.yml): ubuntu:devel carries GNOME Shell 51. Everything the
 # headless harness (tools/dev-shell.sh) needs, software rendering, and no extension version validation. The
 # repository is bind-mounted at run time; the extension is built on the host first (tools/build.sh).
-# Build:  docker build -f tools/container/Dockerfile.ubuntu -t spawn-dev:ubuntu tools/container
+# Build:  docker build --build-arg UID=$(id -u) -f tools/container/Dockerfile.ubuntu -t spawn-dev:ubuntu tools/container
+# Run as --user dev: dbus-daemon needs the user to exist in /etc/passwd.
 FROM ubuntu:devel
+ARG UID=1000
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -17,6 +19,8 @@ RUN printf '[org.gnome.shell]\ndisable-extension-version-validation=true\n' \
     && glib-compile-schemas /usr/share/glib-2.0/schemas
 # No systemd-logind in the container: the shell then uses its dummy login manager.
 RUN rm -rf /run/systemd/seats \
-    && mkdir -p /home/dev && chmod 0777 /home/dev \
+    && (getent passwd "$UID" | cut -d: -f1 | xargs -r userdel -r 2>/dev/null; true) \
+    && useradd --uid "$UID" --user-group --home-dir /home/dev --create-home --shell /bin/bash dev \
+    && chmod 0777 /home/dev \
     && dpkg -l gnome-shell mutter gjs | tail -3
 ENV HOME=/home/dev

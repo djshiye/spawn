@@ -124,10 +124,10 @@ jobs:
 
       - name: Build the GNOME Shell 51 image
         if: steps.changes.outputs.run == 'true'
-        run: docker build -f tools/container/Dockerfile.ubuntu -t spawn-dev:ubuntu tools/container
+        run: docker build --build-arg UID="$(id -u)" -f tools/container/Dockerfile.ubuntu -t spawn-dev:ubuntu tools/container
 
       # No network: nothing in the scenarios needs it. The container runs as the runner's user so that .dev/ (logs,
-      # screenshots) belongs to it; HOME is the world-writable /home/dev of the image.
+      # screenshots) belongs to it: the image's `dev` user has the runner's UID (dbus-daemon needs a passwd entry).
       - name: Scenarios
         if: steps.changes.outputs.run == 'true'
         run: |
@@ -135,7 +135,7 @@ jobs:
           for scenario in smoke lifecycle; do
             echo "::group::$scenario"
             docker run --rm --network none --shm-size=1g \
-              --user "$(id -u):$(id -g)" \
+              --user dev \
               -v "$PWD:/work" -w /work \
               -e HOME=/home/dev -e SPAWN_NO_BUILD=1 \
               spawn-dev:ubuntu tools/container/entrypoint.sh tools/dev-shell.sh "$scenario"
