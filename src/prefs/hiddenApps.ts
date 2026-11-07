@@ -26,7 +26,9 @@ interface HiddenRow {
 
 function describeHidden(ctx: PrefsContext, id: string): HiddenRow {
     const d = describeEntry({id}, ctx);
-    return {id, title: d.title, installed: d.subtitle !== 'Not installed', icon: d.icon};
+    const installed = d.subtitle !== 'Not installed';
+    // An uninstalled app has no name left: show its id (without .desktop) so the user can tell which one it was.
+    return {id, title: installed ? d.title : id.replace(/\.desktop$/, ''), installed, icon: d.icon};
 }
 
 export function hiddenAppsGroup(ctx: PrefsContext): Adw.PreferencesGroup {
@@ -90,8 +92,8 @@ export function hiddenAppsGroup(ctx: PrefsContext): Adw.PreferencesGroup {
             const icon = typeof item.icon === 'string' ? new Gtk.Image({icon_name: item.icon}) : new Gtk.Image({gicon: item.icon});
             icon.set_pixel_size(32);
             row.add_prefix(icon);
-            if (!item.installed)
-                row.add_css_class('dim-label');
+            if (!item.installed) // dim the icon only: the Remove button must not look disabled
+                icon.add_css_class('dim-label');
             const button = new Gtk.Button({
                 label: item.installed ? 'Restore' : 'Remove',
                 valign: Gtk.Align.CENTER,
