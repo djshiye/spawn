@@ -90,7 +90,6 @@ export class AppRow {
         } else {
             text.add_child(label);
         }
-        button.accessible_name = newAccessibleName(name, isNew);
         const desc = opts.description ? app.get_description() : null;
         if (desc) {
             const dl = new St.Label({text: desc.split('\n')[0], style_class: 'spawn-row-description'});
@@ -100,7 +99,7 @@ export class AppRow {
         box.add_child(text);
         button.set_child(opts.pinned ? box : makeFace('spawn-row-surface', box));
 
-        nameItem(button, opts.name ?? app.get_name(), {label, description: desc?.split('\n')[0], listItem: !opts.pinned});
+        nameItem(button, newAccessibleName(name, isNew), {label, description: desc?.split('\n')[0], listItem: !opts.pinned});
         host.tooltips?.attach(button, label, desc ? () => `${app.get_name()}\n${desc}` : undefined);
         wireItem(button, {
             activate: ctrl => host.launch(app, ctrl),
