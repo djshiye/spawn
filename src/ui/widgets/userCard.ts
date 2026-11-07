@@ -17,6 +17,9 @@ import * as UserWidget from 'resource:///org/gnome/shell/ui/userWidget.js';
 import {error} from '../../core/log.js';
 import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
+import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
+
+import {nameItem} from './a11y.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
 import type {ShortcutHost} from './shortcutRow.js';
 
@@ -52,6 +55,7 @@ export class UserCard {
         box.add_child(this._label);
         button.set_child(makeFace('spawn-card-surface', box));
 
+        this._name();
         host.tooltips?.attach(button, this._label);
         wireItem(button, {
             activate: () => {
@@ -88,6 +92,11 @@ export class UserCard {
         this.actor.destroy();
     }
 
+    /** "Alex Smith, account settings": the card opens the Users page. */
+    private _name(): void {
+        nameItem(this.actor, _('%s, account settings').replace('%s', this._label.text), {label: this._label});
+    }
+
     private _applyStyle(): void {
         if (this._destroyed)
             return;
@@ -110,6 +119,7 @@ export class UserCard {
         const user = this._user;
         if (user?.is_loaded) {
             this._label.text = user.get_real_name() || user.get_user_name() || this._label.text;
+            this._name();
             if (!this._avatar) {
                 this._avatar = new AvatarClass(user, {iconSize: AVATAR_SIZE, styleClass: 'user-icon spawn-avatar'});
                 this._avatarBox.set_child(this._avatar);

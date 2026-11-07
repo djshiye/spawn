@@ -205,7 +205,8 @@ function accentRules(accent: string): string[] {
             ['background-color', a],
             ['color', accentForeground(a)],
         ]),
-        rule('.spawn-search-box:focus', [['border-color', a]]),
+        // The entry has a border instead of a face: accent border plus a 1 px inner ring (2 px in all).
+        rule('.spawn-search-box:focus', [['border-color', a], ['box-shadow', `inset 0 0 0 1px ${a}`]]),
         rule('.spawn-drop-target', [
             ['background-color', withAlpha(a, 0.2)],
             ['border', `2px solid ${a}`],
@@ -251,7 +252,13 @@ function overrideRules(c: ThemeColors): string[] {
             ['border-color', border],
         ]),
         rule(each(':hover', `${popup} `), [['background-color', hoverBg], ['color', hoverFg]]),
-        rule(each(':focus', `${popup} `), [['background-color', hoverBg], ['color', hoverFg]]),
+        // Custom colours: the accent ring would not be checked against the custom background, so the ring
+        // takes the item's own hover text colour, which is chosen to read on the hover background.
+        rule(each(':focus', `${popup} `), [
+            ['background-color', hoverBg],
+            ['color', hoverFg],
+            ['box-shadow', hoverFg === null ? null : `inset 0 0 0 2px ${hoverFg}`],
+        ]),
         rule([...each(':active', `${popup} `), ...each(':selected', `${popup} `), ...each(':checked', `${popup} `)], [
             ['background-color', activeBg],
             ['color', activeFg],

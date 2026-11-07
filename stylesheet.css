@@ -1107,3 +1107,41 @@
 .spawn-light .spawn-eject-button:focus {
     color: rgba(0, 0, 0, 0.87);
 }
+
+/* ---- keyboard focus and reduced motion (accessibility) ----
+ * Every focusable item shows a 2 px ring, not only a tint (a 25 % tint alone is 1.4:1 against the popup).
+ * The theme module (src/theme/css.ts) writes the same rules in the accent colour chosen in Appearance, after
+ * this file, so it wins; these are the base for when it is missing and for widgets it does not list.
+ * -st-accent-color is the shell's own accent (GNOME 47+). */
+.spawn-pinned-row:focus .spawn-row-surface,
+.spawn-list-row:focus .spawn-row-surface,
+.spawn-category-row:focus .spawn-row-surface,
+.spawn-result-row:focus .spawn-row-surface,
+.spawn-shortcut-row:focus .spawn-row-surface,
+.spawn-tile:focus .spawn-tile-surface,
+.spawn-user-card:focus .spawn-card-surface,
+.spawn-nav-button:focus .spawn-nav-surface,
+.spawn-power-button:focus .spawn-power-surface,
+.spawn-row:focus {
+    background-color: st-transparentize(-st-accent-color, 0.75);
+    box-shadow: inset 0 0 0 2px -st-accent-color;
+}
+
+.spawn-search-box:focus {
+    border-color: -st-accent-color;
+    box-shadow: inset 0 0 0 1px -st-accent-color;
+}
+
+/* GNOME Settings > Accessibility > Reduce Animation: ui/widgets/a11y.ts puts this class on the menu and the
+ * runner while it is on (the ease() calls check the same setting). */
+.spawn-reduce-motion .spawn-row-surface,
+.spawn-reduce-motion .spawn-tile-surface,
+.spawn-reduce-motion .spawn-card-surface,
+.spawn-reduce-motion .spawn-user-card,
+.spawn-reduce-motion .spawn-nav-surface,
+.spawn-reduce-motion .spawn-power-surface,
+.spawn-reduce-motion .spawn-search-box,
+.spawn-reduce-motion .spawn-eject-button,
+.spawn-reduce-motion .spawn-row {
+    transition-duration: 0ms;
+}

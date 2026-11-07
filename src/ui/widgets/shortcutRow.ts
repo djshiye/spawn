@@ -30,6 +30,7 @@ import type {Scope} from '../../core/scope.js';
 import type {Entry} from '../../core/settings.js';
 import {toggleShowDesktop} from '../showDesktop.js';
 import {symbolicGIcon} from '../util.js';
+import {nameItem} from './a11y.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
 import {POWER_SHORTCUTS, runPowerAction} from './powerActions.js';
 import type {TooltipManager} from './tooltip.js';
@@ -226,6 +227,7 @@ export class ShortcutRow {
         box.add_child(label);
         button.set_child(makeFace('spawn-row-surface', box));
 
+        nameItem(button, label.text, {label, listItem: true});
         host.tooltips?.attach(button, label);
         wireItem(button, {activate: () => resolved?.run(host, scope as Scope)});
     }

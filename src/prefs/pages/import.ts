@@ -26,7 +26,7 @@ import {
     spawnDefaults,
 } from '../../migrate/arcmenu.js';
 import type {PrefsContext} from '../context.js';
-import {onWindowClose, toast} from '../widgets.js';
+import {label, onWindowClose, toast} from '../widgets.js';
 
 function appTitle(id: string): string {
     return GioUnix.DesktopAppInfo.new(id)?.get_display_name() ?? id;
@@ -157,6 +157,7 @@ export function createImportPage(ctx: PrefsContext): Adw.PreferencesPage {
             subtitle: arcStatus && !arcStatus.unknown && !enabled ? 'ArcMenu is already disabled' : undefined,
         });
         const button = new Gtk.Button({label: 'Disable', valign: Gtk.Align.CENTER, css_classes: ['destructive-action'], sensitive: enabled});
+        label(button, 'Disable ArcMenu');
         button.connect('clicked', () => {
             button.set_sensitive(false);
             void disableArcMenu().then(result => {
@@ -243,6 +244,7 @@ export function createImportPage(ctx: PrefsContext): Adw.PreferencesPage {
         const snapshot = readArcMenuSnapshot(ctx.extensionDir);
         const head = new Adw.PreferencesGroup({title: 'ArcMenu'});
         const rescan = new Gtk.Button({label: 'Rescan', valign: Gtk.Align.CENTER, css_classes: ['flat']});
+        label(rescan, 'Rescan for ArcMenu settings');
         rescan.connect('clicked', () => {
             build();
             refreshStatus();

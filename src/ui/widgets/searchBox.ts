@@ -37,12 +37,12 @@ export class SearchBox {
     private _silent = false;
 
     constructor(scope: Scope, settings: SpawnSettings) {
-        const clearIcon = new St.Icon({icon_name: 'edit-clear-symbolic', style_class: 'spawn-search-icon'});
+        const clearIcon = new St.Icon({icon_name: 'edit-clear-symbolic', style_class: 'spawn-search-icon', accessible_name: _('Clear search')});
         const findIcon = new St.Icon({icon_name: 'edit-find-symbolic', style_class: 'spawn-search-icon'});
         this.actor = new St.Entry({
             style_class: 'spawn-search-box',
             hint_text: _('Search apps, windows and files…'),
-            accessible_name: _('Search apps, windows and files…'),
+            accessible_name: _('Search apps, windows and files'),
             can_focus: true,
             track_hover: true,
             primary_icon: findIcon,

@@ -27,6 +27,7 @@ import {error} from '../../core/log.js';
 import type {Services} from '../../core/services.js';
 import type {RecentItem} from '../../search/providers/recentFiles.js';
 import {displayName, iconSizeFor, showDescriptions} from '../util.js';
+import {markList, nameItem} from './a11y.js';
 import {AppRow} from './appRow.js';
 import type {TileHost} from './appTile.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
@@ -50,6 +51,7 @@ export class ExtraList {
     }
 
     show(kind: 'favorites' | 'recent'): void {
+        markList(this.actor, kind === 'favorites' ? _('Favourite apps') : _('Recent files'));
         this._host.tooltips?.hide();
         for (const c of this.actor.get_children())
             c.destroy();
@@ -128,6 +130,7 @@ export class ExtraList {
         }
         box.add_child(text);
         button.set_child(makeFace('spawn-row-surface', box));
+        nameItem(button, title, {label, description, listItem: true});
         this._host.tooltips?.attach(button, label, description ? () => `${title}\n${description}` : undefined);
         wireItem(button, {activate: ctrl => activate(ctrl)});
         return button;

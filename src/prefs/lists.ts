@@ -191,7 +191,9 @@ export function chooseApplication(ctx: PrefsContext, exclude: ReadonlySet<string
     const toolbar = new Adw.ToolbarView();
     toolbar.add_top_bar(new Adw.HeaderBar());
     const search = new Gtk.SearchEntry({placeholder_text: 'Search applications', margin_start: 12, margin_end: 12, margin_top: 6, margin_bottom: 6});
+    label(search, 'Search applications');
     const list = new Gtk.ListBox({selection_mode: Gtk.SelectionMode.NONE, css_classes: ['boxed-list'], margin_start: 12, margin_end: 12, margin_bottom: 12});
+    label(list, 'Applications');
     const apps = Gio.AppInfo.get_all()
         .filter(app => app.should_show() && app.get_id() && !exclude.has(app.get_id() as string))
         .sort((a, b) => a.get_display_name().localeCompare(b.get_display_name()));

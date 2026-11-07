@@ -52,6 +52,7 @@ import {closeMenu, openMenu, silenceSourceKeys} from './menuParams.js';
 import {
     applyScrollSettings, applyTone, displayName, iconSizeFor, launchApp, lookupApp, scrollIntoView, showDescriptions,
 } from './util.js';
+import {bindReducedMotion, markDialog, markList} from './widgets/a11y.js';
 import {AppRow, DEFAULT_ROW_ICON_SIZE} from './widgets/appRow.js';
 import {ResultList} from './widgets/resultList.js';
 import {SearchBox} from './widgets/searchBox.js';
@@ -212,6 +213,7 @@ export class SpawnRunner {
             const search = new SearchBox(scope, settings);
             const results = new ResultList(scope, settings, {close: () => this.close(), tooltips, compactEmpty: true});
             const defaultBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-list'});
+            markList(defaultBox, _('Suggested apps'));
             const body = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, y_expand: true});
             body.add_child(defaultBox);
             body.add_child(results.actor);
@@ -227,6 +229,8 @@ export class SpawnRunner {
             settings.onChanged(scope, SCROLL_KEYS, () => applyScrollSettings(scroll, settings));
 
             const content = new St.BoxLayout({style_class: 'spawn-runner-content', orientation: Clutter.Orientation.VERTICAL, reactive: true});
+            markDialog(content, _('Spawn runner'));
+            bindReducedMotion(scope, content);
             search.actor.add_style_class_name('spawn-runner-search');
             content.add_child(search.actor);
             content.add_child(scroll);

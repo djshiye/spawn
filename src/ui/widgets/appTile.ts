@@ -27,6 +27,7 @@ import type Shell from 'gi://Shell';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
+import {nameItem} from './a11y.js';
 import {makeItemButton, makeSurface, wireItem} from './interact.js';
 import {makeNewBadge, newAccessibleName} from './newBadge.js';
 import type {TooltipManager} from './tooltip.js';
@@ -169,6 +170,7 @@ export function buildTileContent(button: St.Button, name: string, icon: Gio.Icon
     const surface = makeSurface('spawn-tile-surface');
     surface.set_child(box);
     button.set_child(surface);
+    nameItem(button, name, {label});
     tooltips?.attach(button, label);
     return {icon: iconActor, label};
 }

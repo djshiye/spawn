@@ -99,6 +99,7 @@ function acceleratorRows(ctx: PrefsContext, g: Adw.PreferencesGroup, opts: Accel
         if (list.length === 0)
             add.add_suffix(new Gtk.Label({label: 'Not set', css_classes: ['dim-label'], valign: Gtk.Align.CENTER}));
         const addButton = new Gtk.Button({label: list.length === 0 ? 'Set' : 'Add', valign: Gtk.Align.CENTER});
+        label(addButton, list.length === 0 ? `Set ${opts.title}` : `Add another shortcut for ${opts.title}`);
         addButton.connect('clicked', () => capture(list.length));
         add.add_suffix(addButton);
         add.set_activatable_widget(addButton);

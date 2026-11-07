@@ -14,6 +14,7 @@ import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import type {Place} from '../../model/places.js';
+import {nameItem} from './a11y.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
 import type {ShortcutHost} from './shortcutRow.js';
 
@@ -62,6 +63,7 @@ export class PlaceRow {
         }
         button.set_child(makeFace('spawn-row-surface', box));
 
+        nameItem(button, place.name, {label, listItem: true});
         host.tooltips?.attach(button, label);
         wireItem(button, {
             activate: () => {

@@ -21,6 +21,7 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 
 import {CategoryLink} from '../../core/constants.js';
 import type {MenuItemLocation} from '../../core/settings.js';
+import {markList, nameItem} from './a11y.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
 import type {TooltipManager} from './tooltip.js';
 
@@ -52,6 +53,7 @@ export class CategoryLinks {
         this._location = location;
         this.actor = new St.BoxLayout({style_class: 'spawn-links', orientation: Clutter.Orientation.VERTICAL, x_expand: true, visible: false});
         this._rows = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
+        markList(this._rows, _('Quick links'));
         const separator = new St.Widget({style_class: 'spawn-separator', x_expand: true});
         // Top: the rows, then the rule under them; Bottom: the rule above the rows.
         if (location === 'Top') {
@@ -82,6 +84,7 @@ export class CategoryLinks {
             label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
             box.add_child(label);
             button.set_child(makeFace('spawn-row-surface', box));
+            nameItem(button, info.name, {label, listItem: true});
             this._host.tooltips?.attach(button, label);
             wireItem(button, {activate: () => this._host.open(id)});
             this._rows.add_child(button);

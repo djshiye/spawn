@@ -45,6 +45,7 @@ import {Scope} from '../core/scope.js';
 import type {MenuButtonClickAction, SpawnSettings} from '../core/settings.js';
 import {type PanelSide, panelSide} from '../panel/validate.js';
 import {ButtonMenu, type PopupControl} from './buttonMenu.js';
+import {animationDuration} from './widgets/a11y.js';
 
 export interface MenuButtonDeps {
     settings: SpawnSettings;
@@ -257,6 +258,8 @@ export class MenuButton extends PanelMenu.Button {
                 this._box.remove_child(child);
             const showIcon = appearance === 'Icon' || appearance === 'Icon_Text' || appearance === 'Text_Icon';
             const showText = appearance === 'Text' || appearance === 'Icon_Text' || appearance === 'Text_Icon';
+            // The text the button shows, else the generic name: an icon-only button must still be announced.
+            this.accessible_name = (showText && this._label.text.trim()) || _('Spawn menu');
             const items: St.Widget[] = [];
             if (showIcon)
                 items.push(this._icon);
@@ -346,7 +349,7 @@ export class MenuButton extends PanelMenu.Button {
         }
         tip.set_position(x, y);
         tip.remove_all_transitions();
-        tip.ease({opacity: 255, duration: 150, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        tip.ease({opacity: 255, duration: animationDuration(150), mode: Clutter.AnimationMode.EASE_OUT_QUAD});
     }
 
     private _hideTooltip(): void {

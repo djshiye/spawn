@@ -7,3 +7,4 @@ dist
 *.rev
 spawn-signing-*.asc
 *.key
+.dev-*.log
