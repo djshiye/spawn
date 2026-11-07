@@ -1,0 +1,22 @@
+# GNOME Shell 51 test image for CI (.github/workflows/ci.yml): ubuntu:devel carries GNOME Shell 51. Everything the
+# headless harness (tools/dev-shell.sh) needs, software rendering, and no extension version validation. The
+# repository is bind-mounted at run time; the extension is built on the host first (tools/build.sh).
+# Build:  docker build -f tools/container/Dockerfile.ubuntu -t spawn-dev:ubuntu tools/container
+FROM ubuntu:devel
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        gnome-shell mutter libgl1-mesa-dri libegl1 dbus dbus-bin dconf-cli dconf-service libglib2.0-bin python3 \
+        gjs gir1.2-gmenu-3.0 gnome-menus adwaita-icon-theme fonts-cantarell fonts-dejavu-core procps findutils \
+        diffutils xdg-user-dirs util-linux hostname gsettings-desktop-schemas gnome-settings-daemon-common \
+        xwayland nodejs \
+    && rm -rf /var/lib/apt/lists/*
+# Load extensions regardless of their metadata.json shell-version. Do NOT touch allow-extension-installation.
+RUN printf '[org.gnome.shell]\ndisable-extension-version-validation=true\n' \
+        >/usr/share/glib-2.0/schemas/zz-spawn-dev.gschema.override \
+    && glib-compile-schemas /usr/share/glib-2.0/schemas
+# No systemd-logind in the container: the shell then uses its dummy login manager.
+RUN rm -rf /run/systemd/seats \
+    && mkdir -p /home/dev && chmod 0777 /home/dev \
+    && dpkg -l gnome-shell mutter gjs | tail -3
+ENV HOME=/home/dev

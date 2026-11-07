@@ -31,6 +31,18 @@ npm test            # compiles, then runs the gjs -m unit tests in tests/
 npm run build       # tools/build.sh -> build/ and dist/spawn@djshiye.github.io.shell-extension.zip
 ```
 
+`npm test` skips the preferences test, with a visible notice, when the GTK 4 / libadwaita typelibs are not installed
+(`gir1.2-gtk-4.0` and `gir1.2-adw-1` on Debian and Ubuntu); set `SPAWN_REQUIRE_ALL_TESTS=1` to make that a failure.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs on every pull request and push to `main` (documentation-only changes excepted):
+typecheck, lint, unit tests, `npm audit` and the GNOME Shell 49 / 50 compatibility typechecks. Pull requests to `main`
+that touch `src/`, `schemas/`, `stylesheet.css` or `tools/` also run the `smoke` and `lifecycle` scenarios in a headless
+GNOME Shell 51 (`tools/container/Dockerfile.ubuntu`, no network). Actions are pinned by commit SHA and kept up to date by
+Dependabot. The full harness (`tools/dev-shell.sh all`) and the Fedora containers stay a local step before a release.
+Security reports: see `SECURITY.md`.
+
 ## Install
 
 ### Fedora (DNF repository)

@@ -1,0 +1,155 @@
+name: CI
+
+# Cheap checks on every pull request and push to main; the headless GNOME Shell 51 scenarios only on pull requests
+# that target main and touch the extension itself.
+#
+# Branch protection note: a workflow skipped by `paths-ignore` reports no checks, so a docs-only pull request would
+# wait for a required check forever. If you make "check" required, either drop `paths-ignore` below or add a
+# trivial always-green workflow with the same job name that runs on the ignored paths.
+on:
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+
+# Least privilege: nothing here writes to the repository.
+permissions:
+  contents: read
+
+# A newer push to the same pull request supersedes the older run; pushes to main always run to completion.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tools/compat/*/package-lock.json
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gjs gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gmenu-3.0 libglib2.0-bin zip
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # SPAWN_REQUIRE_ALL_TESTS makes tools/test.sh fail, not skip, a test whose typelib is missing.
+      - name: Unit tests
+        run: npm test
+        env:
+          SPAWN_REQUIRE_ALL_TESTS: '1'
+
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit all dependencies (critical only)
+        run: npm audit --audit-level=critical
+
+      - name: Typecheck against GNOME Shell 49 and 50 typings
+        run: |
+          npm run compat:install
+          npm run typecheck:compat49
+          npm run typecheck:compat50
+
+  shell:
+    name: GNOME Shell 51 scenarios
+    # Pull requests to main only: the shell image is the expensive part.
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The merge commit and its first parent (the base branch), to see what the pull request changes.
+          fetch-depth: 2
+
+      - name: Did the extension change?
+        id: changes
+        run: |
+          if git diff --name-only HEAD^1 HEAD | grep -E '^(src/|schemas/|stylesheet\.css$|tools/)' ; then
+            echo "run=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "run=false" >>"$GITHUB_OUTPUT"
+            echo "No change under src/, schemas/, stylesheet.css or tools/: skipping the shell scenarios."
+          fi
+
+      - name: Set up Node.js
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install system packages
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libglib2.0-bin zip
+
+      - name: Build the extension
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          npm ci
+          tools/build.sh
+
+      - name: Build the GNOME Shell 51 image
+        if: steps.changes.outputs.run == 'true'
+        run: docker build -f tools/container/Dockerfile.ubuntu -t spawn-dev:ubuntu tools/container
+
+      # No network: nothing in the scenarios needs it. The container runs as the runner's user so that .dev/ (logs,
+      # screenshots) belongs to it; HOME is the world-writable /home/dev of the image.
+      - name: Scenarios
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          mkdir -p .dev
+          for scenario in smoke lifecycle; do
+            echo "::group::$scenario"
+            docker run --rm --network none --shm-size=1g \
+              --user "$(id -u):$(id -g)" \
+              -v "$PWD:/work" -w /work \
+              -e HOME=/home/dev -e SPAWN_NO_BUILD=1 \
+              spawn-dev:ubuntu tools/container/entrypoint.sh tools/dev-shell.sh "$scenario"
+            echo "::endgroup::"
+          done
+
+      - name: Upload screenshots and logs
+        if: failure() && steps.changes.outputs.run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shell-scenarios-${{ github.run_id }}
+          path: |
+            .dev/shots/
+            .dev/logs/
+            .dev/shell.log
+          if-no-files-found: ignore
+          retention-days: 7

@@ -12,8 +12,8 @@ headless GNOME Shell harness tests the real UI.
 
 The gaps are mostly outside the core menu:
 
-- **Nothing checks a change automatically.** There is no CI. Typecheck, lint, unit tests and the headless
-  shell are run by hand.
+- **Little is checked automatically.** CI runs typecheck, lint and unit tests, and a headless-shell smoke check on
+  pull requests to `main`; the full harness is still run by hand.
 - **Packages are unsigned.** The DNF repository uses `gpgcheck=0`.
 - **Fedora only,** by choice: Spawn is distributed through its own DNF repository (decided November 2026).
 - **English only,** although `gettext` is already wired in.
