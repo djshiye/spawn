@@ -11,6 +11,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   compatibility typechecks on every pull request; the headless GNOME Shell 51 `smoke` and `lifecycle` scenarios on
   pull requests to `main`. Actions are pinned by commit SHA and Dependabot keeps them and the npm dependencies current.
 - `SECURITY.md` (private vulnerability reporting) and this changelog.
+- Package signing in `tools/publish.sh`: every RPM and `repomd.xml` is signed with a key kept on the maintainer's
+  machine and verified before publishing; `tools/make-signing-key.sh` creates the key. Packages stay unsigned until
+  the first release published with a key.
 
 ### Changed
 
