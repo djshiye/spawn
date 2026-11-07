@@ -49,12 +49,15 @@ import {error} from '../../core/log.js';
 import {highlightMarkup} from '../../search/highlight.js';
 import {iconSizeFor, showDescriptions} from '../util.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
+import {makeNewBadge, newAccessibleName} from './newBadge.js';
 import type {ShortcutHost} from './shortcutRow.js';
 
 export type ResultHost = ShortcutHost & {
     /** One-line "No results" without icon and hint (the runner, which sizes itself to its content). */
     compactEmpty?: boolean;
     openResultContext?(row: St.Widget, result: SearchResult): void;
+    /** Is the app with this desktop id new (a "New" pill after its name in the results)? */
+    isNewApp?(id: string): boolean;
 };
 
 interface Section {
@@ -331,7 +334,18 @@ export class ResultList {
         else
             title.text = result.title;
         title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-        text.add_child(title);
+        const isNew = result.providerId === 'apps' && Boolean(this._host.isNewApp?.(result.id));
+        if (isNew) {
+            const line = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
+            title.x_expand = true;
+            title.y_align = Clutter.ActorAlign.CENTER;
+            line.add_child(title);
+            line.add_child(makeNewBadge());
+            text.add_child(line);
+            button.accessible_name = newAccessibleName(result.title, true);
+        } else {
+            text.add_child(title);
+        }
         if (result.description && (result.alwaysShowDescription || showDescriptions(this._settings))) {
             const d = new St.Label({text: result.description, style_class: 'spawn-row-description'});
             d.clutter_text.ellipsize = Pango.EllipsizeMode.END;

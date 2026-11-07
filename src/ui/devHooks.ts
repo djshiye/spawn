@@ -19,6 +19,8 @@
 //                            style class list contains `cls` (popup, context menu, tooltip), or ""
 //                            Scenarios use it to find targets instead of hard-coded pixels.
 //   Count(s cls) -> i        how many visible actors carry `cls`
+//   TextRect(s text, i nth) -> s   JSON [x, y, w, h] of the nth VISIBLE St.Label whose text is exactly `text`
+//                            (a context menu item such as "Hide from Menu"), or ""
 //   FocusActor(s cls, i nth) give the nth visible actor with `cls` the keyboard focus
 //   MenuItems(s cls) -> s    JSON: the items of the visible menu whose actor carries `cls` (e.g. spawn-button-menu):
 //                            [{kind: 'item'|'separator'|'submenu', label, visible, open?, items?}]
@@ -79,6 +81,7 @@ const IFACE = `
     <method name="State"><arg type="s" direction="out" name="json"/></method>
     <method name="Rect"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/><arg type="s" direction="out" name="rect"/></method>
     <method name="Count"><arg type="s" direction="in" name="cls"/><arg type="i" direction="out" name="count"/></method>
+    <method name="TextRect"><arg type="s" direction="in" name="text"/><arg type="i" direction="in" name="nth"/><arg type="s" direction="out" name="rect"/></method>
     <method name="FocusActor"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/></method>
     <method name="MenuItems"><arg type="s" direction="in" name="cls"/><arg type="s" direction="out" name="json"/></method>
     <method name="Windows"><arg type="s" direction="out" name="json"/></method>
@@ -189,6 +192,21 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
             if (!a.visible)
                 return;
             if (hasClass(a, cls))
+                found.push(a);
+            for (const c of a.get_children())
+                walk(c);
+        };
+        for (const r of lookupRoots())
+            walk(r);
+        return found;
+    };
+
+    const findText = (text: string): Clutter.Actor[] => {
+        const found: Clutter.Actor[] = [];
+        const walk = (a: Clutter.Actor) => {
+            if (!a.visible)
+                return;
+            if (a instanceof St.Label && a.text === text)
                 found.push(a);
             for (const c of a.get_children())
                 walk(c);
@@ -436,6 +454,10 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
     const impl = {
         RectAsync: ([cls, nth]: [string, number], inv: Invocation) => reply(inv, () => {
             const a = findAll(cls)[nth];
+            return new GLib.Variant('(s)', [a ? JSON.stringify(rectOf(a)) : '']);
+        }),
+        TextRectAsync: ([text, nth]: [string, number], inv: Invocation) => reply(inv, () => {
+            const a = findText(text)[nth];
             return new GLib.Variant('(s)', [a ? JSON.stringify(rectOf(a)) : '']);
         }),
         CountAsync: ([cls]: [string], inv: Invocation) => reply(inv, () => new GLib.Variant('(i)', [findAll(cls).length])),

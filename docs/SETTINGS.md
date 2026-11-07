@@ -151,6 +151,22 @@ Files..." (older ones exist) opens `recent:///`. `show-hidden-recent-files` appl
 `org.gnome.shell favorite-apps`. The extra categories as rows of the category column (`extra-categories`) are not
 supported; the quick links are the way into these views.
 
+## Hidden and new apps
+
+"Hide from Menu" in an app's context menu and the "New" badge on recently installed apps (Menu page of Preferences:
+"Hidden apps" group and "Mark new apps" in Display).
+
+| Key | Type | Default | Migrates from (ArcMenu) |
+|---|---|---|---|
+| `hidden-apps` | as | `[]` | new. Desktop ids hidden from All Apps, the categories and Frequent. Pinned apps stay pinned |
+| `search-hidden-apps` | b | `true` | new. Search can still find hidden apps; off: they cannot be found either |
+| `show-new-apps-badge` | b | `true` | `show-recently-installed-apps`  (ArcMenu has it on by default). A "New" pill on apps first seen in the last three days, cleared when the app is launched, and a dot on their category |
+| `known-apps` | as | `[]` | internal. Every installed desktop id Spawn has seen; empty = first run, when it is filled with the apps installed at that moment so nothing is New. Uninstalled apps are removed |
+| `new-apps` | a{sx} | `{}` | internal. Desktop id -> unix time the app was first seen; entries go after three days, on launch, or on uninstall. ArcMenu's `recently-installed-apps` list is not imported |
+
+`known-apps` and `new-apps` are written together in one batch, only when something changed (the app catalogue
+was rebuilt after an install or removal, an app was launched), never when the menu opens.
+
 ## Search
 
 | Key | Type | Default | Migrates from (ArcMenu) |
@@ -217,7 +233,7 @@ installed ArcMenu is newer, because keys added since then are not read.
 
 Other layouts' keys (`*-layout-*`, `raven-*`, `default-menu-view-<layout>` except the runner's, ...), `menu-layout` (only read to derive `pinned-apps-display`),
 `force-menu-location` (a dummy-widget placement with eight screen positions, not part of v1),
-`extra-categories` (only read to migrate the quick links), `recently-installed-apps`, `show-recently-installed-apps`, update-notifier keys,
+`extra-categories` (only read to migrate the quick links), `recently-installed-apps` (ArcMenu's own state; `show-recently-installed-apps` is migrated to `show-new-apps-badge`), update-notifier keys,
 `settings-width/height`, `prefs-visible-page`, `hide-overview-*`, `enable-horizontal-flip`, `dash-to-panel-standalone`, `pop-*`,
 `hotkey-open-primary-monitor`, `activate-on-hover`,
 `show-category-sub-menus` (ArcMenu groups a category's sub-folders into expanders inside its app list; Spawn lists every

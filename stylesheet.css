@@ -1029,6 +1029,40 @@
     color: rgba(0, 0, 0, 0.87);
 }
 
+/* ---- "New" markers (ui/widgets/newBadge.ts) ----
+ * A pill after the name of a recently installed app (row) or on the icon's corner (tile), and a dot after a
+ * category that contains one. Quiet accent tint with plain text (4.5:1 on the popup: the solid accent is only
+ * for focus / selection); the dot is the solid accent, white on the active category's accent tint. */
+.spawn-new-badge {
+    margin-left: 4px;
+    padding: 0 6px;
+    border-radius: 99px;
+    font-size: 0.72em;
+    font-weight: bold;
+    background-color: st-transparentize(-st-accent-color, 0.65);
+    color: white;
+}
+
+.spawn-new-dot {
+    margin-left: 4px;
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
+    background-color: -st-accent-color;
+}
+
+.spawn-category-column .spawn-category-row:checked .spawn-new-dot {
+    background-color: white;
+}
+
+.spawn-light .spawn-new-badge {
+    color: rgba(0, 0, 0, 0.87);
+}
+
+.spawn-light .spawn-category-column .spawn-category-row:checked .spawn-new-dot {
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
 /* ---- category quick links (ui/widgets/categoryLinks.ts) ----
  * Rows of the start view's left pane: ordinary .spawn-list-row buttons (the rows own the pane's 8 px at both
  * edges and 1 px of pitch below them), with a rule on the list's side. */

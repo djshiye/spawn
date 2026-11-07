@@ -118,6 +118,11 @@ export interface SettingsMap {
     'show-external-devices': boolean;
     'show-bookmarks': boolean;
     'search-hidden': boolean;
+    'hidden-apps': string[];
+    'search-hidden-apps': boolean;
+    'show-new-apps-badge': boolean;
+    'known-apps': string[];
+    'new-apps': Record<string, number>;
     'search-entry-location': SearchbarLocation;
     'max-search-results': number;
     'highlight-search-result-terms': boolean;

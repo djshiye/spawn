@@ -21,7 +21,15 @@
 //                                           from get_most_used() at most every USAGE_TTL_MS
 //   index.searchEntries(): AppSearchEntry[] normalised keys for search/providers/apps; built on an idle
 //                                           after every (re)build, or on demand by the first search
-//   index.onChanged(scope, cb)              cb() after any incremental update
+//   index.onChanged(scope, cb)              cb() after any incremental update (also when the hidden set changes)
+//   index.setHidden(ids: Iterable<string>, searchFinds: boolean)   apps the user hid (settings `hidden-apps` /
+//                                           `search-hidden-apps`, wired by Services). apps(), categories(),
+//                                           categoryApps() and frequent() leave them out; searchEntries() does
+//                                           too unless searchFinds. get(id) still returns them (a pinned app
+//                                           stays pinned). A category left empty disappears.
+//   index.installedIds(): string[]          ids of EVERY visible app, hidden ones included
+//   index.setAppsObserver(cb)               cb(installedIds) after every (re)build, before onChanged listeners;
+//                                           used for the "New" bookkeeping (model/newAppsStore.ts)
 //
 // Notes:
 //   * categories() holds only the real GMenu top-level categories (sub-directories are
@@ -47,6 +55,7 @@ import type {Scope} from '../core/scope.js';
 import {appInfoOf, newShellApp} from './appInfo.js';
 import {prepareApps} from '../search/rank.js';
 import {appKeys, descriptionKey} from './appKeys.js';
+import {filterCategories, filterHidden} from './hiddenApps.js';
 
 export interface AppCategory {
     /** GMenu directory id, e.g. "Utilities"; special ids: "all", "frequent". */
@@ -80,10 +89,17 @@ export class AppIndex {
     private _tree: GMenu.Tree | null = null;
     private readonly _collator = new Intl.Collator();
 
+    /** Every visible app, hidden ones included; the public lists below are these minus the hidden set. */
+    private _allApps: Shell.App[] = [];
+    private _allCategories: AppCategory[] = [];
     private _apps: Shell.App[] = [];
     private _byId = new Map<string, Shell.App>();
     private _categories: AppCategory[] = [];
+    private _hidden: ReadonlySet<string> = new Set();
+    private _searchFindsHidden = true;
+    private _observer: ((ids: string[]) => void) | null = null;
     /** Built lazily (searchEntries(), or an idle after each rebuild): ~6 desktop-file reads per app. */
+    private _allEntries: AppSearchEntry[] | null = null;
     private _entries: AppSearchEntry[] | null = null;
     private _cancelEntriesIdle: (() => void) | null = null;
     private readonly _listeners = new Set<() => void>();
@@ -126,7 +142,9 @@ export class AppIndex {
         this._scope.add(() => {
             this._listeners.clear();
             this._cancelEntriesIdle = null; // the scope cancels its own idle sources
+            this._allEntries = null;
             this._entries = null;
+            this._observer = null;
             this._tree = null;
             this._appSystem = null;
             this._usage = null;
@@ -169,7 +187,7 @@ export class AppIndex {
         }
         const out: Shell.App[] = [];
         for (const app of used) {
-            if (!appInfoOf(app)?.should_show())
+            if (!appInfoOf(app)?.should_show() || this._hidden.has(app.get_id() ?? ''))
                 continue;
             out.push(app);
             if (limit > 0 && out.length >= limit)
@@ -225,12 +243,45 @@ export class AppIndex {
 
     searchEntries(): AppSearchEntry[] {
         this.build();
-        if (!this._entries) {
+        if (!this._allEntries) {
             this._cancelEntriesIdle?.();
             this._cancelEntriesIdle = null;
-            this._entries = this._apps.map(app => this._entryFor(app));
+            this._allEntries = this._allApps.map(app => this._entryFor(app));
+            this._entries = null;
         }
+        if (this._searchFindsHidden)
+            return this._allEntries;
+        this._entries ??= filterHidden(this._allEntries, entry => entry.id, this._hidden);
         return this._entries;
+    }
+
+    installedIds(): string[] {
+        this.build();
+        return this._allApps.map(app => app.get_id() ?? '').filter(id => id !== '');
+    }
+
+    setAppsObserver(cb: ((ids: string[]) => void) | null): void {
+        this._observer = cb;
+    }
+
+    setHidden(ids: Iterable<string>, searchFinds: boolean): void {
+        const next = new Set(ids);
+        const same = next.size === this._hidden.size && [...next].every(id => this._hidden.has(id));
+        if (same && searchFinds === this._searchFindsHidden)
+            return;
+        this._hidden = next;
+        this._searchFindsHidden = searchFinds;
+        this._entries = null;
+        if (!this._built)
+            return;
+        this._applyHidden();
+        for (const cb of [...this._listeners]) {
+            try {
+                cb();
+            } catch (e) {
+                warn(`AppIndex: change listener threw: ${e}`);
+            }
+        }
     }
 
     onChanged(scope: Scope, cb: () => void): void {
@@ -386,10 +437,12 @@ export class AppIndex {
         this._sortByName(apps, names);
 
         this._byId = byId;
-        this._apps = apps;
-        this._categories = categories;
+        this._allApps = apps;
+        this._allCategories = categories;
+        this._applyHidden();
         // Search keys (and rank.ts' per-app match data) are prepared on an idle, so neither the build nor
         // the first keystroke waits for them.
+        this._allEntries = null;
         this._entries = null;
         this._cancelEntriesIdle?.();
         this._cancelEntriesIdle = this._scope.idle(() => {
@@ -397,6 +450,18 @@ export class AppIndex {
             if (this._built)
                 prepareApps(this.searchEntries());
         });
+        try {
+            this._observer?.(this.installedIds());
+        } catch (e) {
+            warn(`AppIndex: apps observer threw: ${e}`);
+        }
+    }
+
+    /** The public lists: everything except the hidden apps. */
+    private _applyHidden(): void {
+        const idOf = (app: Shell.App): string => app.get_id() ?? '';
+        this._apps = filterHidden(this._allApps, idOf, this._hidden);
+        this._categories = filterCategories(this._allCategories, idOf, this._hidden);
     }
 
     private _iconName(icon: Gio.Icon | null): string {

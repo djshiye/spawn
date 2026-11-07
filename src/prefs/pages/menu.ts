@@ -8,6 +8,7 @@ import Adw from 'gi://Adw';
 
 import {CategoryLink} from '../../core/constants.js';
 import type {SettingKey} from '../../core/settings.js';
+import {hiddenAppsGroup} from '../hiddenApps.js';
 import type {PrefsContext} from '../context.js';
 import {toggleListGroup} from '../toggleList.js';
 import {
@@ -135,6 +136,8 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
         ],
     }));
 
+    page.add(hiddenAppsGroup(ctx));
+
     const sizeKeys: SettingKey[] = ['menu-height', 'left-panel-width', 'right-panel-width', 'menu-width-adjustment'];
     page.add(group(ctx, 'Size', [
         spinRow(ctx, 'menu-height', 'Menu height', 360, 1600, {step: 10}),
@@ -182,7 +185,7 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
 
     const displayKeys: SettingKey[] = [
         'show-user-avatar', 'avatar-style', 'vert-separator', 'multi-lined-labels', 'scrollbars-visible',
-        'scrollbars-overlay', 'scrollview-fade-effect',
+        'scrollbars-overlay', 'scrollview-fade-effect', 'show-new-apps-badge',
     ];
     const avatarShape = enumRow(ctx, 'avatar-style', 'Avatar shape', [['Round', 'Round'], ['Square', 'Square']]);
     const overlay = switchRow(ctx, 'scrollbars-overlay', 'Overlay scrollbars');
@@ -191,6 +194,7 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
         avatarShape,
         switchRow(ctx, 'vert-separator', 'Separator between the panes'),
         switchRow(ctx, 'multi-lined-labels', 'Wrap long app names'),
+        switchRow(ctx, 'show-new-apps-badge', 'Mark new apps', 'A “New” badge on apps installed in the last three days, until you open them'),
         switchRow(ctx, 'scrollbars-visible', 'Show scrollbars'),
         overlay,
         switchRow(ctx, 'scrollview-fade-effect', 'Fade the edges of scrolled lists'),

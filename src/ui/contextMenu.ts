@@ -2,7 +2,8 @@
 //
 // App menu = the shell's own AppMenu (open windows, New Window, desktop actions, discrete GPU,
 // App Details in Software, Quit) plus Spawn items: Pin to / Unpin from Menu, Add to Folder
-// (existing folders + New Folder), Remove from Folder. Folder menu: Open, Rename, Delete Folder
+// (existing folders + New Folder), Remove from Folder, Hide from Menu (LayoutHost.hideApp; the layout shows the
+// Undo banner). Folder menu: Open, Rename, Delete Folder
 // (the folder is dissolved: its apps move to the top level at the folder's slot, none is unpinned).
 // It owns its PopupMenuManager so the grab stacks on top of the main popup's; a fresh menu is
 // built for every open and destroyed on close. Mutations go through Services.pinned.
@@ -174,6 +175,12 @@ export class AppContextMenu {
             store.createFolder(uniqueFolderName(store), [id]);
         });
         sub.menu.addMenuItem(create);
+
+        // Not for pinned commands or folders (they are not apps in the menu's lists). A pinned app that is hidden
+        // stays pinned; hiding only takes it out of All Apps, the categories and Frequent.
+        const app = target.app;
+        if (this._host.hideApp && !this._services.settings.get('hidden-apps').includes(id))
+            action(_('Hide from Menu'), () => this._host.hideApp?.(app));
 
         // Spawn items replace the (hidden) Pin-to-Dash slot.
         const slot = menu as unknown as {_toggleFavoriteItem?: PopupMenu.PopupBaseMenuItem};

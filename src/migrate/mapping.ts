@@ -242,7 +242,6 @@ const SKIP_EXACT: Readonly<Record<string, string>> = {
     'force-menu-location': 'menu placement is always anchored to the button',
     'extra-categories': 'only used to decide which category quick links ArcMenu really shows; Spawn has no extra category rows',
     'recently-installed-apps': 'ArcMenu internal state',
-    'show-recently-installed-apps': 'not part of v1',
     'update-notifier-project-version': 'ArcMenu internal state',
     'update-notifier-enabled': 'ArcMenu internal state',
     'settings-width': 'ArcMenu internal state',
@@ -466,6 +465,14 @@ export function planMigration(snapshot: ArcMenuSnapshot, spawnDefaults?: Partial
             add('max-frequent-apps', 'arcmenu-layout-max-frequent-apps', clamped);
         } else
             skip('arcmenu-layout-max-frequent-apps', 'unexpected value format');
+    }
+    // ArcMenu's "Recently installed apps" highlight is Spawn's "New" badge.
+    if (isSet('show-recently-installed-apps')) {
+        const v = values['show-recently-installed-apps'];
+        if (typeof v === 'boolean')
+            add('show-new-apps-badge', 'show-recently-installed-apps', v);
+        else
+            skip('show-recently-installed-apps', 'unexpected value format');
     }
     if (isSet('searchbar-default-bottom-location')) {
         const v = values['searchbar-default-bottom-location'];

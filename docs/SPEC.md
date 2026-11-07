@@ -62,7 +62,23 @@ your area before writing code.
     identical to before. `tools/dev-shell.sh ui-hit-area2` sweeps each region in List and Grid
     (`Ui.HitSweepIn`; `Ui.SetFrequent` fakes the usage history a sandboxed shell lacks).
   - App context menu: open windows, new window, desktop actions, pin/unpin,
-    add to folder, app details (Software), quit.
+    add to folder, hide from menu, app details (Software), quit.
+  - Hide from Menu (app context menu; not for pinned commands or folders): the app id is added to `hidden-apps`
+    and the app leaves the lists Spawn generates (All Apps, every category, Frequent, the runner's Frequent
+    rows and the "New" markers). Pinning is explicit, so a pinned app stays pinned. An in-menu banner
+    "“X” hidden [Undo]" (the folder-delete banner; Ctrl+Z too) shows for 8 s. `search-hidden-apps` (default
+    on) lets search still find hidden apps. A category left empty disappears. Preferences, Menu page,
+    "Hidden apps": icon + name + Restore per app, an empty state, the search switch; an id whose app is
+    uninstalled is greyed, says "Not installed" and can only be removed.
+  - "New" badge (`show-new-apps-badge`, default on): the first time the app catalogue is built `known-apps`
+    is filled with every installed app, so nothing is new when Spawn is enabled. Apps that appear later get
+    a first-seen time in `new-apps`; they are new for 3 days or until they are launched, whichever is first
+    (launch = Shell.AppSystem `app-state-changed`, or a launch from the menu). Uninstalled apps are pruned.
+    dconf is written in one batch, only when the set changed (catalogue rebuilds, a launch), never on a menu
+    open. New apps show a "New" pill after the name in rows and on the icon's corner in tiles, the accessible
+    name is "<name>, new", and a category (and All Apps) that contains one shows a dot with the accessible
+    name "<name>, contains new apps". Hidden apps never count. The bookkeeping is pure (`model/newApps.ts`);
+    `model/newAppsStore.ts` keeps it in settings. Headless check: `tools/dev-shell.sh apps-hide-new`.
   - Keyboard: arrows/Tab/Return/Escape, Menu or Shift+F10 = context menu, typing
     anywhere goes to search, mouse button 8 = back. Ctrl+Up/Down/Left/Right and Ctrl+Home/End on a
     focused pinned entry (top level or inside an open folder) move it (List: Up/Down one position;
@@ -158,6 +174,8 @@ src/
                           CategoryList, ShortcutRow, PowerBar, UserCard, SearchBox, ResultList
   ui/contextMenu.ts       app context menu
   ui/dnd.ts               pinned drag & drop
+  model/hiddenApps.ts     pure helpers for the hidden-apps setting (add / remove / filter)
+  model/newApps.ts        pure "New" bookkeeping (known-apps / new-apps); newAppsStore.ts keeps it in settings
   model/appIndex.ts       AppIndex: Shell.AppSystem + GMenu tree; categories,
                           frequent (Shell.AppUsage), search keys; debounced
                           rebuild on installed-changed; no UI imports

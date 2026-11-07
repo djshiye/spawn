@@ -13,7 +13,9 @@
 //   tile.app: Shell.App
 //   tile.setWidth(px)
 //   tile.destroy()
-//   TileHost: {launch(app, ctrl), openContext(tile, app, folderUuid?), tooltips?}
+//   TileHost: {launch(app, ctrl), openContext(tile, app, folderUuid?), isNew?(app), tooltips?}
+//   A tile of an app the host calls new gets a "New" pill at its icon's top right corner and the accessible
+//   name "<name>, new" (widgets/newBadge.ts).
 //   TileOptions: {folderUuid?, iconSize?, multiLine?, name?, context?}
 //   new ActionTile(name, icon, activate, host?, opts?)   same look, arbitrary action;
 //                                                        opts.context = right click / Menu key
@@ -26,11 +28,14 @@ import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import {makeItemButton, makeSurface, wireItem} from './interact.js';
+import {makeNewBadge, newAccessibleName} from './newBadge.js';
 import type {TooltipManager} from './tooltip.js';
 
 export interface TileHost {
     launch(app: Shell.App, ctrl: boolean): void;
     openContext(tile: St.Widget, app: Shell.App, folderUuid?: string): void;
+    /** Is this a recently installed app that shows a "New" badge? Asked once when a row or tile is built. */
+    isNew?(app: Shell.App): boolean;
     tooltips?: TooltipManager;
 }
 
@@ -55,7 +60,31 @@ export class AppTile {
         this._app = app;
         const button = makeItemButton('spawn-tile');
         this.actor = button;
-        buildTileContent(button, opts.name ?? app.get_name(), app.get_icon(), opts.iconSize ?? DEFAULT_TILE_ICON_SIZE, host.tooltips, opts.multiLine);
+        const name = opts.name ?? app.get_name() ?? '';
+        const iconSize = opts.iconSize ?? DEFAULT_TILE_ICON_SIZE;
+        const parts = buildTileContent(button, name, app.get_icon(), iconSize, host.tooltips, opts.multiLine);
+        const isNew = Boolean(host.isNew?.(app));
+        if (isNew) {
+            // The icon moves into a one-cell overlay so the pill can sit on its top right corner.
+            const box = parts.icon.get_parent() as St.BoxLayout;
+            const overlay = new St.Widget({
+                layout_manager: new Clutter.BinLayout(),
+                x_align: Clutter.ActorAlign.CENTER,
+                style: `min-width: ${iconSize + 16}px;`,
+            });
+            box.remove_child(parts.icon);
+            parts.icon.x_align = Clutter.ActorAlign.CENTER;
+            parts.icon.y_align = Clutter.ActorAlign.CENTER;
+            overlay.add_child(parts.icon);
+            const badge = makeNewBadge();
+            badge.x_expand = true;
+            badge.y_expand = true;
+            badge.x_align = Clutter.ActorAlign.END;
+            badge.y_align = Clutter.ActorAlign.START;
+            overlay.add_child(badge);
+            box.insert_child_at_index(overlay, 0);
+        }
+        button.accessible_name = newAccessibleName(name, isNew);
         wireItem(button, {
             activate: ctrl => host.launch(app, ctrl),
             context: () => host.openContext(button, app, opts.folderUuid),
