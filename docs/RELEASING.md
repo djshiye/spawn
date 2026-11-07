@@ -16,11 +16,14 @@ The RPM `Release` is `1.<commit count>.<dist>`, appended by `publish.sh`, so eve
 
 ## Cut a release
 
-1. Finish the work on `main`; `npm run typecheck && npm run lint && npm test && tools/dev-shell.sh all` must pass.
+1. Finish the work on `main`. CI (`.github/workflows/ci.yml`) must be green; it runs typecheck, lint, tests and the
+   `smoke` / `lifecycle` shell scenarios but not the whole harness, so also run `tools/dev-shell.sh all` locally.
+   Move the `CHANGELOG.md` "Unreleased" entries under the new version.
 2. `tools/bump-version.sh 1.1.0 "what changed"` (updates package.json, package-lock.json, metadata.json, the spec and its changelog), review and commit.
 3. If the supported shells changed: edit `shell-version` in `metadata.json` and `%global min_shell` in `build-aux/spawn.spec`
    (the RPM must not be installable on a shell the extension refuses to load on).
-4. `tools/publish.sh` builds and commits to the local `.gh-pages/` worktree; look at it; then `tools/publish.sh --push`.
+4. `SPAWN_SIGNING_KEY=<fingerprint> tools/publish.sh` builds, signs and commits to the local `.gh-pages/` worktree; look at it;
+   then `SPAWN_SIGNING_KEY=<fingerprint> tools/publish.sh --push` (see "Signing"; without a key it still publishes, unsigned, with a warning).
 5. Optional tag: `git tag v1.1.0 && git push origin v1.1.0` (nothing depends on it).
 
 ## The DNF repository (`tools/publish.sh`)
@@ -29,6 +32,8 @@ The RPM `Release` is `1.<commit count>.<dist>`, appended by `publish.sh`, so eve
 tools/publish.sh                 build from HEAD, commit to the local gh-pages worktree (.gh-pages/), push nothing
 tools/publish.sh --push          the same, then push main and gh-pages (only from the main branch, clean tree)
 tools/publish.sh --allow-dirty   build the working tree as it is on disk; testing only, cannot be combined with --push
+tools/publish.sh --signing-key FPR   the same as SPAWN_SIGNING_KEY=FPR (see "Signing")
+tools/publish.sh --rotate-key    allow a signing key different from the one already published
 ```
 
 What it does, in order:
@@ -38,10 +43,17 @@ What it does, in order:
    `tools/build.sh` there, and packs the export plus its `build/` into `gnome-shell-extension-spawn-<version>.tar.gz`
    (sorted, uid 0, mtime = commit time, `gzip -n`).
 3. Creates or updates the `.gh-pages/` git worktree (orphan `gh-pages` branch on first use; fast-forwards from `origin/gh-pages` when it exists).
-4. For each of Fedora 43, 44, 45: `podman run registry.fedoraproject.org/fedora:N`, `dnf install rpm-build createrepo_c glib2`,
-   `rpmbuild -ba --define "release_suffix .<count>"`, copy the `noarch.rpm` and `src.rpm` into `.gh-pages/fedora-N/`, keep the newest 3 of each, `createrepo_c --update`.
+4. For each of Fedora 43, 44, 45:
+   1. `podman run registry.fedoraproject.org/fedora:N`: `dnf install rpm-build glib2`,
+      `rpmbuild -ba --define "release_suffix .<count>"`; the `noarch.rpm` and `src.rpm` come out in a temp directory.
+   2. With a signing key: on the host, `rpmsign --addsign` each package, then verify it (see "Signing").
+   3. Copy them into `.gh-pages/fedora-N/`, drop packages that do not verify against the key, keep the newest 3 of each.
+   4. A second container runs `createrepo_c --update` on that directory; with a key, `repodata/repomd.xml.asc` is then made on the host.
+
    The dnf cache is `~/.cache/spawn-publish/dnf-N`.
-5. Writes `spawn.repo` (`gpgcheck=0`, `baseurl=https://djshiye.github.io/spawn/fedora-$releasever/`), `index.html`, `icon.svg`, `.nojekyll`
+5. With a key: verifies every package and every `repomd.xml.asc` once more against the exported public key file and fails if anything is unsigned.
+   Then writes `spawn.repo` (`gpgcheck=1`, `repo_gpgcheck=1`, `gpgkey=https://djshiye.github.io/spawn/RPM-GPG-KEY-spawn`; `gpgcheck=0` only while no key exists,
+   `baseurl=https://djshiye.github.io/spawn/fedora-$releasever/`), `RPM-GPG-KEY-spawn`, `index.html` (with the fingerprint), `icon.svg`, `.nojekyll`
    and commits them to `gh-pages` as Dino Klisura (`GIT_AUTHOR_*`/`GIT_COMMITTER_*` set explicitly, no trailers).
 6. With `--push`: `git push origin main`, then `git -C .gh-pages push origin gh-pages` (a plain, non-forced push; on the very first publish this creates the remote `gh-pages` branch).
 
@@ -70,7 +82,8 @@ package in F43/44/45), noarch, `Requires: gnome-shell >= 49`, `glib2`, `gjs`:
 ### First publish (once)
 
 After the first `--push`, enable GitHub Pages: repository Settings, Pages, "Deploy from a branch", branch `gh-pages`, folder `/ (root)`.
-Until then https://djshiye.github.io/spawn/ answers 404. Packages are unsigned (`gpgcheck=0`).
+Until then https://djshiye.github.io/spawn/ answers 404. Before the signing key exists the packages are unsigned (`gpgcheck=0`);
+create the key (next section) before the first public publish if you can.
 
 User commands (also in the README):
 
@@ -79,6 +92,121 @@ sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.gith
 sudo dnf upgrade
 spawn-enable --remove; sudo dnf remove gnome-shell-extension-spawn
 ```
+
+## Signing
+
+Packages and repository metadata are signed with a GPG key that stays on your machine. The layout is the usual best practice:
+an **offline certify-only primary key** (ed25519, no expiry) kept on an encrypted stick, and a **signing subkey** (ed25519, no expiry)
+in your everyday keyring or, better, on a YubiKey. `RPM-GPG-KEY-spawn` is the full public certificate (primary, subkey and their
+binding signatures); its fingerprint is the primary's, and `publish.sh` is always told the primary's fingerprint.
+
+Why nothing expires: dnf remembers a repository key by the primary key's ID and never refreshes it (its repo keyring is
+`<cachedir>/pubring`). A key that expires, or whose expiry is extended afterwards, breaks every user's `dnf upgrade` until each of them
+re-imports it by hand, so there is no expiry to run into. The protection against a leaked subkey is revocation and replacement (below),
+not a timer.
+Users get `gpgcheck=1` (each package) and `repo_gpgcheck=1` (`repodata/repomd.xml`, which lists every package and its checksum).
+Signing happens on the host (`tools/lib/signing.sh`), never in a container, so the private key and its passphrase never enter one.
+
+### One-time setup
+
+1. On the machine you publish from: `tools/make-signing-key.sh [--backup-dir DIR]`. It creates the primary and the signing subkey;
+   gpg asks for the passphrase itself. It uploads and publishes nothing and writes no file. It prints the exact commands for steps 2 and 3
+   with the backup directory (default `~/spawn-key-backup`; it refuses a directory inside the repository, and `.gitignore` blocks `*.rev`,
+   `spawn-signing-*.asc` and `*.key`).
+2. Back up the primary secret key, the public key and the revocation certificate to an encrypted USB stick (two is better), check you can
+   read it back, then remove the primary secret from the laptop keyring (`gpg --export-secret-subkeys`, `gpg --delete-secret-keys`,
+   `gpg --import`, as printed). `gpg --list-secret-keys` must then show `sec#` (primary secret absent) and `ssb`.
+3. Optional but recommended: `keytocard` the signing subkey to a YubiKey and turn touch on (`ssb>`). Back up first;
+   `keytocard` replaces the local subkey with a stub.
+4. Install the signing tool on the publishing machine: `sudo dnf install rpm-sign` (`rpmsign` is not in the `rpm` package; `publish.sh` says so if it is missing).
+5. Update the README's "Fedora (DNF repository)" section in the same commit as the first signed publish, so that the README and the
+   landing page agree. Replace the unsigned note with the fingerprint and these install steps:
+
+   ```sh
+   sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.github.io/spawn/spawn.repo
+   curl -sSfO https://djshiye.github.io/spawn/RPM-GPG-KEY-spawn
+   gpg --show-keys --fingerprint RPM-GPG-KEY-spawn      # compare with the fingerprint in the README
+   sudo rpm --import RPM-GPG-KEY-spawn
+   sudo dnf install -y gnome-shell-extension-spawn && spawn-enable
+   ```
+
+   Say that the key comes from the same site as the packages (trust on first use), so users should compare the fingerprint.
+
+### Every release
+
+```sh
+export SPAWN_SIGNING_KEY=<the full 40-hex fingerprint, no spaces>   # or --signing-key FPR
+tools/publish.sh            # look at .gh-pages/
+tools/publish.sh --push
+```
+
+`publish.sh` asks gpg-agent to sign (passphrase prompt, or YubiKey PIN and touch): once per package and once per `repomd.xml` (a PIN or
+touch prompt for each of the roughly 6 packages and 3 `repomd.xml` files), so expect several prompts per publish unless gpg-agent caches the passphrase.
+Short key IDs are rejected: only the full fingerprint of the primary key is accepted. Before building it checks that the primary is
+neither revoked nor expired and that a valid, unexpired signing key (a subkey, or the primary) has its secret here or on a card; `sec#`
+and `ssb>` are fine, and a key with no usable signing subkey is refused.
+
+GitHub Pages caches for about 10 minutes. Right after a publish a user may see "Bad GPG signature" or a checksum error because the
+cache holds the new `repomd.xml` but the old `repomd.xml.asc` (or the reverse); it clears by itself, and `sudo dnf clean all` speeds it up.
+
+Before it commits to `gh-pages` it verifies, against a temporary keyring that holds only the exported public key
+(`rpmkeys --checksig` with its own `--dbpath`, and `gpg --verify` in an empty `GNUPGHOME`), and fails hard otherwise:
+every `.rpm` and `.src.rpm` in EVERY `fedora-*/` directory of the gh-pages tree (including releases no longer built) is signed by that key,
+and every `repomd.xml.asc` is a good signature of its `repomd.xml` by that key (GOODSIG and a VALIDSIG for the primary's fingerprint).
+A directory that fails stops the publish; remove it (`git -C .gh-pages rm -r fedora-N`) if that release is no longer supported.
+In addition each Fedora container checks its own packages with that release's rpm (`rpmkeys --dbpath /tmp/k --import` of the key,
+then `-K`) before running `createrepo_c`. The gh-pages worktree is reset to its last commit and cleaned at the start of every run, and
+"already published" means what is committed at `HEAD` of `gh-pages`, not what happens to lie in the working copy. `tools/test-signing.sh` runs the same functions against a throwaway key and a dummy package
+(needs `rpm`, `rpm-sign`, `createrepo_c` and `gnupg2`; no podman).
+
+Safety rules, enforced by `publish.sh`:
+
+- Once `.gh-pages/` contains `RPM-GPG-KEY-spawn`, publishing without a key is refused. There is no flag to publish unsigned after that;
+  `spawn.repo` never silently goes back to `gpgcheck=0`.
+- Once `.gh-pages/` contains `RPM-GPG-KEY-spawn`, a different fingerprint is refused unless you pass `--rotate-key`.
+- Before any key has been published, publishing unsigned still works but prints a boxed warning and writes `gpgcheck=0`.
+
+**Older packages.** The repository keeps the newest 3 builds (`KEEP=3`). Builds made before the first signed publish are unsigned and would
+fail `gpgcheck=1`, which would make `dnf upgrade` fail for everybody. On a signed publish `publish.sh` therefore **drops** every package
+that does not verify against the key, instead of re-signing it. Dropping is the safer choice: a signature says "the maintainer built and vouches
+for these exact bytes", and re-signing would vouch for old files that were merely sitting in a git branch, without anyone rebuilding them.
+The price is that the first signed publish leaves only the new version in the repository, so nobody can install or roll back to a pre-signing build.
+The same rule removes packages signed by the old key after a rotation.
+
+### Replacing the signing subkey
+
+Use this when the YubiKey or the laptop's subkey is lost, broken or suspected stolen. The primary (from the stick) stays the same, so users keep
+trusting the same identity.
+
+1. Get the primary secret back temporarily (import the backup on a trusted machine, ideally offline), then
+   `gpg --edit-key <primary fpr>`, `addkey` (ed25519, sign, no expiry), optionally `keytocard` it, and `save`. If the old subkey was
+   leaked or must not be trusted any more, `key N` then `revkey` first. Export the subkeys, remove the primary secret again, as in setup step 2.
+2. `publish.sh` as usual (same primary fingerprint, so no `--rotate-key`). It exports the updated certificate, so `RPM-GPG-KEY-spawn` now holds
+   the new subkey (and the revocation of the old one).
+3. Existing users already hold the old certificate, and dnf does not refresh a key it knows, so they must update it themselves. Say so in the
+   release notes: `sudo rpm --import https://djshiye.github.io/spawn/RPM-GPG-KEY-spawn && sudo dnf clean all`. Both are needed:
+   `rpm --import` updates rpm's keyring (package checks), but dnf's own repository keyring (used for `repo_gpgcheck`) is only
+   rebuilt after `dnf clean all`. Until then `dnf upgrade` reports a bad signature. New installs are unaffected.
+
+### Rotating to a new primary key
+
+Only if the primary itself is lost or leaked (revoke it with the stored revocation certificate and say so publicly): make a new key with
+`tools/make-signing-key.sh`, then `publish.sh --rotate-key --signing-key <new primary fingerprint>`. The new certificate replaces
+`RPM-GPG-KEY-spawn`, the new build is signed by it, and packages signed by the old key are dropped. Existing users trust only the old key, so
+with `repo_gpgcheck=1` their next `dnf upgrade` fails until they accept the new one. Announce it with the new fingerprint in the README and
+the release notes. They take it through dnf's normal import prompt, comparing the fingerprint dnf shows with the announced one
+(`sudo dnf clean all` first, so that dnf asks again). Warn them that `dnf -y` and `--assumeyes` accept the key without showing it, which
+defeats the check; they should answer the prompt themselves. They may remove the old key afterwards (`rpm -qa 'gpg-pubkey*'`, then `sudo rpm -e <name>`).
+
+### Trust on first use
+
+The public key is served from the same site as the packages (`https://djshiye.github.io/spawn/RPM-GPG-KEY-spawn`). The first time a user
+installs, dnf fetches the key from there and asks them to accept it. Whoever controls that site (that is, the GitHub account) could swap the
+key and the packages together, and the user would not notice. The signature therefore protects against unsigned or altered packages after you
+published them (a mirror, a proxy, a stale cache, a partial compromise of the hosting) and, from the second install on, against anyone who does
+not hold the private key. It does not protect a first install against a compromised GitHub account. To narrow that gap the fingerprint is in the
+README and on the landing page, and users are asked to compare it with the one dnf displays. The primary key lives on an offline stick and the signing subkey on your
+machine or a YubiKey, both outside GitHub and not in an Actions secret, so that one compromised account does not hold both the site and the key.
 
 ## Open items
 
