@@ -39,6 +39,7 @@ import type {Services} from '../../core/services.js';
 import type {PinnedItemSize} from '../../core/settings.js';
 import {acceptDrops, enableDrag, rejectDrops} from '../dnd.js';
 import {applyScrollSettings, displayName, lookupApp} from '../util.js';
+import {animationsEnabled, markDialog} from './a11y.js';
 import {ActionTile, AppTile, type TileHost} from './appTile.js';
 import {makeItemButton, wireItem} from './interact.js';
 import {TileGrid} from './tileGrid.js';
@@ -253,7 +254,7 @@ export class FolderView {
         this._card.remove_all_transitions();
         this.actor.reactive = true;
         this.actor.show();
-        if (animate && !wasOpen) {
+        if (animate && animationsEnabled() && !wasOpen) {
             this.actor.opacity = 0;
             this._card.opacity = 0;
             this._card.set_scale(CARD_START_SCALE, CARD_START_SCALE);
@@ -278,7 +279,7 @@ export class FolderView {
         this.actor.reactive = false;
         this.actor.remove_all_transitions();
         this._card.remove_all_transitions();
-        if (!animate || !this.actor.visible) {
+        if (!animate || !animationsEnabled() || !this.actor.visible) {
             this.actor.hide();
             return;
         }
@@ -309,6 +310,7 @@ export class FolderView {
         }
         if (!this._entry)
             this._nameLabel.text = folder.name;
+        markDialog(this._card, _('Folder: %s').replace('%s', folder.name));
 
         this._host.tooltips?.hide();
         // Per-tile drag/drop registrations live in a scope that is reset on every rebuild.
@@ -394,6 +396,7 @@ export class FolderView {
         const entry = new St.Entry({
             text: this._nameLabel.text,
             style_class: 'spawn-folder-rename',
+            accessible_name: _('Folder name'),
             x_expand: true,
             can_focus: true,
         });

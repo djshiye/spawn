@@ -10,12 +10,15 @@
 //   openMenu(menu, animate = true): void      also, on 49 / 50, starts keyboard navigation when a key press
 //                                             opened the menu (51 does it inside open())
 //   closeMenu(menu, animate = true): void
+//   Neither animates while GNOME's "Reduce animation" is on (widgets/a11y.ts animationsEnabled()).
 //   silenceSourceKeys(menu): void
 
 import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 
 import type * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+
+import {animationsEnabled} from './widgets/a11y.js';
 
 interface ParamMenu {
     open(params?: {animate?: boolean}): boolean;
@@ -36,7 +39,8 @@ function takesParams(menu: PopupMenu.PopupMenu): boolean {
     return typeof (menu as unknown as {_getPopupAnimationFromParams?: unknown})._getPopupAnimationFromParams === 'function';
 }
 
-export function openMenu(menu: PopupMenu.PopupMenu, animate = true): void {
+export function openMenu(menu: PopupMenu.PopupMenu, requestAnimate = true): void {
+    const animate = requestAnimate && animationsEnabled(); // GNOME's "Reduce animation"
     if (takesParams(menu)) {
         (menu as unknown as ParamMenu).open({animate});
         return;
@@ -50,7 +54,8 @@ export function openMenu(menu: PopupMenu.PopupMenu, animate = true): void {
         menu.actor.navigate_focus(null, St.DirectionType.TAB_FORWARD, false);
 }
 
-export function closeMenu(menu: PopupMenu.PopupMenu, animate = true): void {
+export function closeMenu(menu: PopupMenu.PopupMenu, requestAnimate = true): void {
+    const animate = requestAnimate && animationsEnabled();
     if (takesParams(menu))
         (menu as unknown as ParamMenu).close({animate});
     else

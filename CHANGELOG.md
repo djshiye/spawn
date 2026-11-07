@@ -7,6 +7,15 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **Hide from Menu** in an app's right-click menu. Hidden apps leave All Apps, the categories and Frequent (pinned
+  apps stay pinned), an Undo banner appears, and Preferences → Menu → Hidden apps lists them to restore. Search still
+  finds hidden apps unless "Find hidden apps in search" is turned off.
+- **"New" badges** on apps installed since Spawn last looked: a small pill on rows, tiles and search results, and a dot
+  on the categories that contain one. It clears after the first launch or three days. "Mark new apps" turns it off;
+  the ArcMenu import carries ArcMenu's setting over.
+- **Accessibility:** every button, row and tile in the menu and runner has a screen reader name and role; the result
+  count is announced ("5 results", "No results"); keyboard focus shows a clear accent ring in every theme; and GNOME's
+  "Reduce animation" setting turns off Spawn's animations.
 - Continuous integration on GitHub Actions: typecheck, lint, unit tests, `npm audit` and the GNOME Shell 49 / 50
   compatibility typechecks on every pull request; the headless GNOME Shell 51 `smoke` and `lifecycle` scenarios on
   pull requests to `main`. Actions are pinned by commit SHA and Dependabot keeps them and the npm dependencies current.

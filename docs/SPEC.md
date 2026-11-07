@@ -62,7 +62,23 @@ your area before writing code.
     identical to before. `tools/dev-shell.sh ui-hit-area2` sweeps each region in List and Grid
     (`Ui.HitSweepIn`; `Ui.SetFrequent` fakes the usage history a sandboxed shell lacks).
   - App context menu: open windows, new window, desktop actions, pin/unpin,
-    add to folder, app details (Software), quit.
+    add to folder, hide from menu, app details (Software), quit.
+  - Hide from Menu (app context menu; not for pinned commands or folders): the app id is added to `hidden-apps`
+    and the app leaves the lists Spawn generates (All Apps, every category, Frequent, the runner's Frequent
+    rows and the "New" markers). Pinning is explicit, so a pinned app stays pinned. An in-menu banner
+    "“X” hidden [Undo]" (the folder-delete banner; Ctrl+Z too) shows for 8 s. `search-hidden-apps` (default
+    on) lets search still find hidden apps. A category left empty disappears. Preferences, Menu page,
+    "Hidden apps": icon + name + Restore per app, an empty state, the search switch; an id whose app is
+    uninstalled is greyed, says "Not installed" and can only be removed.
+  - "New" badge (`show-new-apps-badge`, default on): the first time the app catalogue is built `known-apps`
+    is filled with every installed app, so nothing is new when Spawn is enabled. Apps that appear later get
+    a first-seen time in `new-apps`; they are new for 3 days or until they are launched, whichever is first
+    (launch = Shell.AppSystem `app-state-changed`, or a launch from the menu). Uninstalled apps are pruned.
+    dconf is written in one batch, only when the set changed (catalogue rebuilds, a launch), never on a menu
+    open. New apps show a "New" pill after the name in rows and on the icon's corner in tiles, the accessible
+    name is "<name>, new", and a category (and All Apps) that contains one shows a dot with the accessible
+    name "<name>, contains new apps". Hidden apps never count. The bookkeeping is pure (`model/newApps.ts`);
+    `model/newAppsStore.ts` keeps it in settings. Headless check: `tools/dev-shell.sh apps-hide-new`.
   - Keyboard: arrows/Tab/Return/Escape, Menu or Shift+F10 = context menu, typing
     anywhere goes to search, mouse button 8 = back. Ctrl+Up/Down/Left/Right and Ctrl+Home/End on a
     focused pinned entry (top level or inside an open folder) move it (List: Up/Down one position;
@@ -105,6 +121,41 @@ your area before writing code.
 
 Out of scope (later): the other 22 ArcMenu layouts, ArcMenu's `extra-categories` rows in the category column,
 `force-menu-location`, translations (English only), extensions.gnome.org (distributed through the DNF repo only).
+
+## Accessibility
+Spawn sets what a screen reader needs on the actors (ROADMAP item 6). It has **not been tested with Orca**: the
+headless dev shell has no AT-SPI bus, so `tools/dev-shell.sh ui-a11y` checks what is set on the actors, not what is
+spoken. A pass with Orca is still to do.
+- **Names.** Every focusable actor has an `accessible_name` or a `label_actor` (`ui/widgets/a11y.ts`, `nameItem()`):
+  the panel button ("Spawn menu", or its configured text when it shows text), the search entry ("Search apps, windows and
+  files", the hint text) and its clear icon, app rows and tiles (name, plus the description when shown), folder entries
+  ("Folder: Games, 5 apps"), category, quick link, shortcut and place rows, the user card ("Alex, account settings"),
+  Back / All Apps, the power buttons (each action's name; "More power options"; "Power Off options" in the Menu style),
+  the folder popup's rename and close buttons, the Undo button and the runner. Popup menu items keep the shell's
+  `label_actor`. Names are plain gettext strings in UK spelling.
+- **Roles.** Containers of rows are `LIST`s with a name ("Pinned apps", "Search results", "Categories", "Shortcuts", ...)
+  and flat-list rows are `LIST_ITEM`s; pinned tiles and rows stay push buttons (the grid's tile rows sit between the
+  list and its items, so a list role on them would announce wrong positions). The power row is a `TOOL_BAR`, the open
+  folder and the runner are `DIALOG`s, the Undo banner is an `ALERT`.
+- **Result count.** ATK has no live regions. `ResultAnnouncer` keeps an invisible, 1 px `ALERT` label in the uiGroup and
+  hides, re-texts and shows it ("5 results", "1 result", "No results"), which is what Orca speaks for alerts (the shell's
+  notification banners rely on the same thing). The announcement is debounced (600 ms after the last batch; "No results"
+  after the empty-state delay), skipped when the count equals the one last said, and dropped when a new query starts
+  (`a11yCore.ts`, unit tested in `tests/a11y.test.js`).
+- **Focus.** `stylesheet.css` gives every focusable face a 2 px inset ring in the shell accent plus a tint, the search
+  entry an accent border with a 1 px inner ring; `src/theme/css.ts` writes the same in the Appearance accent, and with
+  custom menu colours the ring takes the item's hover text colour, which reads on the hover background. It works on
+  light and dark shell themes (the ring is a `box-shadow`, which the `.spawn-light` hover tints do not override).
+- **Reduce animation.** GNOME's "Reduce Animation" (`org.gnome.desktop.interface enable-animations`, read through
+  `St.Settings.enable_animations`): the popup open / close (`menuParams.ts`), the folder popup fade and the tooltips
+  skip their `ease()`, and `spawn-reduce-motion` on the menu and runner zeroes the stylesheet's `transition-duration`.
+- **Preferences.** Icon-only buttons have a tooltip and an accessible label (`label()` in `prefs/widgets.ts`), as do the
+  search entries, the icon grid, the colour buttons, the scale and the ambiguous "Set / Add / Disable / Rescan" buttons;
+  the dialogs are keyboard driven. Preference strings are not translated yet (no gettext in `src/prefs`).
+- **Dev hooks.** `Ui.A11y()` (audit of every focusable actor, the live regions, `enable_animations`) and
+  `Ui.Appearance(cls, nth)` (theme values of an item's face) back `tools/dev/scenarios/ui-a11y.sh`, which fails when a
+  focusable actor has no name or label, when focus does not change an item's face (with a ring), when the count is not
+  announced, or when transitions stay on with animations off.
 
 ## Tech
 - TypeScript (strict) compiled by `tsc` to ES modules for GJS; types from
@@ -158,6 +209,8 @@ src/
                           CategoryList, ShortcutRow, PowerBar, UserCard, SearchBox, ResultList
   ui/contextMenu.ts       app context menu
   ui/dnd.ts               pinned drag & drop
+  model/hiddenApps.ts     pure helpers for the hidden-apps setting (add / remove / filter)
+  model/newApps.ts        pure "New" bookkeeping (known-apps / new-apps); newAppsStore.ts keeps it in settings
   model/appIndex.ts       AppIndex: Shell.AppSystem + GMenu tree; categories,
                           frequent (Shell.AppUsage), search keys; debounced
                           rebuild on installed-changed; no UI imports

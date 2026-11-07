@@ -379,6 +379,31 @@
       <default>false</default>
       <summary>Hide the search entry until the user types</summary>
     </key>
+    <key name="hidden-apps" type="as">
+      <default>[]</default>
+      <summary>Apps hidden from the menu</summary>
+      <description>Desktop ids ("org.gnome.Nautilus.desktop") of apps removed from All Apps, the categories and Frequent. Pinned apps stay pinned</description>
+    </key>
+    <key name="search-hidden-apps" type="b">
+      <default>true</default>
+      <summary>Search can find hidden apps</summary>
+      <description>Hidden apps still appear in search results while this is on</description>
+    </key>
+    <key name="show-new-apps-badge" type="b">
+      <default>true</default>
+      <summary>Mark recently installed apps as New</summary>
+      <description>A small "New" badge on apps first seen in the last three days, cleared when the app is launched</description>
+    </key>
+    <key name="known-apps" type="as">
+      <default>[]</default>
+      <summary>Apps Spawn has already seen (internal)</summary>
+      <description>Every installed desktop id Spawn has seen. Empty on first run, when it is filled with the apps installed at that moment so nothing is New</description>
+    </key>
+    <key name="new-apps" type="a{sx}">
+      <default>{}</default>
+      <summary>Recently installed apps (internal)</summary>
+      <description>Desktop id mapped to the unix time Spawn first saw the app; entries go after three days, when the app is launched or when it is uninstalled</description>
+    </key>
     <key name="search-entry-location" enum="org.gnome.shell.extensions.spawn.searchbar-location">
       <default>'Bottom'</default>
       <summary>Search entry position (top or bottom of the left pane)</summary>

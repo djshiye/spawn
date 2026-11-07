@@ -23,6 +23,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
 import {isTruncated} from '../util.js';
+import {animationDuration} from './a11y.js';
 import {surfaceOf} from './interact.js';
 
 const SHOW_DELAY_MS = 450;
@@ -135,7 +136,7 @@ export class TooltipManager {
         }
         tip.set_position(tx, ty);
         tip.opacity = 0;
-        tip.ease({opacity: 255, duration: 120, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        tip.ease({opacity: 255, duration: animationDuration(120), mode: Clutter.AnimationMode.EASE_OUT_QUAD});
     }
 
     private _destroy(): void {

@@ -12,12 +12,14 @@
 //   banner.hide(): void
 //   banner.visible: boolean
 
+import Atk from 'gi://Atk';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
+import {nameItem} from './a11y.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
 
 export class UndoBanner {
@@ -26,13 +28,16 @@ export class UndoBanner {
     private readonly _label: St.Label;
 
     constructor(onUndo: () => void) {
-        this.actor = new St.BoxLayout({style_class: 'spawn-undo-banner', x_expand: true, visible: false});
+        // An ALERT: a screen reader speaks the message when the banner appears.
+        this.actor = new St.BoxLayout({style_class: 'spawn-undo-banner', x_expand: true, visible: false, accessible_role: Atk.Role.ALERT});
         this._label = new St.Label({style_class: 'spawn-undo-label', x_expand: true, y_align: Clutter.ActorAlign.CENTER});
         this._label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         this.button = makeItemButton('spawn-nav-button spawn-undo-button');
         this.button.x_expand = false;
         // Like every menu item: a transparent button around a visible face that draws hover/focus.
-        this.button.set_child(makeFace('spawn-nav-surface', new St.Label({text: _('Undo'), y_align: Clutter.ActorAlign.CENTER})));
+        const undoLabel = new St.Label({text: _('Undo'), y_align: Clutter.ActorAlign.CENTER});
+        this.button.set_child(makeFace('spawn-nav-surface', undoLabel));
+        nameItem(this.button, _('Undo'), {label: undoLabel});
         wireItem(this.button, {activate: () => onUndo()});
         this.actor.add_child(this._label);
         this.actor.add_child(this.button);
@@ -44,6 +49,7 @@ export class UndoBanner {
 
     show(message: string): void {
         this._label.text = message;
+        this.actor.accessible_name = message;
         this.actor.show();
     }
 

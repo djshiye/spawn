@@ -10,6 +10,8 @@
 //   row.app: Shell.App
 //   row.destroy()
 //   RowOptions: {iconSize?, description?: boolean, folderUuid?, symbolic?, name?, pinned?}
+//   A row of an app the host calls new (TileHost.isNew) gets a "New" pill after its name and the accessible name
+//   "<name>, new" (widgets/newBadge.ts).
 //   Every row is an outer transparent button (`spawn-pinned-row`, or `spawn-list-row` for a plain list) around a
 //   `spawn-row-surface` that draws it (see interact.ts).
 //   new ActionRow(name, icon, activate, host?, opts?)   arbitrary action; opts: {iconSize?, context?}
@@ -21,7 +23,9 @@ import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import type {TileHost} from './appTile.js';
+import {nameItem} from './a11y.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
+import {makeNewBadge, newAccessibleName} from './newBadge.js';
 import type {TooltipManager} from './tooltip.js';
 import {symbolicGIcon} from '../util.js';
 
@@ -71,9 +75,21 @@ export class AppRow {
             y_align: Clutter.ActorAlign.CENTER,
             x_expand: true,
         });
-        const label = new St.Label({text: opts.name ?? app.get_name(), style_class: 'spawn-row-label'});
+        const name = opts.name ?? app.get_name() ?? '';
+        const label = new St.Label({text: name, style_class: 'spawn-row-label'});
         label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-        text.add_child(label);
+        const isNew = Boolean(host.isNew?.(app));
+        if (isNew) {
+            // The pill sits after the name; the name shrinks (ellipsis) before the pill does.
+            const line = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
+            label.x_expand = true;
+            label.y_align = Clutter.ActorAlign.CENTER;
+            line.add_child(label);
+            line.add_child(makeNewBadge());
+            text.add_child(line);
+        } else {
+            text.add_child(label);
+        }
         const desc = opts.description ? app.get_description() : null;
         if (desc) {
             const dl = new St.Label({text: desc.split('\n')[0], style_class: 'spawn-row-description'});
@@ -83,6 +99,7 @@ export class AppRow {
         box.add_child(text);
         button.set_child(opts.pinned ? box : makeFace('spawn-row-surface', box));
 
+        nameItem(button, newAccessibleName(name, isNew), {label, description: desc?.split('\n')[0], listItem: !opts.pinned});
         host.tooltips?.attach(button, label, desc ? () => `${app.get_name()}\n${desc}` : undefined);
         wireItem(button, {
             activate: ctrl => host.launch(app, ctrl),
@@ -122,6 +139,7 @@ export class ActionRow {
         label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         box.add_child(label);
         button.set_child(box);
+        nameItem(button, name, {label});
         host?.tooltips?.attach(button, label);
         wireItem(button, {activate, context: opts.context});
     }

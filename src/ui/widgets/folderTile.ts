@@ -9,19 +9,22 @@
 //   new FolderRow(uuid, name, icons, host, opts?)     same API, list row (always one line; opts: {iconSize?, plateInset?})
 //   tile.actor: St.Widget
 //   tile.uuid: string
-//   tile.update(name: string, icons: Gio.Icon[]): void
+//   tile.update(name: string, icons: Gio.Icon[], count?: number): void   count = apps in the folder (the accessible name "Folder: X, N apps")
 //   tile.setWidth(px)
 //   tile.destroy()
 //   FolderHost: {open(uuid), openContext(tile, uuid), tooltips?}
-//   opts: {iconSize?, multiLine?}
+//   opts: {iconSize?, multiLine?, count?}
 
 import Clutter from 'gi://Clutter';
 import type Gio from 'gi://Gio';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
+import {gettext as _, ngettext} from 'resource:///org/gnome/shell/extensions/extension.js';
+
 import {DEFAULT_ROW_ICON_SIZE, PINNED_ROW_BOX, PINNED_ROW_CLASS} from './appRow.js';
 import {DEFAULT_TILE_ICON_SIZE, styleTileLabel} from './appTile.js';
+import {nameItem} from './a11y.js';
 import {makeItemButton, makeSurface, wireItem} from './interact.js';
 import type {TooltipManager} from './tooltip.js';
 
@@ -39,6 +42,11 @@ const PLATE_PADDING = 4;
 const PLATE_SPACING = 8;
 const ROW_PLATE_PADDING = 2;
 const ROW_PLATE_SPACING = 2;
+
+/** "Folder: Work, 3 apps". */
+function folderName(name: string, count: number): string {
+    return `${_('Folder: %s').replace('%s', name)}, ${ngettext('%d app', '%d apps', count).replace('%d', String(count))}`;
+}
 
 /** The rounded folder icon: up to four mini app icons, or a folder glyph when there are none. */
 class FolderPlate {
@@ -105,7 +113,7 @@ export class FolderTile {
     private readonly _label: St.Label;
     private readonly _plate: FolderPlate;
 
-    constructor(uuid: string, name: string, icons: Gio.Icon[], host: FolderHost, opts: {iconSize?: number; multiLine?: boolean} = {}) {
+    constructor(uuid: string, name: string, icons: Gio.Icon[], host: FolderHost, opts: {iconSize?: number; multiLine?: boolean; count?: number} = {}) {
         this._uuid = uuid;
         const size = opts.iconSize ?? DEFAULT_TILE_ICON_SIZE;
 
@@ -140,16 +148,17 @@ export class FolderTile {
             activate: () => host.open(uuid),
             context: () => host.openContext(button, uuid),
         });
-        this.update(name, icons);
+        this.update(name, icons, opts.count);
     }
 
     get uuid(): string {
         return this._uuid;
     }
 
-    update(name: string, icons: Gio.Icon[]): void {
+    update(name: string, icons: Gio.Icon[], count = icons.length): void {
         this._label.text = name;
         this._plate.update(icons);
+        nameItem(this.actor, folderName(name, count), {label: this._label});
     }
 
     setWidth(px: number): void {
@@ -168,7 +177,7 @@ export class FolderRow {
     private readonly _label: St.Label;
     private readonly _plate: FolderPlate;
 
-    constructor(uuid: string, name: string, icons: Gio.Icon[], host: FolderHost, opts: {iconSize?: number; plateInset?: number} = {}) {
+    constructor(uuid: string, name: string, icons: Gio.Icon[], host: FolderHost, opts: {iconSize?: number; plateInset?: number; count?: number} = {}) {
         this._uuid = uuid;
         const size = opts.iconSize ?? DEFAULT_ROW_ICON_SIZE;
         const button = makeItemButton(`${PINNED_ROW_CLASS} spawn-folder-row`);
@@ -193,16 +202,17 @@ export class FolderRow {
             activate: () => host.open(uuid),
             context: () => host.openContext(button, uuid),
         });
-        this.update(name, icons);
+        this.update(name, icons, opts.count);
     }
 
     get uuid(): string {
         return this._uuid;
     }
 
-    update(name: string, icons: Gio.Icon[]): void {
+    update(name: string, icons: Gio.Icon[], count = icons.length): void {
         this._label.text = name;
         this._plate.update(icons);
+        nameItem(this.actor, folderName(name, count), {label: this._label});
     }
 
     destroy(): void {
