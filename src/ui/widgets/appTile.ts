@@ -77,6 +77,8 @@ export class AppTile {
             parts.icon.y_align = Clutter.ActorAlign.CENTER;
             overlay.add_child(parts.icon);
             const badge = makeNewBadge();
+            badge.x_expand = true;
+            badge.y_expand = true;
             badge.x_align = Clutter.ActorAlign.END;
             badge.y_align = Clutter.ActorAlign.START;
             overlay.add_child(badge);

@@ -281,6 +281,7 @@ export class SpawnLayout implements ShortcutHost {
             close: () => this.close(),
             showAllApps: () => this.showAllApps(),
             tooltips: this._tooltips,
+            isNewApp: id => this._services.newApps.showBadge(id),
             openResultContext: (row, result: SearchResult) => {
                 const app = result.providerId === 'apps' ? lookupApp(this._services, result.id) : null;
                 if (app)

@@ -10,7 +10,7 @@ mkdir -p "$apps"
 rm -f "$apps/zqxhide.desktop" "$apps/zqxnew.desktop"
 
 row_index() { # name -> index of the row named "name" or "name, new" in the visible app list; fails when absent
-    state_get appRows | python3 -c '
+    state_get layout.appRows | python3 -c '
 import json, sys
 name = sys.argv[1]
 for i, row in enumerate(json.load(sys.stdin)):
@@ -20,7 +20,7 @@ for i, row in enumerate(json.load(sys.stdin)):
 sys.exit(1)' "$1"
 }
 row_name() { # name -> the accessible name of that row ("Zqxnew Probe, new"); empty when absent
-    state_get appRows | python3 -c '
+    state_get layout.appRows | python3 -c '
 import json, sys
 name = sys.argv[1]
 print(next((r for r in json.load(sys.stdin) if r == name or r == name + ", new"), ""))' "$1"
@@ -47,10 +47,24 @@ focus_row() { # name: keyboard focus on the row (scrolls it into view)
     i="$(row_index "$1")" || { echo "FAIL no row '$1'"; status=1; return 1; }
     focus_class spawn-list-row "$i"
 }
-hide_via_context_menu() { # name
-    focus_row "$1" || return 1
-    key Menu 1
-    click_text "Hide from Menu"
+hide_via_context_menu() { # name. Retried: the sandbox's "running as root" notification can take the focus once
+    local try
+    for try in 1 2 3 4; do
+        focus_row "$1" || return 1
+        key Menu 1
+        if [ -n "$(ui_call TextRect "Hide from Menu" 0 | unwrap)" ]; then
+            if [ -n "${SHOT_CONTEXT:-}" ]; then
+                screenshot "apps-hide-context-menu"
+                SHOT_CONTEXT=
+            fi
+            click_text "Hide from Menu"
+            return 0
+        fi
+        echo "context menu did not open (try $try), retrying"
+        key Escape 0.6
+        sleep 2
+    done
+    echo "FAIL the context menu of '$1' never opened"; status=1
 }
 dconf_has() { # key substring
     dconf read "$k/$1" | grep -qF "$2"
@@ -77,21 +91,23 @@ expect "the probe app is not new any more" "$(row_name 'Zqxhide Probe')" "Zqxhid
 
 # --- 2. Hide from Menu + Undo
 echo "-- hide via the context menu"
+SHOT_CONTEXT=1
 hide_via_context_menu "Zqxhide Probe"
 sleep 1
 check "hidden-apps holds the id" "$(dconf_has hidden-apps zqxhide.desktop; echo $?)"
 check "gone from All Apps" "$(row_index 'Zqxhide Probe' >/dev/null; [ $? = 1 ]; echo $?)"
-expect_state "the Undo banner is showing" undo true
+expect_state "the Undo banner is showing" layout.undo true
 screenshot apps-hide-banner
 echo "-- Undo"
 click_class spawn-undo-button
 sleep 1
 check "Undo removes it from hidden-apps" "$(dconf_has hidden-apps zqxhide.desktop; [ $? = 1 ]; echo $?)"
 check "back in All Apps after Undo" "$(row_index 'Zqxhide Probe' >/dev/null; echo $?)"
-expect_state "the banner is gone" undo false
+expect_state "the banner is gone" layout.undo false
 
 # --- 3. hidden: not in All Apps, categories; still in search
 echo "-- hide again, then look everywhere"
+SHOT_CONTEXT=
 hide_via_context_menu "Zqxhide Probe"
 sleep 1
 check "gone from All Apps (second time)" "$(row_index 'Zqxhide Probe' >/dev/null; [ $? = 1 ]; echo $?)"
@@ -107,14 +123,14 @@ expect "no category lists it ($cats categories checked)" "$found" 0
 screenshot apps-hidden-categories
 echo "-- search still finds it (search-hidden-apps on)"
 ui_call Search zqxhide >/dev/null; sleep 1.5
-expect_state "search finds the hidden app" results 1
+expect_state "search finds the hidden app" layout.results 1
 screenshot apps-hidden-search
 dconf write "$k/search-hidden-apps" false
 sleep 1.5
-expect_state "search no longer finds it with search-hidden-apps off" results 0
+expect_state "search no longer finds it with search-hidden-apps off" layout.results 0
 dconf write "$k/search-hidden-apps" true
 sleep 1.5
-expect_state "and finds it again with the switch on" results 1
+expect_state "and finds it again with the switch on" layout.results 1
 echo "-- restore (what the Preferences Restore button writes)"
 ui_call ShowView all >/dev/null; sleep 1
 dconf write "$k/hidden-apps" "@as []"
@@ -138,6 +154,10 @@ ui_call ShowView categories >/dev/null; sleep 1
 n="$(count spawn-new-dot)"
 check "a category dot is on screen ($n)" "$([ "$n" -ge 1 ]; echo $?)"
 screenshot apps-new-category-dot
+echo "-- search result"
+ui_call Search zqxnew >/dev/null; sleep 1.5
+expect "the search result has the New pill" "$(count spawn-new-badge)" 1
+screenshot apps-new-search
 echo "-- tile in the pinned grid"
 dconf write "$k/pinned-apps" "[{'id': 'zqxnew.desktop'}, {'id': 'org.gnome.Nautilus.desktop'}]"
 set_display Grid
