@@ -104,7 +104,18 @@ Signing happens on the host (`tools/lib/signing.sh`), never in a container, so t
 2. Back the key up offline now (secret key, public key and revocation certificate on an encrypted USB stick, away from the computer).
 3. Optional: move it to a YubiKey with `keytocard` (the script prints the steps). Back up first; `keytocard` replaces the local key with a stub.
 4. Install the signing tool on the publishing machine: `sudo dnf install rpm-sign` (`rpmsign` is not in the `rpm` package; `publish.sh` says so if it is missing).
-5. Put the fingerprint into the README ("Fedora (DNF repository)", the line that now says `FINGERPRINT`) and commit it, so that the README and the landing page agree.
+5. Update the README's "Fedora (DNF repository)" section in the same commit as the first signed publish, so that the README and the
+   landing page agree. Replace the unsigned note with the fingerprint and these install steps:
+
+   ```sh
+   sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.github.io/spawn/spawn.repo
+   curl -sSfO https://djshiye.github.io/spawn/RPM-GPG-KEY-spawn
+   gpg --show-keys --fingerprint RPM-GPG-KEY-spawn      # compare with the fingerprint in the README
+   sudo rpm --import RPM-GPG-KEY-spawn
+   sudo dnf install -y gnome-shell-extension-spawn && spawn-enable
+   ```
+
+   Say that the key comes from the same site as the packages (trust on first use), so users should compare the fingerprint.
 
 ### Every release
 

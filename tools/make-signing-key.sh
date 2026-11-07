@@ -67,7 +67,7 @@ ${b}1. Use it${r}
   export SPAWN_SIGNING_KEY=$fpr
   tools/publish.sh                      # then, after looking at .gh-pages/: tools/publish.sh --push
 
-  Put the fingerprint above into README.md (the "Fedora (DNF repository)" section) in the same commit.
+  Update README.md (the "Fedora (DNF repository)" section) in the same commit: docs/RELEASING.md, "Signing", step 5.
 
 ${b}2. Back it up offline (do this now, before anything else)${r}
 

@@ -35,27 +35,11 @@ npm run build       # tools/build.sh -> build/ and dist/spawn@djshiye.github.io.
 
 ### Fedora (DNF repository)
 
-Packages and repository metadata are signed. The signing key's fingerprint is:
-
-```
-FINGERPRINT: (to be filled in once the key exists; do not install until this line shows a fingerprint)
-```
-
-The key is downloaded from the same site as the packages, so a first install trusts that site. Compare the
-fingerprint that gpg prints below, and the one dnf shows if it asks you to accept the key, with the one above
-(and with the one on https://djshiye.github.io/spawn/); if they differ, do not continue.
-
-Add the repository, import the key and check its fingerprint, then install and log out and back in (Fedora 43, 44 or 45):
+One line installs and enables Spawn on Fedora 43, 44 or 45; then log out and back in:
 
 ```sh
-sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.github.io/spawn/spawn.repo
-curl -sSfO https://djshiye.github.io/spawn/RPM-GPG-KEY-spawn
-gpg --show-keys --fingerprint RPM-GPG-KEY-spawn      # compare with the fingerprint above
-sudo rpm --import RPM-GPG-KEY-spawn
-sudo dnf install -y gnome-shell-extension-spawn && spawn-enable
+sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.github.io/spawn/spawn.repo && sudo dnf install -y gnome-shell-extension-spawn && spawn-enable
 ```
-
-(If you skip the `rpm --import` step, dnf shows the same key and asks you to accept it at the first install.)
 
 - Update: `sudo dnf upgrade` (log out and in to load the new code).
 - Uninstall: `spawn-enable --remove; sudo dnf remove gnome-shell-extension-spawn` (and `sudo rm /etc/yum.repos.d/spawn.repo` to forget the repository).
@@ -63,7 +47,7 @@ sudo dnf install -y gnome-shell-extension-spawn && spawn-enable
 `spawn-enable` (installed by the package) adds the extension to GNOME's enabled list without asking the running shell:
 `gnome-extensions enable` only works for extensions the shell already knows, and it learns about a newly installed
 system-wide extension at the next login.
-The extension declares GNOME Shell 49, 50 and 51 (Fedora 43, 44 and 45). `spawn.repo` sets `gpgcheck=1` and `repo_gpgcheck=1`.
+The extension declares GNOME Shell 49, 50 and 51 (Fedora 43, 44 and 45). Packages are not signed yet (`gpgcheck=0`); signing is ready in `tools/publish.sh` and starts with the first release published with a key (see `docs/RELEASING.md`, "Signing").
 The extension lands in `/usr/share/gnome-shell/extensions/` and its schema in `/usr/share/glib-2.0/schemas/`.
 
 **Fedora Glass:** [Fedora Glass](https://github.com/djshiye/fedora-glass) 1.5.6 and later themes Spawn the way it
