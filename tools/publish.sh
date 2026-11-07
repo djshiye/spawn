@@ -7,6 +7,12 @@
 #   tools/publish.sh --allow-dirty   build the working tree (tracked + untracked, not ignored);
 #                                    for testing only, cannot be combined with --push
 #
+# Signing (docs/RELEASING.md, "Signing"): set SPAWN_SIGNING_KEY=<full 40-hex fingerprint> (or --signing-key FPR)
+# to sign every package and repodata/repomd.xml on THIS machine with gpg (a software key or a YubiKey; the key
+# never enters a container). Once the gh-pages tree holds RPM-GPG-KEY-spawn, publishing unsigned is refused and a
+# different key is refused unless --rotate-key is given. Before any key exists, publishing unsigned still works
+# but prints a warning.
+#
 # The extension is compiled ONCE on the host (npm ci from package-lock.json + tools/build.sh, in an exported
 # copy of the tree) and that build/ tree is packed into the source tarball next to the git archive; the
 # containers only run rpmbuild, so the package is identical on every Fedora release and needs no network
@@ -27,13 +33,20 @@ COMMIT_EMAIL="115914552+djshiye@users.noreply.github.com"
 
 push=0
 allow_dirty=0
-for arg in "$@"; do
-    case "$arg" in
+rotate_key=0
+signing_key="${SPAWN_SIGNING_KEY:-}"
+while [ $# -gt 0 ]; do
+    case "$1" in
         --push) push=1 ;;
         --allow-dirty) allow_dirty=1 ;;
-        -h|--help) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-        *) echo "usage: $0 [--push] [--allow-dirty]" >&2; exit 2 ;;
+        --rotate-key) rotate_key=1 ;;
+        --signing-key) [ $# -ge 2 ] || { echo "--signing-key needs a fingerprint" >&2; exit 2; }
+                       signing_key=$2; shift ;;
+        --signing-key=*) signing_key=${1#*=} ;;
+        -h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *) echo "usage: $0 [--push] [--allow-dirty] [--signing-key FPR] [--rotate-key]" >&2; exit 2 ;;
     esac
+    shift
 done
 if [ "$push" -eq 1 ] && [ "$allow_dirty" -eq 1 ]; then
     echo "Refusing to push a build made with --allow-dirty." >&2
@@ -43,9 +56,24 @@ fi
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 wt="$root/.gh-pages"
+# shellcheck source=lib/signing.sh
+. "$root/tools/lib/signing.sh"
 
 if [ -t 1 ]; then b=$'\e[1m'; c=$'\e[36m'; r=$'\e[0m'; else b=""; c=""; r=""; fi
 step() { printf '%s==>%s %s%s%s\n' "$c" "$r" "$b" "$*" "$r"; }
+
+# ---- 0. signing key (checked before the slow build) ----
+signed=0
+if [ -n "$signing_key" ]; then
+    signed=1
+    signing_key=$(signing_normalise_fpr "$signing_key")
+    signing_require_tools
+    signing_check_key "$signing_key"
+    step "Signing with key $(signing_pretty_fpr "$signing_key")"
+elif [ "$rotate_key" -eq 1 ]; then
+    echo "--rotate-key needs a signing key (SPAWN_SIGNING_KEY or --signing-key)." >&2
+    exit 2
+fi
 
 # ---- 1. version + release suffix ----
 if [ "$allow_dirty" -eq 0 ] && [ -n "$(git status --porcelain)" ]; then
@@ -119,7 +147,40 @@ if [ "$have_remote" -eq 1 ]; then
     fi
 fi
 
-# ---- 4. build, copy, prune and index inside a container per Fedora release ----
+# ---- 3b. key policy: no silent downgrade, no silent key change ----
+pubkey="$wt/RPM-GPG-KEY-spawn"
+published_fpr=""
+[ ! -f "$pubkey" ] || published_fpr=$(signing_pubkey_fpr "$pubkey")
+if [ -n "$published_fpr" ] && [ "$signed" -eq 0 ]; then
+    cat >&2 <<MSG
+Refusing to publish unsigned: the repository already ships RPM-GPG-KEY-spawn ($(signing_pretty_fpr "$published_fpr")),
+so clients use gpgcheck=1 and an unsigned package or spawn.repo would break (or silently weaken) every install.
+Set SPAWN_SIGNING_KEY=$published_fpr (or --signing-key) and run again.
+MSG
+    exit 1
+fi
+if [ -n "$published_fpr" ] && [ "$signing_key" != "$published_fpr" ] && [ "$rotate_key" -eq 0 ]; then
+    cat >&2 <<MSG
+Refusing to publish with a different key.
+  published key: $(signing_pretty_fpr "$published_fpr")
+  your key:      $(signing_pretty_fpr "$signing_key")
+Clients that already imported the published key will reject the new signatures. If this is a deliberate
+rotation (docs/RELEASING.md, "Rotating or extending the key"), run again with --rotate-key.
+MSG
+    exit 1
+fi
+if [ "$rotate_key" -eq 1 ] && [ "$signed" -eq 1 ] && [ "$published_fpr" = "$signing_key" ]; then
+    echo "   note: --rotate-key given but the key is unchanged; nothing to rotate" >&2
+fi
+if [ "$signed" -eq 1 ]; then
+    # The key file users will fetch; everything is verified against exactly this file.
+    signing_export_pubkey "$signing_key" "$wt/RPM-GPG-KEY-spawn"
+    pubkey="$wt/RPM-GPG-KEY-spawn"
+else
+    signing_warn_box "NOT SIGNING: SPAWN_SIGNING_KEY is not set and no key has been published yet."         "spawn.repo will say gpgcheck=0: anyone who can alter the site can alter what users install."         "Create a key with tools/make-signing-key.sh, then publish with SPAWN_SIGNING_KEY=<fingerprint>."
+fi
+
+# ---- 4. build in a container, sign on the host, index in a container, per Fedora release ----
 for fedora in "${FEDORA_RELEASES[@]}"; do
 IMAGE="$IMAGE_BASE:$fedora"
 # Fedora version in the path, like the baseurl's $releasever.
@@ -129,12 +190,12 @@ cache="${XDG_CACHE_HOME:-$HOME/.cache}/spawn-publish/dnf-$fedora"
 mkdir -p "$cache"
 rm -rf "$work/out"; mkdir -p "$work/out"
 
-step "Running rpmbuild and createrepo_c in $IMAGE"
+step "Running rpmbuild in $IMAGE"
 podman run --rm \
-    -v "$work:/work:Z" -v "$repo_dir:/repo:Z" -v "$cache:/var/cache/libdnf5:Z" \
-    -e NAME="$name" -e PKG="$PKG" -e SUFFIX="$release_suffix" -e FEDORA="$fedora" -e KEEP="$KEEP" \
+    -v "$work:/work:Z" -v "$cache:/var/cache/libdnf5:Z" \
+    -e NAME="$name" -e SUFFIX="$release_suffix" -e FEDORA="$fedora" \
     "$IMAGE" bash -euo pipefail -c '
-        dnf install -y --setopt=install_weak_deps=False rpm-build createrepo_c glib2 >/dev/null
+        dnf install -y --setopt=install_weak_deps=False rpm-build glib2 >/dev/null
         [ "$(rpm -E %fedora)" = "$FEDORA" ] || { echo "container is not Fedora $FEDORA" >&2; exit 1; }
         mkdir -p /root/rpmbuild/SOURCES
         cp /work/$NAME.tar.gz /root/rpmbuild/SOURCES/
@@ -145,26 +206,59 @@ podman run --rm \
         fi
         grep -E "^(Wrote:|Checking for unpackaged)" /work/rpmbuild.log
         cp /root/rpmbuild/RPMS/noarch/*.rpm /root/rpmbuild/SRPMS/*.src.rpm /work/out/
-        cp /work/out/*.rpm /repo/
-        # keep the newest $KEEP binary and source packages
-        for pat in "$PKG-[0-9]*.noarch.rpm" "$PKG-[0-9]*.src.rpm"; do
-            ls /repo/$pat | sort -V | head -n -"$KEEP" | xargs -r rm -v
-        done
+    '
+
+if [ "$signed" -eq 1 ]; then
+    # On the host, so the private key (or the YubiKey) is never exposed to a container. Must happen before
+    # createrepo_c, whose metadata records each package's checksum.
+    step "Signing the Fedora $fedora packages"
+    signing_sign_rpms "$signing_key" "$work"/out/*.rpm
+    signing_verify_rpms "$pubkey" "$work"/out/*.rpm
+fi
+cp "$work"/out/*.rpm "$repo_dir/"
+if [ "$signed" -eq 1 ]; then
+    # Packages already in the repository that do not verify against this key would fail gpgcheck=1 for
+    # everyone: drop them (see docs/RELEASING.md for why they are dropped and not re-signed).
+    signing_drop_unverifiable "$pubkey" "$repo_dir"
+fi
+# keep the newest $KEEP binary and source packages
+for pat in "$PKG-[0-9]*.noarch.rpm" "$PKG-[0-9]*.src.rpm"; do
+    # shellcheck disable=SC2012,SC2086
+    ls "$repo_dir"/$pat | sort -V | head -n -"$KEEP" | xargs -r rm -v
+done
+
+step "Running createrepo_c in $IMAGE"
+podman run --rm \
+    -v "$repo_dir:/repo:Z" -v "$cache:/var/cache/libdnf5:Z" \
+    "$IMAGE" bash -euo pipefail -c '
+        dnf install -y --setopt=install_weak_deps=False createrepo_c >/dev/null
         createrepo_c --update --general-compress-type gz /repo
     '
+rm -f "$repo_dir/repodata/repomd.xml.asc"
+if [ "$signed" -eq 1 ]; then
+    step "Signing repodata/repomd.xml (Fedora $fedora)"
+    signing_sign_repomd "$signing_key" "$repo_dir"
+fi
 done
+
+if [ "$signed" -eq 1 ]; then
+    step "Verifying every package and repomd.xml.asc against the published public key"
+    repo_dirs=()
+    for fedora in "${FEDORA_RELEASES[@]}"; do repo_dirs+=("$wt/fedora-$fedora"); done
+    signing_check_tree "$pubkey" "${repo_dirs[@]}"
+    echo "   all packages and repository metadata verify"
+fi
 
 # ---- 5. repo file, landing page, commit ----
 step "Writing spawn.repo and index.html"
-cat > "$wt/spawn.repo" <<REPO
-[spawn]
-name=Spawn
-baseurl=$REPO_URL/fedora-\$releasever/
-enabled=1
-# The packages are built locally and are not signed.
-gpgcheck=0
-metadata_expire=1h
-REPO
+signing_write_repo_file "$wt/spawn.repo" "$REPO_URL" "$signed"
+if [ "$signed" -eq 1 ]; then
+    trust_html="<p>Packages and repository metadata are signed. Key fingerprint (compare it with the README, this page comes from the same site):<br><code>$(signing_pretty_fpr "$signing_key")</code><br><a href=\"RPM-GPG-KEY-spawn\">RPM-GPG-KEY-spawn</a></p>"
+    trust_note="signed packages"
+else
+    trust_html=""
+    trust_note="unsigned packages"
+fi
 touch "$wt/.nojekyll"
 cat > "$wt/icon.svg" <<'SVG'
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
@@ -197,6 +291,7 @@ cat > "$wt/index.html" <<HTML
   pre { margin: 0; padding: 1em 1.2em; text-align: left; overflow-x: auto; background: #161720;
         border: 1px solid #262838; border-radius: 12px; font-size: .85rem; }
   a { color: #22d3ee; }
+  code { color: #e6e6ee; word-break: break-word; }
   small { display: block; margin-top: 1.6em; color: #6c6c82; }
 </style>
 </head>
@@ -208,8 +303,9 @@ cat > "$wt/index.html" <<HTML
   <pre>sudo dnf config-manager addrepo --from-repofile=$REPO_URL/spawn.repo
 sudo dnf install $PKG
 gnome-extensions enable spawn@djshiye.github.io</pre>
+  $trust_html
   <small><a href="https://github.com/djshiye/spawn">github.com/djshiye/spawn</a>
-  &middot; unsigned packages &middot; not affiliated with ArcMenu</small>
+  &middot; $trust_note &middot; not affiliated with ArcMenu</small>
 </main>
 </body>
 </html>
