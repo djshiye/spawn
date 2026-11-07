@@ -4,3 +4,6 @@ dist
 .dev
 .claude
 .gh-pages
+*.rev
+spawn-signing-*.asc
+*.key
