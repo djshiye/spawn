@@ -109,15 +109,12 @@ Signing happens on the host (`tools/lib/signing.sh`), never in a container, so t
 
 ### One-time setup
 
-1. On the machine you publish from: `tools/make-signing-key.sh [--backup-dir DIR]`. It creates the primary and the signing subkey;
-   gpg asks for the passphrase itself. It uploads and publishes nothing and writes no file. It prints the exact commands for steps 2 and 3
-   with the backup directory (default `~/spawn-key-backup`; it refuses a directory inside the repository, and `.gitignore` blocks `*.rev`,
-   `spawn-signing-*.asc` and `*.key`).
-2. Back up the primary secret key, the public key and the revocation certificate to an encrypted USB stick (two is better), check you can
-   read it back, then remove the primary secret from the laptop keyring (`gpg --export-secret-subkeys`, `gpg --delete-secret-keys`,
-   `gpg --import`, as printed). `gpg --list-secret-keys` must then show `sec#` (primary secret absent) and `ssb`.
-3. Optional but recommended: `keytocard` the signing subkey to a YubiKey and turn touch on (`ssb>`). Back up first;
-   `keytocard` replaces the local subkey with a stub.
+1. On the machine you publish from: `tools/make-signing-key.sh`. It creates one ed25519 signing key with no expiry
+   (gpg asks for the passphrase itself), prints the fingerprint, and uploads nothing.
+2. Back it up once with the command it prints (`gpg --export-secret-keys --armor <fpr> > ~/spawn-signing-key-backup.asc`)
+   and keep that file somewhere safe outside the repository, such as a password manager or a USB stick. Never commit it.
+3. Optional extra hardening, not required: an offline primary with a signing subkey, or a YubiKey (`keytocard`).
+   `publish.sh` accepts those layouts too.
 4. Install the signing tool on the publishing machine: `sudo dnf install rpm-sign` (`rpmsign` is not in the `rpm` package; `publish.sh` says so if it is missing).
 5. Update the README's "Fedora (DNF repository)" section in the same commit as the first signed publish, so that the README and the
    landing page agree. Replace the unsigned note with the fingerprint and these install steps:
