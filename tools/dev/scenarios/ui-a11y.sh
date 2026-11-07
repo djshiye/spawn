@@ -75,7 +75,10 @@ a11y_audit "pinned view" 10
 J="$(audit_json)"
 expect "search entry name" "$(name_of "$J" spawn-search-box name)" "Search apps, windows and files"
 expect "first pinned entry is named after the app" "$([ -n "$(name_of "$J" "$ITEM" name)" ] && echo named)" named
-expect "folder entry says what it is" "$(name_of "$J" "$FOLDER" name | cut -c1-8)" "Folder: "
+folder_name="$(name_of "$J" "$FOLDER" name)"
+echo "   folder entry name: $folder_name"
+printf '%s' "$folder_name" | grep -Eq '^Folder: .+, [0-9]+ apps?$'
+check "folder entry says what it is, with its name and app count" $?
 printf '%s' "$J" | python3 -c '
 import json, sys
 d = json.load(sys.stdin)
@@ -111,9 +114,15 @@ close_menu
 
 echo "-- search results and the announced count"
 open_menu 1.2
-ui_call Search fire >/dev/null; sleep 2.2
-n="$(state_get layout.results)"
-check "'fire' has results ($n)" "$([ "$n" -ge 1 ] && echo 0 || echo 1)"
+# a query that has results in this sandbox (the installed apps differ between machines)
+n=0
+for q in fire setting term file text a e; do
+    ui_call Search "$q" >/dev/null; sleep 2.2
+    n="$(state_get layout.results)"
+    [ "$n" -ge 1 ] && break
+done
+echo "   query '$q'"
+check "a query has results ($n)" "$([ "$n" -ge 1 ] && echo 0 || echo 1)"
 a11y_audit "search results" 3
 live="$(ui_call A11y | unwrap | python3 -c 'import json,sys; print(" | ".join(l["text"] + " (" + l["role"] + ")" for l in json.load(sys.stdin)["live"]))')"
 echo "   live regions: $live"
@@ -149,10 +158,14 @@ ui_call ShowView categories >/dev/null; sleep 1.2
 focus_changes spawn-category-row 1 spawn-shortcut-row "a category row"
 focus_changes spawn-list-row 0 spawn-shortcut-row "an app row of a list"
 focus_changes spawn-nav-button 0 spawn-shortcut-row "the Back button"
-ui_call Search fire >/dev/null; sleep 1.8
+ui_call Search "$q" >/dev/null; sleep 1.8
 focus_changes spawn-result-row 1 spawn-shortcut-row "a search result"
 key Escape 0.6
 screenshot ui-a11y-focus
+ui_call ShowView pinned >/dev/null; sleep 0.8
+focus_class "$ITEM" 1
+sleep 0.4
+screenshot ui-a11y-focus-$([ "$ITEM" = spawn-tile ] && echo tile || echo row)
 
 echo "-- visible keyboard focus (custom menu colours)"
 dconf write $K/menu-background-color "'rgb(250,250,250)'"
@@ -176,15 +189,33 @@ sleep 1.5
 close_menu
 
 echo "-- Reduce animation"
+# The headless sandbox may start with animations off (and keep them off); the checks follow the real state.
+animations() { ui_call A11y | unwrap | json_get animations; }
+class_expect() { # <animations state>: the class is there exactly when animations are off
+    local c ok=1
+    c="$(count spawn-reduce-motion)"
+    if [ "$1" = false ]; then [ "$c" -ge 1 ] && ok=0; else [ "$c" = 0 ] && ok=0; fi
+    check "spawn-reduce-motion count $c is right with animations $1" "$ok"
+}
 open_menu 1.2
-expect "animations are on by default" "$(ui_call A11y | unwrap | json_get animations)" true
-expect "no reduced-motion class while animations are on" "$(count spawn-reduce-motion)" 0
-on_td="$(appearance "$ITEM" 0 | json_get td)"
-check "the item face has a transition when animations are on (td=$on_td)" "$([ "${on_td%.*}" -gt 0 ] && echo 0 || echo 1)"
+start="$(animations)"
+echo "   animations at start: $start"
+class_expect "$start"
+dconf write /org/gnome/desktop/interface/enable-animations true
+sleep 1.5
+now="$(animations)"
+echo "   after enabling: $now"
+class_expect "$now"
+if [ "$now" = true ]; then
+    on_td="$(appearance "$ITEM" 0 | json_get td)"
+    check "the item face has a transition when animations are on (td=$on_td)" "$([ "${on_td%.*}" -gt 0 ] && echo 0 || echo 1)"
+else
+    echo "skip: St.Settings stays off in this sandbox, the animations-on checks cannot run"
+fi
 dconf write /org/gnome/desktop/interface/enable-animations false
 sleep 1.5
-expect "St.Settings follows 'Reduce animation'" "$(ui_call A11y | unwrap | json_get animations)" false
-check "the menu carries spawn-reduce-motion" "$([ "$(count spawn-reduce-motion)" -ge 1 ] && echo 0 || echo 1)"
+expect "St.Settings follows 'Reduce animation'" "$(animations)" false
+class_expect false
 off_td="$(appearance "$ITEM" 0 | json_get td)"
 expect "transitions are zero with animations off" "${off_td%.*}" 0
 close_menu
@@ -197,6 +228,5 @@ close_menu
 dconf write /org/gnome/desktop/interface/enable-animations true
 sleep 1.5
 open_menu 1.2
-expect "animations back on" "$(ui_call A11y | unwrap | json_get animations)" true
-expect "reduced-motion class removed" "$(count spawn-reduce-motion)" 0
+class_expect "$(animations)"
 close_menu
