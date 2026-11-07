@@ -105,6 +105,7 @@ export function openIconPicker(ctx: PrefsContext): IconPicker {
         valign: Gtk.Align.CENTER,
         tooltip_text: 'Symbolic icons follow the panel colour',
     });
+    label(search, 'Search icons');
     label(sourceBox, 'Icon source');
     label(styleBox, 'Icon style');
     const bar = new Gtk.Box({orientation: Gtk.Orientation.HORIZONTAL, spacing: 6, margin_start: 12, margin_end: 12, margin_top: 6});
@@ -202,6 +203,7 @@ export function openIconPicker(ctx: PrefsContext): IconPicker {
         margin_top: 6,
         margin_bottom: 6,
     });
+    label(grid, 'Icons');
     grid.connect('activate', (_g: Gtk.GridView, position: number) => {
         const item = model.get_item(position) as Gtk.StringObject | null;
         if (!item)

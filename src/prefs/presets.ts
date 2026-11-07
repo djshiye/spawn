@@ -93,6 +93,7 @@ function swatch(p: ThemePreset): Gtk.Widget | null {
         const css = new Gtk.CssProvider();
         css.load_from_string(`label { background-color: ${p.background}; color: ${p.foreground}; border: ${Math.max(1, p.borderWidth)}px solid ${p.border}; border-radius: 6px; font-weight: bold; }`);
         tile.get_style_context().add_provider(css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
+        label(tile, `Colour preview of ${p.name}`); // not just "Aa"
         return tile;
     } catch {
         return null;

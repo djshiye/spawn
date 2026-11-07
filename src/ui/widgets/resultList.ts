@@ -48,6 +48,7 @@ import type {SearchBatch, SearchResult} from '../../search/engine.js';
 import {error} from '../../core/log.js';
 import {highlightMarkup} from '../../search/highlight.js';
 import {iconSizeFor, showDescriptions} from '../util.js';
+import {markList, nameItem, ResultAnnouncer} from './a11y.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
 import type {ShortcutHost} from './shortcutRow.js';
 
@@ -85,6 +86,7 @@ export class ResultList {
     private _stale = false;
     private _pending = false;
     private _selected: St.Button | null = null;
+    private readonly _announcer: ResultAnnouncer;
     private _selectionVisible = true;
 
     constructor(scope: Scope, settings: SpawnSettings, host: ResultHost) {
@@ -97,6 +99,8 @@ export class ResultList {
             x_expand: true,
             y_expand: true,
         });
+        markList(this.actor, _('Search results'));
+        this._announcer = new ResultAnnouncer(scope);
         // Empty state: a soft icon, "No results for “query”" and a hint. The runner sizes itself to its
         // content, so it gets the compact one-line version (no icon, no hint).
         const compact = !!host.compactEmpty;
@@ -136,6 +140,7 @@ export class ResultList {
         this._query = query.trim();
         this._host.tooltips?.hide();
         this._pending = true;
+        this._announcer.hold();
         this._empty.hide();
         this._cancelEmpty?.();
         this._cancelEmpty = null;
@@ -165,6 +170,7 @@ export class ResultList {
     reset(): void {
         this._host.tooltips?.hide();
         this._pending = false;
+        this._announcer.reset();
         this._clearSections();
         this._selectionVisible = true;
         this._empty.hide();
@@ -185,6 +191,7 @@ export class ResultList {
 
         const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-result-section'});
         box.add_child(new St.Label({text: batch.providerTitle, style_class: 'spawn-section-title'}));
+        markList(box, batch.providerTitle);
         const section: Section = {providerId: batch.providerId, order: batch.order, box, rows: []};
         for (const result of results) {
             const row = this._makeRow(result, batch.query);
@@ -201,6 +208,12 @@ export class ResultList {
         this.actor.insert_child_at_index(box, at);
         this._trimTail();
         this._updateSelection();
+        this._announcer.found(this._sections.reduce((n, s) => n + s.rows.length, 0));
+    }
+
+    /** What the screen reader was last told about the result count (dev hook). */
+    get announcement(): string {
+        return this._announcer.lastMessage;
     }
 
     rows(): St.Widget[] {
@@ -270,6 +283,8 @@ export class ResultList {
                 this._emptyTitle.text = this._query ? _('No results for \u201C%s\u201D').replace('%s', this._query) : _('No results');
             }
             this._empty.visible = !this.hasResults;
+            if (this._pending && !this.hasResults)
+                this._announcer.found(0, 0);
         });
     }
 
@@ -332,14 +347,16 @@ export class ResultList {
             title.text = result.title;
         title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         text.add_child(title);
-        if (result.description && (result.alwaysShowDescription || showDescriptions(this._settings))) {
-            const d = new St.Label({text: result.description, style_class: 'spawn-row-description'});
+        const shownDescription = result.description && (result.alwaysShowDescription || showDescriptions(this._settings)) ? result.description : null;
+        if (shownDescription) {
+            const d = new St.Label({text: shownDescription, style_class: 'spawn-row-description'});
             d.clutter_text.ellipsize = Pango.EllipsizeMode.END;
             text.add_child(d);
         }
         box.add_child(text);
         button.set_child(makeFace('spawn-row-surface', box));
 
+        nameItem(button, result.title, {label: title, description: shownDescription, listItem: true});
         this._host.tooltips?.attach(button, title, result.description ? () => `${result.title}\n${result.description}` : undefined);
         wireItem(button, {
             activate: () => this._activate(result),

@@ -544,7 +544,7 @@ ui)
     done
     # The scenarios that are not tied to one display run again with the grid (ui-dnd / ui-keyboard
     # are grid-only, ui-list list-only: they cover their own display).
-    for name in ui-context ui-folder ui-tooltips ui-views ui-fixes; do
+    for name in ui-a11y ui-context ui-folder ui-tooltips ui-views ui-fixes; do
         echo
         echo "======== $name (Grid)"
         PINNED_DISPLAY=Grid; pin_vars

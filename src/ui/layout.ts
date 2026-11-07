@@ -53,6 +53,7 @@ import {reorderTarget, type ReorderKey} from '../model/reorder.js';
 import type {SearchHandle, SearchResult} from '../search/engine.js';
 import {AppContextMenu} from './contextMenu.js';
 import {acceptDrops, enableDrag, rejectDrops} from './dnd.js';
+import {bindReducedMotion, markList, nameItem} from './widgets/a11y.js';
 import {ActionRow, AppRow} from './widgets/appRow.js';
 import {ActionTile, AppTile, type TileHost} from './widgets/appTile.js';
 import {CategoryLinks} from './widgets/categoryLinks.js';
@@ -306,6 +307,7 @@ export class SpawnLayout implements ShortcutHost {
             y_expand: true,
         });
         this.actor.add_child(this._panes);
+        bindReducedMotion(scope, this.actor);
 
         // Registered FIRST so it runs LAST (LIFO): every widget scope is torn down while its
         // actors are still alive, then the root actor takes the remaining children with it.
@@ -698,7 +700,9 @@ export class SpawnLayout implements ShortcutHost {
         sync();
         this._services.settings.onChanged(this._scope, ['icon-size-misc', 'icon-size-apps', 'pinned-item-size'], sync);
         box.add_child(slot);
-        box.add_child(new St.Label({text, y_align: Clutter.ActorAlign.CENTER}));
+        const navLabel = new St.Label({text, y_align: Clutter.ActorAlign.CENTER});
+        box.add_child(navLabel);
+        nameItem(button, text, {label: navLabel});
         button.set_child(makeFace('spawn-nav-surface', box));
         wireItem(button, {activate: () => cb()});
         return button;
@@ -841,6 +845,7 @@ export class SpawnLayout implements ShortcutHost {
             this._right.add_style_class_name('spawn-no-card');
 
         const shortcutsBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-shortcuts-box'});
+        markList(shortcutsBox, _('Shortcuts'));
         const scroll = this._makeScroll(shortcutsBox, 'spawn-shortcuts', false);
         this._shortcutScroll = scroll;
         this._shortcutsBox = shortcutsBox;
@@ -1066,6 +1071,7 @@ export class SpawnLayout implements ShortcutHost {
         if (!this._pinnedScroll) {
             this._pinnedBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-pinned-box'});
             this._pinnedBox.add_child(new St.Label({text: _('Pinned'), style_class: 'spawn-section-title'}));
+            markList(this._grid.actor, _('Pinned apps'));
             this._pinnedBox.add_child(this._grid.actor);
             this._pinnedScroll = this._makeScroll(this._pinnedBox, 'spawn-pinned');
             acceptDrops(this._scope, this._pinnedScroll, this._services.pinned, {kind: 'grid', index: () => -1});
@@ -1121,6 +1127,7 @@ export class SpawnLayout implements ShortcutHost {
     }
 
     private _fillFrequent(box: St.BoxLayout): void {
+        markList(box, _('Frequent apps'));
         this._tooltips.hide();
         for (const c of box.get_children())
             c.destroy();
@@ -1189,6 +1196,10 @@ export class SpawnLayout implements ShortcutHost {
                 break;
         }
         return icons;
+    }
+
+    private _folderCount(uuid: string): number {
+        return this._services.pinned.folderApps(uuid).length;
     }
 
     /** `pinned-apps-display`: pinned apps and folder contents as full-width rows instead of tiles. */
@@ -1276,13 +1287,13 @@ export class SpawnLayout implements ShortcutHost {
                 const key = `f:${item.uuid}`;
                 const existing = this._tileEntries.get(key);
                 if (existing?.folder) {
-                    existing.folder.update(item.name, this._folderIcons(item.uuid));
+                    existing.folder.update(item.name, this._folderIcons(item.uuid), this._folderCount(item.uuid));
                     return {key, entry: existing};
                 }
                 const {scope, release} = ownedScope(this._scope, key);
                 const Folder = list ? FolderRow : FolderTile;
                 const tile = new Folder(item.uuid, item.name, this._folderIcons(item.uuid), this._folderHost,
-                    {...tileOpts, plateInset: sizeMetrics(size).plateInset});
+                    {...tileOpts, plateInset: sizeMetrics(size).plateInset, count: this._folderCount(item.uuid)});
                 enableDrag(scope, tile.actor, {id: item.uuid, isFolder: true});
                 acceptDrops(scope, tile.actor, store, {kind: 'folder', uuid: item.uuid}, dropOpts);
                 return {key, entry: {widget: tile.actor, scope, release, folder: tile}};

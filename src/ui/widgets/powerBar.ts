@@ -38,6 +38,7 @@ import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
 import {closeMenu, openMenu} from '../menuParams.js';
 import {iconSizeFor} from '../util.js';
+import {markToolbar, nameItem} from './a11y.js';
 import {fitPowerRow, type PowerFit} from './powerFit.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
 import {isDestructive, isPowerAvailable, type LogindInfo, POWER_INFO, POWER_RANK, powerSignalNames, probeLogind, runPowerAction, systemActions} from './powerActions.js';
@@ -78,6 +79,7 @@ export class PowerBar {
         this.actor = new St.BoxLayout({style_class: 'spawn-power-bar', orientation: Clutter.Orientation.VERTICAL, x_expand: true});
         this.actor.add_child(new St.Widget({style_class: 'spawn-power-rule', x_expand: true}));
         this._row = new St.BoxLayout({style_class: 'spawn-power-row', x_expand: true});
+        markToolbar(this._row, _('Power options'));
         this.actor.add_child(this._row);
 
         this._build();
@@ -173,7 +175,7 @@ export class PowerBar {
                 surface.x_expand = false;
                 surface.x_align = Clutter.ActorAlign.CENTER;
                 button.set_child(surface);
-                button.accessible_name = info.name;
+                nameItem(button, info.name);
                 this._host.tooltips?.attach(button, null, () => info.name, {delay: TOOLTIP_DELAY_MS, above: true});
                 wireItem(button, {activate: () => runPowerAction(type, this._host, this._scope)});
                 this._row.add_child(button);
@@ -204,8 +206,8 @@ export class PowerBar {
         surface.x_expand = false;
         surface.x_align = Clutter.ActorAlign.CENTER;
         button.set_child(surface);
-        button.accessible_name = _('More');
-        this._host.tooltips?.attach(button, null, () => _('More'), {delay: TOOLTIP_DELAY_MS, above: true});
+        nameItem(button, _('More power options'));
+        this._host.tooltips?.attach(button, null, () => _('More power options'), {delay: TOOLTIP_DELAY_MS, above: true});
         button.visible = false;
         if (before)
             this._row.insert_child_below(button, before);
@@ -246,6 +248,7 @@ export class PowerBar {
         box.add_child(menuIcon);
         box.add_child(new St.Label({text: _('Power Off'), y_align: Clutter.ActorAlign.CENTER}));
         button.set_child(makeFace('spawn-power-surface', box));
+        nameItem(button, _('Power Off options'));
         this._row.add_child(button);
         this._menuButton = button;
 

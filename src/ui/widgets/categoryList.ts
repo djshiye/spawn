@@ -26,6 +26,7 @@ import {error} from '../../core/log.js';
 import type {Scope} from '../../core/scope.js';
 import type {Services} from '../../core/services.js';
 import {applyScrollSettings, displayName, iconSizeFor, iconSizeOrHidden, showDescriptions} from '../util.js';
+import {markList, nameItem} from './a11y.js';
 import {AppRow} from './appRow.js';
 import type {TileHost} from './appTile.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
@@ -80,6 +81,7 @@ export class CategoryList {
         this.actor = new St.BoxLayout({style_class: 'spawn-category-list', x_expand: true, y_expand: true});
 
         this._columnBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, style_class: 'spawn-category-column-box'});
+        markList(this._columnBox, _('Categories'));
         this._column = this._makeScroll(this._columnBox, 'spawn-category-column');
         this._separator = new St.Widget({style_class: 'spawn-vseparator', y_expand: true});
         this._appsBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-category-apps-box'});
@@ -219,6 +221,7 @@ export class CategoryList {
             }
             box.add_child(label);
             button.set_child(makeFace('spawn-row-surface', box));
+            nameItem(button, cat.name, {label, listItem: true});
             this._host.tooltips?.attach(button, label);
             wireItem(button, {activate: () => this.showCategory(cat.id)});
             button.connect('key-focus-in', () => this.showCategory(cat.id));
@@ -256,6 +259,7 @@ export class CategoryList {
     private _buildList(id: string): St.BoxLayout {
         const settings = this._services.settings;
         const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
+        markList(box, this._buttons.get(id)?.accessible_name || id);
         try {
             const limit = id === 'frequent' ? Math.max(0, settings.get('max-frequent-apps')) : 0;
             const apps = this._services.appIndex.categoryApps(id, limit);

@@ -43,6 +43,15 @@
 //   SetPlaces(s json)        fake external devices / network locations / bookmarks in the right pane (needs
 //                            show-external-devices / show-bookmarks): [{kind: 'device'|'network'|'bookmark', name,
 //                            icon?, ejectable?}]; '' = the real ones. Ejecting a fake removes it
+//   A11y() -> s              JSON: the accessibility audit of everything visible in the popup, the context menus and the
+//                            panel button(s): {items: [{type, cls, name, label, role, atk}], unnamed: [...], live: [...],
+//                            animations}. An item is a visible St.Widget that can take the keyboard focus (or a reactive
+//                            St.Button); `name` is its accessible_name, `label` the text of its label_actor (menu items), `atk`
+//                            what the Atk object reports; `unnamed` lists the items with neither a name nor a label.
+//                            `live` are the screen reader live regions {text, role, visible}; `animations` is
+//                            St.Settings.enable_animations (ui-a11y.sh)
+//   Appearance(s cls, i nth) -> s  JSON: the theme values that draw the nth visible actor with `cls` (its `.spawn-surface`
+//                            face when it has one): {pseudo, bg, shadow, border, outline, td} (ui-a11y.sh compares focused and not)
 //   Dump() -> s              JSON: monitor, anchor, popup rect and every visible actor of the popup /
 //                            context menu / tooltip with allocation, padding, margin, colours, font
 //                            (the UX audit measurements; see tools/dev/scenarios/ui-ux-measure.sh)
@@ -50,6 +59,7 @@
 // Public API:
 //   installUiDevHooks(scope, settings, popup, appIndex): void
 
+import Atk from 'gi://Atk';
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -87,6 +97,8 @@ const IFACE = `
     <method name="HitSweepIn"><arg type="s" direction="in" name="containerCls"/><arg type="s" direction="in" name="itemCls"/><arg type="s" direction="in" name="rangeCls"/><arg type="s" direction="out" name="json"/></method>
     <method name="SetFrequent"><arg type="s" direction="in" name="ids"/></method>
     <method name="SetPlaces"><arg type="s" direction="in" name="json"/></method>
+    <method name="A11y"><arg type="s" direction="out" name="json"/></method>
+    <method name="Appearance"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/><arg type="s" direction="out" name="json"/></method>
     <method name="Dump"><arg type="s" direction="out" name="json"/></method>
   </interface>
 </node>`;
@@ -371,6 +383,83 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
         return JSON.stringify({rect: [cx, cy, cw, ch], range: [rx, rw], items: items.length, contiguous: gaps.length === 0, gaps, total, hit, skipped, misses});
     };
 
+    // ---- accessibility audit (A11y / Appearance) ----
+
+    const a11yAudit = (): string => {
+        const items: Array<Record<string, unknown>> = [];
+        const unnamed: Array<Record<string, unknown>> = [];
+        const seen = new Set<Clutter.Actor>();
+        const inScrollBar = (a: Clutter.Actor): boolean => {
+            for (let p: Clutter.Actor | null = a; p; p = p.get_parent()) {
+                if (p instanceof St.ScrollBar)
+                    return true;
+            }
+            return false;
+        };
+        const audit = (a: Clutter.Actor) => {
+            if (!a.visible || seen.has(a))
+                return;
+            seen.add(a);
+            if (a instanceof St.Widget && !(a instanceof St.ScrollView) && !(a instanceof St.ScrollBar) && !inScrollBar(a) &&
+                (a.can_focus || (a instanceof St.Button && a.reactive))) {
+                const label = a.label_actor as unknown as {text?: string} | null;
+                let atkName: string | null = null;
+                try {
+                    atkName = a.get_accessible()?.get_name() ?? null;
+                } catch {
+                    atkName = null;
+                }
+                const e: Record<string, unknown> = {
+                    type: a.constructor.name,
+                    cls: a.style_class ?? '',
+                    name: a.accessible_name ?? '',
+                    label: label?.text ?? '',
+                    role: Atk.role_get_name(a.accessible_role),
+                    atk: atkName,
+                };
+                items.push(e);
+                if (!e['name'] && !e['label'])
+                    unnamed.push(e);
+            }
+            for (const c of a.get_children())
+                audit(c);
+        };
+        for (const r of roots())
+            audit(r);
+        for (const b of findAll('spawn-button'))
+            audit(b);
+        const live: Array<Record<string, unknown>> = [];
+        for (const c of Main.uiGroup.get_children()) {
+            if (c instanceof St.Label && c.style_class === 'spawn-live-region')
+                live.push({text: c.text, role: Atk.role_get_name(c.accessible_role), visible: c.visible});
+        }
+        return JSON.stringify({items, unnamed, live, animations: St.Settings.get().enable_animations});
+    };
+
+    const appearance = (cls: string, nth: number): string => {
+        const a = findAll(cls)[nth];
+        if (!a)
+            throw new Error(`no visible actor with class '${cls}' at ${nth}`);
+        let face: Clutter.Actor = a;
+        for (const c of a.get_children()) {
+            if (hasClass(c, 'spawn-surface')) {
+                face = c;
+                break;
+            }
+        }
+        const node = (face as St.Widget).get_theme_node();
+        const col = (c: {red: number; green: number; blue: number; alpha: number}) => [c.red, c.green, c.blue, c.alpha];
+        const sh = node.get_box_shadow();
+        return JSON.stringify({
+            pseudo: (a as St.Widget).get_style_pseudo_class() ?? '',
+            bg: col(node.get_background_color()),
+            shadow: sh ? {color: col(sh.color), x: sh.xoffset, y: sh.yoffset, blur: sh.blur, spread: sh.spread, inset: sh.inset} : null,
+            border: [node.get_border_width(St.Side.TOP), col(node.get_border_color(St.Side.TOP))],
+            outline: node.get_outline_width(),
+            td: node.get_transition_duration(),
+        });
+    };
+
     const dump = (): string => {
         const sides: St.Side[] = [St.Side.TOP, St.Side.RIGHT, St.Side.BOTTOM, St.Side.LEFT];
         const col = (c: {red: number; green: number; blue: number; alpha: number}) => [c.red, c.green, c.blue, c.alpha];
@@ -485,6 +574,8 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
             reply(inv, () => new GLib.Variant('(s)', [hitSweepIn(container, item, range)])),
         SetFrequentAsync: ([ids]: [string], inv: Invocation) => reply(inv, () => appIndex.setFrequentOverride(ids ? ids.split(',') : null)),
         SetPlacesAsync: ([json]: [string], inv: Invocation) => reply(inv, () => popup.setFakePlaces(json ? JSON.parse(json) as FakePlace[] : null)),
+        A11yAsync: (_p: unknown[], inv: Invocation) => reply(inv, () => new GLib.Variant('(s)', [a11yAudit()])),
+        AppearanceAsync: ([cls, nth]: [string, number], inv: Invocation) => reply(inv, () => new GLib.Variant('(s)', [appearance(cls, nth)])),
         DumpAsync: (_p: unknown[], inv: Invocation) => reply(inv, () => new GLib.Variant('(s)', [dump()])),
         SearchAsync: ([q]: [string], inv: Invocation) => reply(inv, () => popup.search(q)),
         ShowViewAsync: ([id]: [string], inv: Invocation) => reply(inv, () => popup.showView(id)),

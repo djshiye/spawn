@@ -21,6 +21,7 @@ import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import type {TileHost} from './appTile.js';
+import {nameItem} from './a11y.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
 import type {TooltipManager} from './tooltip.js';
 import {symbolicGIcon} from '../util.js';
@@ -83,6 +84,7 @@ export class AppRow {
         box.add_child(text);
         button.set_child(opts.pinned ? box : makeFace('spawn-row-surface', box));
 
+        nameItem(button, opts.name ?? app.get_name(), {label, description: desc?.split('\n')[0], listItem: !opts.pinned});
         host.tooltips?.attach(button, label, desc ? () => `${app.get_name()}\n${desc}` : undefined);
         wireItem(button, {
             activate: ctrl => host.launch(app, ctrl),
@@ -122,6 +124,7 @@ export class ActionRow {
         label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         box.add_child(label);
         button.set_child(box);
+        nameItem(button, name, {label});
         host?.tooltips?.attach(button, label);
         wireItem(button, {activate, context: opts.context});
     }
