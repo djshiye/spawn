@@ -140,6 +140,11 @@ if ! git worktree list --porcelain | grep -qx "worktree $wt"; then
         git worktree add --orphan -b gh-pages "$wt"
     fi
 fi
+# A failed earlier run may have left half-written files; start from exactly what is committed.
+if git -C "$wt" rev-parse -q --verify HEAD >/dev/null; then
+    git -C "$wt" reset -q --hard HEAD
+fi
+git -C "$wt" clean -qfdx
 if [ "$have_remote" -eq 1 ]; then
     if ! git -C "$wt" merge -q --ff-only origin/gh-pages; then
         echo "Local gh-pages has diverged from origin/gh-pages; reconcile it in .gh-pages/ first." >&2
@@ -150,7 +155,11 @@ fi
 # ---- 3b. key policy: no silent downgrade, no silent key change ----
 pubkey="$wt/RPM-GPG-KEY-spawn"
 published_fpr=""
-[ ! -f "$pubkey" ] || published_fpr=$(signing_pubkey_fpr "$pubkey")
+# What is COMMITTED on gh-pages counts as published, not whatever is lying in the working copy.
+if git -C "$wt" cat-file -e HEAD:RPM-GPG-KEY-spawn 2>/dev/null; then
+    git -C "$wt" show HEAD:RPM-GPG-KEY-spawn >"$work/published-key.asc"
+    published_fpr=$(signing_pubkey_fpr "$work/published-key.asc")
+fi
 if [ -n "$published_fpr" ] && [ "$signed" -eq 0 ]; then
     cat >&2 <<MSG
 Refusing to publish unsigned: the repository already ships RPM-GPG-KEY-spawn ($(signing_pretty_fpr "$published_fpr")),
@@ -228,9 +237,26 @@ for pat in "$PKG-[0-9]*.noarch.rpm" "$PKG-[0-9]*.src.rpm"; do
 done
 
 step "Running createrepo_c in $IMAGE"
-podman run --rm \
-    -v "$repo_dir:/repo:Z" -v "$cache:/var/cache/libdnf5:Z" \
+podman_args=(-v "$repo_dir:/repo:Z" -v "$cache:/var/cache/libdnf5:Z" -e CHECK_SIGNED="$signed")
+# the public key only (read-only); the container never sees the private key
+[ "$signed" -eq 0 ] || podman_args+=(-v "$pubkey:/key/RPM-GPG-KEY-spawn:ro,Z")
+podman run --rm "${podman_args[@]}" \
     "$IMAGE" bash -euo pipefail -c '
+        if [ "$CHECK_SIGNED" = 1 ]; then
+            # this Fedora release'"'"'s own rpm must accept every package, with a keyring holding only our key
+            export LC_ALL=C
+            mkdir -p /tmp/k
+            rpmkeys --dbpath /tmp/k --define "_keyringpath /tmp/k/pubkeys/" --import /key/RPM-GPG-KEY-spawn
+            for f in /repo/*.rpm; do
+                out=$(rpmkeys --dbpath /tmp/k --define "_keyringpath /tmp/k/pubkeys/" -K "$f" 2>&1) || true
+                if ! printf "%s\n" "$out" | grep -q "signatures OK" \
+                    || printf "%s\n" "$out" | grep -Eqi "NOT OK|NOKEY|NOTTRUSTED|BAD|MISSING"; then
+                    echo "Fedora $(rpm -E %fedora) rpm rejects $f: $out" >&2
+                    exit 1
+                fi
+            done
+            echo "   Fedora $(rpm -E %fedora) rpm accepts every package"
+        fi
         dnf install -y --setopt=install_weak_deps=False createrepo_c >/dev/null
         createrepo_c --update --general-compress-type gz /repo
     '
@@ -243,9 +269,7 @@ done
 
 if [ "$signed" -eq 1 ]; then
     step "Verifying every package and repomd.xml.asc against the published public key"
-    repo_dirs=()
-    for fedora in "${FEDORA_RELEASES[@]}"; do repo_dirs+=("$wt/fedora-$fedora"); done
-    signing_check_tree "$pubkey" "${repo_dirs[@]}"
+    signing_check_tree "$pubkey" "$wt"
     echo "   all packages and repository metadata verify"
 fi
 

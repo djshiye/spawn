@@ -35,7 +35,7 @@ signing_normalise_fpr() {
 # holds exactly one primary key.
 signing_pubkey_fpr() {
     local file=$1 out n
-    out=$(gpg --batch --show-keys --with-colons "$file" 2>/dev/null) || signing_die "$file is not a readable OpenPGP key"
+    out=$(LC_ALL=C gpg --batch --show-keys --with-colons "$file" 2>/dev/null) || signing_die "$file is not a readable OpenPGP key"
     n=$(printf '%s\n' "$out" | grep -c '^pub:' || true)
     [ "$n" -eq 1 ] || signing_die "$file must contain exactly one primary key (found $n)"
     printf '%s\n' "$out" | awk -F: '/^fpr:/ {print $10; exit}'
@@ -53,33 +53,45 @@ signing_require_tools() {
     fi
 }
 
-# signing_check_key <fingerprint>: primary key present with a secret part (or smartcard stub), not expired
-# or revoked, can sign. Warns when it expires within 60 days.
+# signing_check_key <fingerprint>: the key layout Spawn uses is an OFFLINE certify-only primary (no expiry) plus a
+# signing subkey (no expiry) that lives on this machine or on a YubiKey. So the primary's secret part may be absent
+# (gpg shows "sec#") and the signing subkey may be a card stub ("ssb>"). Accepts the key when the primary is valid
+# and at least one valid, unexpired signing-capable key (the primary itself or a subkey) has its secret part here
+# (field 15 of the colon listing is "#" when it does not). Warns when the usable one expires within 60 days.
 signing_check_key() {
-    local fpr=$1 pub sec primary validity expires caps now
-    pub=$(gpg --batch --with-colons --fixed-list-mode --list-keys "$fpr" 2>/dev/null) \
+    local fpr=$1 pub sec primary validity usable cands t f v e c now found=0 soonest=""
+    pub=$(LC_ALL=C gpg --batch --with-colons --fixed-list-mode --list-keys "$fpr" 2>/dev/null) \
         || signing_die "public key $fpr is not in your gpg keyring (gpg --list-keys)"
     primary=$(printf '%s\n' "$pub" | awk -F: '/^fpr:/ {print $10; exit}')
     [ "${primary^^}" = "$fpr" ] \
         || signing_die "$fpr is not the fingerprint of a primary key; use the primary key's fingerprint"
-    sec=$(gpg --batch --with-colons --list-secret-keys "$fpr" 2>/dev/null) || sec=""
-    printf '%s\n' "$sec" | grep -q '^sec' \
-        || signing_die "no secret key for $fpr here (plug in the YubiKey, or check gpg --list-secret-keys)"
     validity=$(printf '%s\n' "$pub" | awk -F: '/^pub:/ {print $2; exit}')
     case "$validity" in
         r) signing_die "key $fpr has been revoked" ;;
-        e) signing_die "key $fpr has expired; extend it (gpg --edit-key $fpr expire) or rotate (docs/RELEASING.md)" ;;
+        e) signing_die "key $fpr has expired; see docs/RELEASING.md, \"Rotating the key\"" ;;
         i|d) signing_die "key $fpr is invalid or disabled (validity '$validity')" ;;
     esac
-    caps=$(printf '%s\n' "$pub" | awk -F: '/^(pub|sub):/ {printf "%s", $12}')
-    case "$caps" in *[sS]*) ;; *) signing_die "key $fpr has no signing capability" ;; esac
-    expires=$(printf '%s\n' "$pub" | awk -F: '/^pub:/ {print $7; exit}')
-    if [ -n "$expires" ]; then
-        now=$(date +%s)
-        if [ $((expires - now)) -lt $((60 * 86400)) ]; then
-            signing_warn_box "Signing key $fpr expires on $(date -u -d "@$expires" +%F)." \
-                "Extend it soon: gpg --edit-key $fpr expire (then re-export and republish)."
-        fi
+    sec=$(LC_ALL=C gpg --batch --with-colons --list-secret-keys "$fpr" 2>/dev/null) || sec=""
+    # fingerprints of the keys whose secret part is here or on a card
+    usable=$(printf '%s\n' "$sec" | awk -F: '/^(sec|ssb):/ {have = ($15 != "#")} /^fpr:/ && have {print $10; have = 0}')
+    # type:fingerprint:validity:expiry:capabilities of the primary and every subkey
+    cands=$(printf '%s\n' "$pub" | awk -F: '/^(pub|sub):/ {t=$1; v=$2; e=$7; c=$12; next} /^fpr:/ && t != "" {print t ":" $10 ":" v ":" e ":" c; t=""}')
+    now=$(date +%s)
+    while IFS=: read -r t f v e c; do
+        [ -n "$t" ] || continue
+        case "$c" in *s*) ;; *) continue ;; esac            # lower case: this key itself can sign
+        case "$v" in r|e|i|d) continue ;; esac
+        if [ -n "$e" ] && [ "$e" -le "$now" ]; then continue; fi
+        printf '%s\n' "$usable" | grep -qx "$f" || continue
+        found=1
+        if [ -n "$e" ] && { [ -z "$soonest" ] || [ "$e" -lt "$soonest" ]; }; then soonest=$e; fi
+        [ -z "$e" ] && soonest=""
+        [ -z "$e" ] && break
+    done <<<"$cands"
+    [ "$found" -eq 1 ] || signing_die "$fpr has no valid signing key with a secret part here: need an unexpired, unrevoked signing subkey (gpg --list-secret-keys shows it as ssb or ssb>; plug in the YubiKey if it is on one). See docs/RELEASING.md, \"Signing\""
+    if [ -n "$soonest" ] && [ $((soonest - now)) -lt $((60 * 86400)) ]; then
+        signing_warn_box "The signing key for $fpr expires on $(date -u -d "@$soonest" +%F)." \
+            "Users cannot be told about a changed expiry (dnf does not refresh a key it knows): see docs/RELEASING.md."
     fi
 }
 
@@ -116,11 +128,11 @@ signing_verify_rpms() {
     local pub=$1 db f out rc; shift
     [ $# -gt 0 ] || signing_die "no rpm files to verify"
     db=$(mktemp -d)
-    rpmkeys --dbpath "$db" --define "_keyringpath $db/pubkeys/" --import "$pub" >/dev/null 2>&1 \
+    LC_ALL=C rpmkeys --dbpath "$db" --define "_keyringpath $db/pubkeys/" --import "$pub" >/dev/null 2>&1 \
         || { rm -rf "$db"; signing_die "could not import $pub into a temporary rpm keyring"; }
     for f in "$@"; do
         rc=0
-        out=$(rpmkeys --dbpath "$db" --define "_keyringpath $db/pubkeys/" --checksig "$f" 2>&1) || rc=$?
+        out=$(LC_ALL=C rpmkeys --dbpath "$db" --define "_keyringpath $db/pubkeys/" --checksig "$f" 2>&1) || rc=$?
         # unsigned packages report "digests OK" and may exit 0, so insist on the word "signatures"
         if [ "$rc" -ne 0 ] || ! printf '%s\n' "$out" | grep -q 'signatures OK' \
             || printf '%s\n' "$out" | grep -Eqi 'NOT OK|NOKEY|NOTTRUSTED|BAD|MISSING'; then
@@ -166,12 +178,14 @@ signing_verify_repomd() {
     home=$(mktemp -d); chmod 700 "$home"
     gpg --homedir "$home" --batch --quiet --import "$pub" >/dev/null 2>&1 \
         || { rm -rf "$home"; signing_die "could not import $pub into a temporary gnupg home"; }
-    status=$(gpg --homedir "$home" --batch --status-fd 1 --verify \
+    status=$(LC_ALL=C gpg --homedir "$home" --batch --status-fd 1 --verify \
         "$dir/repodata/repomd.xml.asc" "$dir/repodata/repomd.xml" 2>/dev/null) \
         || { gpgconf --homedir "$home" --kill all 2>/dev/null || true; rm -rf "$home"
              signing_die "bad signature on $dir/repodata/repomd.xml"; }
     gpgconf --homedir "$home" --kill all 2>/dev/null || true
     rm -rf "$home"
+    printf '%s\n' "$status" | grep -q '^\[GNUPG:\] GOODSIG ' \
+        || signing_die "repomd.xml.asc in $dir has no good signature"
     printf '%s\n' "$status" | grep '^\[GNUPG:\] VALIDSIG' | grep -q " $want\( \|\$\)" \
         || signing_die "repomd.xml.asc in $dir was not made by key $want"
 }
@@ -204,17 +218,24 @@ REPO
     fi
 }
 
-# signing_check_tree <public-key-file> <repo-dir>...: the final gate before committing. Every rpm in every
-# directory verifies, every repomd.xml.asc verifies, and nothing is left unsigned.
+# signing_check_tree <public-key-file> <gh-pages-dir>: the final gate before committing. EVERY fedora-*/ directory
+# in the tree (not only the releases being built now) must be complete and signed: every rpm verifies and every
+# repomd.xml.asc verifies. A directory that fails is refused with its name, because it would break gpgcheck=1 for
+# the people using that Fedora release; remove or rebuild it.
 signing_check_tree() {
-    local pub=$1 dir f n; shift
-    for dir in "$@"; do
-        n=0
+    local pub=$1 root=$2 dir f n found=0
+    for dir in "$root"/fedora-*/; do
+        [ -d "$dir" ] || continue
+        dir=${dir%/}; found=1; n=0
         for f in "$dir"/*.rpm; do
             [ -e "$f" ] || continue
-            signing_verify_rpms "$pub" "$f"; n=$((n + 1))
+            ( signing_verify_rpms "$pub" "$f" ) \
+                || signing_die "$(basename "$dir") does not verify. Rebuild it, or remove it if that release is no longer supported (git -C $root rm -r -- $(basename "$dir"))"
+            n=$((n + 1))
         done
-        [ "$n" -gt 0 ] || signing_die "no packages in $dir"
-        signing_verify_repomd "$pub" "$dir"
+        [ "$n" -gt 0 ] || signing_die "no packages in $dir (remove the directory if that release is no longer supported)"
+        ( signing_verify_repomd "$pub" "$dir" ) \
+            || signing_die "$(basename "$dir")/repodata does not verify. Rebuild it, or remove it if that release is no longer supported"
     done
+    [ "$found" -eq 1 ] || signing_die "no fedora-*/ directories in $root"
 }
