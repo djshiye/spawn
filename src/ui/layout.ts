@@ -31,7 +31,12 @@
 // Keyboard (besides arrows / Tab): Ctrl+Up/Down/Left/Right and Ctrl+Home/End on a focused pinned entry (top
 // level or inside an open folder) move it (model/reorder.ts decides where, PinnedStore writes it, the focus
 // stays on the entry). "Delete Folder" shows an in-menu banner "Folder \u201cX\u201d deleted [Undo]" for 8 s
-// (UndoBanner; Ctrl+Z too); it ends when the menu closes or the pinned list changes otherwise.
+// (UndoBanner; Ctrl+Z too); it ends when the menu closes or the pinned list changes otherwise. "Hide from Menu"
+// (context menu) adds the app to `hidden-apps` and shows the same banner, "\u201cX\u201d hidden [Undo]".
+//
+// "New" badge: apps the NewAppsStore calls new get a pill in rows and tiles and their category a dot; the layout
+// only asks (TileHost.isNew), tells the store about the launches it starts and redraws what is cached when the
+// store changes.
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
@@ -47,6 +52,7 @@ import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
 import type {Entry, PinnedItemSize} from '../core/settings.js';
+import {addHidden, removeHidden} from '../model/hiddenApps.js';
 import type {FolderUndo, PinnedItem} from '../model/pinned.js';
 import {Places, type FakePlace, type Place} from '../model/places.js';
 import {reorderTarget, type ReorderKey} from '../model/reorder.js';
@@ -82,6 +88,8 @@ export interface LayoutHost {
     renameFolder?(uuid: string): void;
     /** Delete a pinned folder (its apps move to the top level) and offer Undo. */
     deleteFolder?(uuid: string): void;
+    /** Hide an app from the generated lists (All Apps, categories, Frequent) and offer Undo. */
+    hideApp?(app: Shell.App): void;
 }
 
 export type ViewId = 'pinned' | 'frequent' | 'categories' | 'all' | 'folder' | 'results' | 'favorites' | 'recent';
@@ -118,7 +126,7 @@ const RELAYOUT_KEYS = [
 /** Read once when a view is built: a change rebuilds the lists. */
 const VIEW_KEYS = [
     'icon-size-apps', 'apps-show-extra-details', 'show-search-result-details', 'apps-show-generic-names', 'max-frequent-apps',
-    'icon-size-categories', 'icon-style-categories',
+    'icon-size-categories', 'icon-style-categories', 'show-new-apps-badge',
 ] as const;
 
 /** Scroll bar behaviour: only re-applied to the existing scroll views, nothing is rebuilt. */
@@ -180,6 +188,8 @@ export class SpawnLayout implements ShortcutHost {
     private readonly _nav: St.BoxLayout;
     private readonly _undoBanner: UndoBanner;
     private _undo: FolderUndo | null = null;
+    /** The app hidden last (its banner offers Undo). */
+    private _undoHide: {id: string; name: string} | null = null;
     private _cancelUndoTimer: (() => void) | null = null;
     private readonly _backButton: St.Button;
     private readonly _allAppsButton: St.Button;
@@ -259,6 +269,7 @@ export class SpawnLayout implements ShortcutHost {
                 app,
                 folderUuid: folderUuid ?? (this._view === 'folder' ? this._folderView?.uuid ?? undefined : undefined),
             }),
+            isNew: app => this._services.newApps.showBadge(app.get_id() ?? ''),
             tooltips: this._tooltips,
         };
         this._folderHost = {
@@ -284,6 +295,7 @@ export class SpawnLayout implements ShortcutHost {
                 this._scope.idle(() => this._showFolder(uuid));
             },
             deleteFolder: uuid => this._deleteFolder(uuid),
+            hideApp: app => this._hideApp(app),
             renameFolder: uuid => {
                 this._scope.idle(() => {
                     this._showFolder(uuid);
@@ -331,7 +343,7 @@ export class SpawnLayout implements ShortcutHost {
         this._nav.add_child(this._backButton);
         this._nav.add_child(this._allAppsButton);
 
-        this._undoBanner = new UndoBanner(() => this._undoDelete());
+        this._undoBanner = new UndoBanner(() => this._undoLast());
         scope.add(() => this._cancelUndoTimer?.(), 'undo timer');
         // Any other change of the pinned list ends the undo window (restoring would clobber it).
         services.pinned.onChanged(scope, () => {
@@ -353,6 +365,18 @@ export class SpawnLayout implements ShortcutHost {
         services.appIndex.onChanged(scope, () => {
             if (this._isOpen && this._view === 'results' && this._search.text.trim().length > 0)
                 this._onSearchText(this._search.text);
+            this._refreshGeneratedLists();
+        });
+        // A new app was launched or aged out: pinned entries are cached per badge state. Deferred, because the
+        // launch comes from a click on one of those entries.
+        services.newApps.onChanged(scope, () => {
+            scope.idle(() => {
+                if (this._destroyed)
+                    return;
+                this._pinnedDirty = true;
+                if (this._pinnedShowing())
+                    this._syncPinnedIfNeeded();
+            });
         });
         this._search.onActivate(scope, () => this._onSearchActivate());
         this._search.onNavigate(scope, (key, shift) => this._onSearchKey(key, shift));
@@ -551,6 +575,9 @@ export class SpawnLayout implements ShortcutHost {
             renaming: this._folderView?.renaming ?? false,
             pinnedScroll: this._pinnedScroll?.vadjustment.value ?? 0,
             ghosts: [...this._tileEntries.keys()].filter(k => k.startsWith('m:')).length,
+            // accessible names of the app rows of the visible category list ("Firefox", "Firefox, new")
+            appRows: (this._categories?.appRows() ?? []).map(r => r.accessible_name ?? ''),
+            undo: this._undoBanner.visible,
         };
     }
 
@@ -664,6 +691,16 @@ export class SpawnLayout implements ShortcutHost {
             if (scroll)
                 applyScrollSettings(scroll, s);
         }
+    }
+
+    /** The catalogue changed (an app was installed, removed or hidden): Frequent lists that are on screen follow. */
+    private _refreshGeneratedLists(): void {
+        if (this._destroyed || !this._isOpen)
+            return;
+        if (this._view === 'frequent' && this._frequentBox)
+            this._fillFrequent(this._frequentBox);
+        else if (this._view === 'pinned')
+            this._refreshPinnedFrequent();
     }
 
     private _onInstalledChanged(): void {
@@ -1257,7 +1294,8 @@ export class SpawnLayout implements ShortcutHost {
             switch (item.kind) {
             case 'app': {
                 const app = item.missing ? null : lookupApp(this._services, item.id);
-                const key = `${app ? 'a' : 'm'}:${item.id}`;
+                // A badge on/off flips the key, so the cached entry is replaced when the app stops being new.
+                const key = `${app ? 'a' : 'm'}:${item.id}${app && this._tileHost.isNew?.(app) ? '*' : ''}`;
                 const existing = this._tileEntries.get(key);
                 if (existing)
                     return {key, entry: existing};
@@ -1391,7 +1429,46 @@ export class SpawnLayout implements ShortcutHost {
         this._cancelUndoTimer?.();
         this._cancelUndoTimer = null;
         this._undo = null;
+        this._undoHide = null;
         this._undoBanner.hide();
+    }
+
+    // ---- hide from menu + undo ----
+
+    /** "Hide from Menu": the app leaves the generated lists; a pinned app stays pinned. */
+    private _hideApp(app: Shell.App): void {
+        const id = app.get_id();
+        if (!id || this._destroyed)
+            return;
+        const settings = this._services.settings;
+        const hidden = settings.get('hidden-apps');
+        if (hidden.includes(id))
+            return;
+        settings.set('hidden-apps', addHidden(hidden, id));
+        const name = app.get_name() || id;
+        this._dismissUndo();
+        this._undoHide = {id, name};
+        this._undoBanner.show(_('\u201c%s\u201d hidden').format(name));
+        this._cancelUndoTimer = this._scope.timeout(UNDO_MS, () => this._dismissUndo());
+    }
+
+    private _undoHidden(): void {
+        const undo = this._undoHide;
+        this._dismissUndo();
+        if (!undo || this._destroyed)
+            return;
+        const settings = this._services.settings;
+        settings.set('hidden-apps', removeHidden(settings.get('hidden-apps'), undo.id));
+        if (this._isOpen)
+            this._focusMain();
+    }
+
+    /** The banner's Undo button / Ctrl+Z: whichever action the banner is showing. */
+    private _undoLast(): void {
+        if (this._undoHide)
+            this._undoHidden();
+        else
+            this._undoDelete();
     }
 
     private _undoDelete(): void {
@@ -1468,6 +1545,8 @@ export class SpawnLayout implements ShortcutHost {
         } catch (e) {
             error(`could not launch ${app.get_id()}`, e);
         }
+        // Launched once: no longer new (an app that is already running does not change state, so say it here).
+        this._services.newApps.markLaunched(app.get_id() ?? '');
         const keepOpen = ctrl && this._services.settings.get('keep-open-on-ctrl-click');
         if (!keepOpen)
             this._host.close();
@@ -1921,8 +2000,8 @@ export class SpawnLayout implements ShortcutHost {
             const reorder = REORDER_KEYS.get(sym);
             if (reorder && this._reorderFocused(reorder))
                 return Clutter.EVENT_STOP;
-            if ((sym === Clutter.KEY_z || sym === Clutter.KEY_Z) && this._undo) {
-                this._undoDelete();
+            if ((sym === Clutter.KEY_z || sym === Clutter.KEY_Z) && (this._undo || this._undoHide)) {
+                this._undoLast();
                 return Clutter.EVENT_STOP;
             }
         }

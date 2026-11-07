@@ -7,7 +7,8 @@
 // Public API:
 //   new Services(scope, settings, info)
 //   services.scope / .settings / .info
-//   services.appIndex     AppIndex (lazy)
+//   services.appIndex     AppIndex (lazy); follows hidden-apps / search-hidden-apps and feeds services.newApps
+//   services.newApps      NewAppsStore (lazy): the "New" badge state (known-apps / new-apps)
 //   services.pinned       PinnedStore (lazy)
 //   services.search       SearchEngine (lazy; apps/windows/recent/shell providers registered here)
 //   services.recentFiles  the RecentFilesProvider registered in services.search (also feeds the Recent Files view)
@@ -16,7 +17,10 @@
 //                         the session already includes them. Cheap, idempotent, never throws.
 //   ExtensionInfo         {uuid, path, iconDir}
 
+import Shell from 'gi://Shell';
+
 import {AppIndex} from '../model/appIndex.js';
+import {NewAppsStore} from '../model/newAppsStore.js';
 import {PinnedStore} from '../model/pinned.js';
 import {SearchEngine} from '../search/engine.js';
 import {AppsProvider} from '../search/providers/apps.js';
@@ -41,6 +45,7 @@ export class Services {
     readonly info: ExtensionInfo;
 
     private _appIndex: AppIndex | null = null;
+    private _newApps: NewAppsStore | null = null;
     private _pinned: PinnedStore | null = null;
     private _search: SearchEngine | null = null;
     private _shell: ShellProviders | null = null;
@@ -53,8 +58,36 @@ export class Services {
     }
 
     get appIndex(): AppIndex {
-        this._appIndex ??= new AppIndex(this.scope.child('appIndex'));
+        if (!this._appIndex) {
+            const scope = this.scope.child('appIndex');
+            const index = new AppIndex(scope);
+            const applyHidden = (): void => index.setHidden(this.settings.get('hidden-apps'), this.settings.get('search-hidden-apps'));
+            applyHidden();
+            this.settings.onChanged(scope, ['hidden-apps', 'search-hidden-apps'], applyHidden);
+            // Installed since the last look? The store only writes when something changed.
+            index.setAppsObserver(ids => this.newApps.sync(ids));
+            this._appIndex = index;
+        }
         return this._appIndex;
+    }
+
+    get newApps(): NewAppsStore {
+        if (!this._newApps) {
+            const scope = this.scope.child('newApps');
+            const store = new NewAppsStore(scope, this.settings);
+            // Any launch, from the menu or from elsewhere: the app is no longer new.
+            try {
+                scope.connect(Shell.AppSystem.get_default(), 'app-state-changed', (_s: Shell.AppSystem, app: Shell.App) => {
+                    const id = app.get_id();
+                    if (id && (app.state === Shell.AppState.STARTING || app.state === Shell.AppState.RUNNING))
+                        store.markLaunched(id);
+                });
+            } catch (e) {
+                error('cannot watch app launches', e);
+            }
+            this._newApps = store;
+        }
+        return this._newApps;
     }
 
     get pinned(): PinnedStore {

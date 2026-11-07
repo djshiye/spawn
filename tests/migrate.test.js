@@ -156,6 +156,14 @@ test('pinned apps and the three folders are imported with their apps', () => {
         assert(pinned.some(e => e.id === f.uuid && e.isFolder === 'true'), `folder ${f.name} missing from pinned-apps`);
 });
 
+test("ArcMenu's show-recently-installed-apps becomes show-new-apps-badge; a wrong format is skipped", () => {
+    let p = planMigration(snap({'show-recently-installed-apps': false}));
+    assertEquals(p.items.filter(i => i.key === 'show-new-apps-badge').map(i => [i.from, i.value]), [['show-recently-installed-apps', false]]);
+    assertEquals(p.skipped, []);
+    p = planMigration(snap({'show-recently-installed-apps': 'yes'}));
+    assertEquals(p.skipped, [{key: 'show-recently-installed-apps', reason: 'unexpected value format'}]);
+});
+
 test('describePlan lists import, skipped and warnings', () => {
     const lines = describePlan(plan).join('\n');
     assert(lines.includes('Will import') && lines.includes('Skipped') && lines.includes('menu-layout'));

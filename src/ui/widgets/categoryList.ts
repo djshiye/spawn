@@ -14,6 +14,8 @@
 //   list.appRows(): St.Widget[]           rows of the selected category
 //   list.selectedId: string
 //   list.destroy()
+//   A category that contains a new app (services.newApps, show-new-apps-badge) gets a subtle dot after its name and
+//   the accessible name "<name>, contains new apps"; the lists rebuild when that changes.
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
@@ -29,11 +31,14 @@ import {applyScrollSettings, displayName, iconSizeFor, iconSizeOrHidden, showDes
 import {AppRow} from './appRow.js';
 import type {TileHost} from './appTile.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
+import {makeNewDot} from './newBadge.js';
 
 interface CategoryEntry {
     id: string;
     name: string;
     icon: string;
+    /** Contains an app that shows the "New" badge. */
+    hasNew: boolean;
 }
 
 /** Adwaita symbolic icon for a GMenu category (the menu data only ships colourful ones). */
@@ -95,6 +100,18 @@ export class CategoryList {
                 this.refresh();
             else
                 this._dirty = true;
+        });
+        // A new app was launched (or aged out): redraw once the click that caused it is over, so the row that
+        // was clicked is not destroyed inside its own handler.
+        services.newApps.onChanged(scope, () => {
+            scope.idle(() => {
+                if (this._destroyed)
+                    return;
+                if (this.actor.mapped)
+                    this.refresh();
+                else
+                    this._dirty = true;
+            });
         });
         scope.add(() => this.destroy(), 'CategoryList');
     }
@@ -194,13 +211,22 @@ export class CategoryList {
     }
 
     private _categories(): CategoryEntry[] {
+        const index = this._services.appIndex;
+        const news = this._services.newApps;
+        const hasNew = (apps: readonly {get_id(): string | null}[]): boolean => news.anyNew(apps.map(a => a.get_id() ?? ''));
         const out: CategoryEntry[] = [
-            {id: 'all', name: _('All Apps'), icon: 'view-app-grid-symbolic'},
-            {id: 'frequent', name: _('Frequent'), icon: 'document-open-recent-symbolic'},
+            {id: 'all', name: _('All Apps'), icon: 'view-app-grid-symbolic', hasNew: hasNew(index.apps())},
+            {id: 'frequent', name: _('Frequent'), icon: 'document-open-recent-symbolic', hasNew: false},
         ];
         const symbolic = this._services.settings.get('icon-style-categories') === 'Symbolic';
-        for (const c of this._services.appIndex.categories())
-            out.push({id: c.id, name: c.name, icon: symbolic ? symbolicCategoryIcon(c.id, c.name) : c.iconName || 'applications-other'});
+        for (const c of index.categories()) {
+            out.push({
+                id: c.id,
+                name: c.name,
+                icon: symbolic ? symbolicCategoryIcon(c.id, c.name) : c.iconName || 'applications-other',
+                hasNew: hasNew(c.apps),
+            });
+        }
         return out;
     }
 
@@ -218,6 +244,10 @@ export class CategoryList {
                 box.add_child(icon);
             }
             box.add_child(label);
+            if (cat.hasNew) {
+                box.add_child(makeNewDot());
+                button.accessible_name = _('%s, contains new apps').format(cat.name);
+            }
             button.set_child(makeFace('spawn-row-surface', box));
             this._host.tooltips?.attach(button, label);
             wireItem(button, {activate: () => this.showCategory(cat.id)});

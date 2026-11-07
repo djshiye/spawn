@@ -10,6 +10,8 @@
 //   row.app: Shell.App
 //   row.destroy()
 //   RowOptions: {iconSize?, description?: boolean, folderUuid?, symbolic?, name?, pinned?}
+//   A row of an app the host calls new (TileHost.isNew) gets a "New" pill after its name and the accessible name
+//   "<name>, new" (widgets/newBadge.ts).
 //   Every row is an outer transparent button (`spawn-pinned-row`, or `spawn-list-row` for a plain list) around a
 //   `spawn-row-surface` that draws it (see interact.ts).
 //   new ActionRow(name, icon, activate, host?, opts?)   arbitrary action; opts: {iconSize?, context?}
@@ -22,6 +24,7 @@ import St from 'gi://St';
 
 import type {TileHost} from './appTile.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
+import {makeNewBadge, newAccessibleName} from './newBadge.js';
 import type {TooltipManager} from './tooltip.js';
 import {symbolicGIcon} from '../util.js';
 
@@ -71,9 +74,22 @@ export class AppRow {
             y_align: Clutter.ActorAlign.CENTER,
             x_expand: true,
         });
-        const label = new St.Label({text: opts.name ?? app.get_name(), style_class: 'spawn-row-label'});
+        const name = opts.name ?? app.get_name() ?? '';
+        const label = new St.Label({text: name, style_class: 'spawn-row-label'});
         label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-        text.add_child(label);
+        const isNew = Boolean(host.isNew?.(app));
+        if (isNew) {
+            // The pill sits after the name; the name shrinks (ellipsis) before the pill does.
+            const line = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
+            label.x_expand = true;
+            label.y_align = Clutter.ActorAlign.CENTER;
+            line.add_child(label);
+            line.add_child(makeNewBadge());
+            text.add_child(line);
+        } else {
+            text.add_child(label);
+        }
+        button.accessible_name = newAccessibleName(name, isNew);
         const desc = opts.description ? app.get_description() : null;
         if (desc) {
             const dl = new St.Label({text: desc.split('\n')[0], style_class: 'spawn-row-description'});
