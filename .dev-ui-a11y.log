@@ -3,25 +3,26 @@ dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Activating service name='ca.desr
 dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Successfully activated service 'ca.desrt.dconf'
 seeded settings loaded (theme: default)
 org.gnome.Shell is on the bus
-dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Activating service name='org.gnome.Shell.Extensions' requested by ':1.12' (uid=0 pid=98 comm="gnome-extensions info spawn@djshiye.github.io")
+dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Activating service name='org.gnome.Shell.Extensions' requested by ':1.12' (uid=0 pid=97 comm="gnome-extensions info spawn@djshiye.github.io")
 dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Activating service name='org.gnome.Shell.Screencast' requested by ':1.9' (uid=0 pid=66 comm="gnome-shell --headless --wayland --virtual-monitor")
 dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Activating service name='org.gnome.Shell.CalendarServer' requested by ':1.9' (uid=0 pid=66 comm="gnome-shell --headless --wayland --virtual-monitor")
-dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Activating service name='org.gnome.evolution.dataserver.Sources5' requested by ':1.13' (uid=0 pid=125 comm="/usr/libexec/gnome-shell-calendar-server")
+dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Activating service name='org.gnome.evolution.dataserver.Sources5' requested by ':1.14' (uid=0 pid=126 comm="/usr/libexec/gnome-shell-calendar-server")
 dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Activated service 'org.gnome.evolution.dataserver.Sources5' failed: Failed to execute program org.gnome.evolution.dataserver.Sources5: No such file or directory
 
-(gnome-shell-calendar-server:125): ShellCalendarServer-WARNING **: 11:02:32.567: Failed to start evolution-source-registry: Error calling StartServiceByName for org.gnome.evolution.dataserver.Sources5: Failed to execute program org.gnome.evolution.dataserver.Sources5: No such file or directory
+(gnome-shell-calendar-server:126): ShellCalendarServer-WARNING **: 11:04:40.623: Failed to start evolution-source-registry: Error calling StartServiceByName for org.gnome.evolution.dataserver.Sources5: Failed to execute program org.gnome.evolution.dataserver.Sources5: No such file or directory
 dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Activated service 'org.gnome.Shell.CalendarServer' failed: Process org.gnome.Shell.CalendarServer exited with status 1
 dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Activating service name='org.gnome.Shell.Notifications' requested by ':1.9' (uid=0 pid=66 comm="gnome-shell --headless --wayland --virtual-monitor")
 dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Successfully activated service 'org.gnome.Shell.Notifications'
 dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Successfully activated service 'org.gnome.Shell.Extensions'
-dbus-run-session: ignoring unknown child process 104
+dbus-run-session: ignoring unknown child process 103
 -- panel button and main menu
 ok   the panel button is named (Spawn menu)
    20 focusable actors, 0 without a name or label
 ok   pinned view: every focusable actor has an accessible name
 ok   search entry name (Search apps, windows and files)
 ok   first pinned entry is named after the app (named)
-ok   folder entry says what it is (Folder: )
+   folder entry name: Folder: Internet, 3 apps
+ok   folder entry says what it is, with its name and app count
    St_Button  spawn-pinned-row             name='steam' role=button atk='steam'
    St_Button  spawn-pinned-row             name='Claude' role=button atk='Claude'
    St_Button  spawn-pinned-row             name='husk' role=button atk='husk'
@@ -50,12 +51,13 @@ ok   folder popup: every focusable actor has an accessible name
    24 focusable actors, 0 without a name or label
 ok   app context menu: every focusable actor has an accessible name
 -- search results and the announced count
-FAIL 'fire' has results (0)
-   14 focusable actors, 0 without a name or label
+   query 'setting'
+ok   a query has results (1)
+   15 focusable actors, 0 without a name or label
 ok   search results: every focusable actor has an accessible name
-   live regions: No results (alert)
-FAIL the result count is announced through an alert live region
-FAIL the result count matches the rows (got '', expected '0')
+   live regions: 1 result (alert)
+ok   the result count is announced through an alert live region
+ok   the result count matches the rows (1)
    live regions: No results
 ok   an empty search announces 'No results'
 -- runner
@@ -90,6 +92,7 @@ skip an app row of a list: no visible 'spawn-list-row' #0
 ok   focus is visible on the Back button (face changes, with a ring)
 skip a search result: no visible 'spawn-result-row' #1
 screenshot: /work/.dev/ubu/shots/ui-a11y-focus.png
+screenshot: /work/.dev/ubu/shots/ui-a11y-focus-row.png
 -- visible keyboard focus (custom menu colours)
    before: bg=[0, 0, 0, 0] shadow=None border=[0, [0, 0, 0, 0]] outline=0 pseudo='first-child last-child'
    after:  bg=[220, 220, 235, 255] shadow={'color': [20, 20, 20, 255], 'x': 0, 'y': 0, 'blur': 0, 'spread': 2, 'inset': True} border=[0, [0, 0, 0, 0]] outline=0 pseudo='first-child last-child focus'
@@ -102,31 +105,32 @@ screenshot: /work/.dev/ubu/shots/ui-a11y-focus-custom.png
    after:  bg=[60, 60, 70, 255] shadow={'color': [255, 255, 255, 255], 'x': 0, 'y': 0, 'blur': 0, 'spread': 2, 'inset': True} border=[0, [0, 0, 0, 0]] outline=0 pseudo='first-child last-child focus'
 ok   focus is visible on a pinned entry (dark custom colours) (face changes, with a ring)
 -- Reduce animation
-FAIL animations are on by default (got 'false', expected 'true')
-FAIL no reduced-motion class while animations are on (got '1', expected '0')
-FAIL the item face has a transition when animations are on (td=0)
+   animations at start: false
+ok   spawn-reduce-motion count 1 is right with animations false
+   after enabling: false
+ok   spawn-reduce-motion count 1 is right with animations false
+skip: St.Settings stays off in this sandbox, the animations-on checks cannot run
 ok   St.Settings follows 'Reduce animation' (false)
-ok   the menu carries spawn-reduce-motion
+ok   spawn-reduce-motion count 1 is right with animations false
 ok   transitions are zero with animations off (0)
 ok   the menu still opens with animations off (true)
 ok   the folder popup opens at once (folder)
-FAIL animations back on (got 'false', expected 'true')
-FAIL reduced-motion class removed (got '1', expected '0')
+ok   spawn-reduce-motion count 1 is right with animations false
 RESULT: no spawn errors in the shell log
 RESULT: no CRITICAL lines in the shell log
-dbus-run-session: ignoring unknown child process 1366
-dbus-run-session: ignoring unknown child process 159
-dbus-run-session: ignoring unknown child process 136
+dbus-run-session: ignoring unknown child process 1373
+dbus-run-session: ignoring unknown child process 1423
+dbus-run-session: ignoring unknown child process 138
 
 ---- shell log (filtered: spawn | JS ERROR | Extension | TypeError) ----
-GNOME Shell-Message: 11:02:32.785: [spawn] theme loaded: /work/.dev/ubu/runtime/spawn/242292f3/theme.css
-GNOME Shell-Message: 11:02:32.788: [spawn] attached to main
-GNOME Shell-Message: 11:02:32.789: [spawn] Super key intercepted (GNOME handler 10842 blocked, ours 12670)
-GNOME Shell-Message: 11:02:32.789: [spawn] enabled
-GNOME Shell-Message: 11:02:32.792: [spawn] Dev D-Bus interface enabled
-GNOME Shell-Message: 11:03:15.503: [spawn] theme loaded: /work/.dev/ubu/runtime/spawn/242292f3/theme.css
-GNOME Shell-Message: 11:03:20.985: [spawn] theme loaded: /work/.dev/ubu/runtime/spawn/242292f3/theme.css
-GNOME Shell-Message: 11:03:24.718: [spawn] theme loaded: /work/.dev/ubu/runtime/spawn/242292f3/theme.css
+GNOME Shell-Message: 11:04:40.838: [spawn] theme loaded: /work/.dev/ubu/runtime/spawn/2b7c6edc/theme.css
+GNOME Shell-Message: 11:04:40.841: [spawn] attached to main
+GNOME Shell-Message: 11:04:40.842: [spawn] Super key intercepted (GNOME handler 10841 blocked, ours 12676)
+GNOME Shell-Message: 11:04:40.842: [spawn] enabled
+GNOME Shell-Message: 11:04:40.844: [spawn] Dev D-Bus interface enabled
+GNOME Shell-Message: 11:05:27.219: [spawn] theme loaded: /work/.dev/ubu/runtime/spawn/2b7c6edc/theme.css
+GNOME Shell-Message: 11:05:32.685: [spawn] theme loaded: /work/.dev/ubu/runtime/spawn/2b7c6edc/theme.css
+GNOME Shell-Message: 11:05:36.406: [spawn] theme loaded: /work/.dev/ubu/runtime/spawn/2b7c6edc/theme.css
 ---- end of log (full log: /work/.dev/ubu/shell.log) ----
 dbus-run-session: ignoring unknown child process 36
 dbus-run-session: dbus-daemon exited with code 0

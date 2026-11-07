@@ -1,0 +1,138 @@
+dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] org.freedesktop.DBus.Error.AccessDenied: Failed to set fd limit to 65536: Operation not permitted
+dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Activating service name='ca.desrt.dconf' requested by ':1.1' (uid=0 pid=30 comm="dconf write /org/gnome/shell/enabled-extensions ['")
+dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Successfully activated service 'ca.desrt.dconf'
+org.gnome.Shell is on the bus
+dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Activating service name='org.gnome.Shell.Extensions' requested by ':1.10' (uid=0 pid=88 comm="gnome-extensions info spawn@djshiye.github.io")
+dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Activating service name='org.gnome.Shell.Screencast' requested by ':1.7' (uid=0 pid=55 comm="gnome-shell --headless --wayland --virtual-monitor")
+dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Activating service name='org.gnome.Shell.CalendarServer' requested by ':1.7' (uid=0 pid=55 comm="gnome-shell --headless --wayland --virtual-monitor")
+dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Activating service name='org.gnome.evolution.dataserver.Sources5' requested by ':1.11' (uid=0 pid=112 comm="/usr/libexec/gnome-shell-calendar-server")
+dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Activated service 'org.gnome.evolution.dataserver.Sources5' failed: Failed to execute program org.gnome.evolution.dataserver.Sources5: No such file or directory
+
+(gnome-shell-calendar-server:112): ShellCalendarServer-WARNING **: 11:07:31.519: Failed to start evolution-source-registry: Error calling StartServiceByName for org.gnome.evolution.dataserver.Sources5: Failed to execute program org.gnome.evolution.dataserver.Sources5: No such file or directory
+dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Activated service 'org.gnome.Shell.CalendarServer' failed: Process org.gnome.Shell.CalendarServer exited with status 1
+dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Activating service name='org.gnome.Shell.Notifications' requested by ':1.7' (uid=0 pid=55 comm="gnome-shell --headless --wayland --virtual-monitor")
+dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Successfully activated service 'org.gnome.Shell.Notifications'
+dbus-daemon[16]: [session uid=0 pid=16 pidfd=5] Successfully activated service 'org.gnome.Shell.Extensions'
+dbus-run-session: ignoring unknown child process 94
+-- panel button and main menu
+ok   the panel button is named (Spawn menu)
+   23 focusable actors, 0 without a name or label
+ok   pinned view: every focusable actor has an accessible name
+ok   search entry name (Search apps, windows and files)
+ok   first pinned entry is named after the app (named)
+   folder entry name: 
+FAIL folder entry says what it is, with its name and app count
+   St_Button  spawn-tile spawn-tile-missin name='firefox' role=button atk='firefox'
+   St_Button  spawn-tile                   name='Nautilus' role=button atk='Nautilus'
+   St_Button  spawn-tile                   name='Software' role=button atk='Software'
+   St_Button  spawn-tile                   name='Settings' role=button atk='Settings'
+   St_Button  spawn-tile                   name='Ptyxis' role=button atk='Ptyxis'
+   St_Button  spawn-nav-button             name='All Apps' role=button atk='All Apps'
+   St_Entry   spawn-search-box spawn-searc name='Search apps, windows and files' role=panel atk='Search apps, windows and files'
+   St_Button  spawn-user-card              name='root, account settings' role=button atk='root, account settings'
+   St_Button  spawn-shortcut-row           name='Home' role=list item atk='Home'
+   St_Button  spawn-shortcut-row           name='Documents' role=list item atk='Documents'
+   St_Button  spawn-shortcut-row           name='Downloads' role=list item atk='Downloads'
+   St_Button  spawn-shortcut-row           name='Music' role=list item atk='Music'
+FAIL an item is named 'Games'
+ok   an item is named 'Power Off'
+ok   an item is named 'Restart'
+-- other views
+   56 focusable actors, 0 without a name or label
+ok   categories view: every focusable actor has an accessible name
+   18 focusable actors, 0 without a name or label
+ok   frequent view: every focusable actor has an accessible name
+-- folder popup
+FAIL folder view is open (got 'pinned', expected 'folder')
+   23 focusable actors, 0 without a name or label
+ok   folder popup: every focusable actor has an accessible name
+-- context menu (menu key on the first entry)
+   1 focusable actors, 0 without a name or label
+FAIL app context menu: every focusable actor has an accessible name
+-- search results and the announced count
+   query 'setting'
+ok   a query has results (1)
+   19 focusable actors, 0 without a name or label
+ok   search results: every focusable actor has an accessible name
+   live regions: 1 result (alert)
+ok   the result count is announced through an alert live region
+ok   the result count matches the rows (1)
+   live regions: No results
+ok   an empty search announces 'No results'
+-- runner
+   2 focusable actors, 0 without a name or label
+ok   runner: every focusable actor has an accessible name
+ok   runner entry name (Search apps, windows and files)
+-- visible keyboard focus (accent theme)
+   before: bg=[0, 0, 0, 0] shadow=None border=[0, [0, 0, 0, 0]] outline=0 pseudo='first-child'
+   after:  bg=[53, 132, 228, 63] shadow={'color': [53, 132, 228, 255], 'x': 0, 'y': 0, 'blur': 0, 'spread': 2, 'inset': True} border=[0, [0, 0, 0, 0]] outline=0 pseudo='first-child focus'
+ok   focus is visible on a pinned entry (face changes, with a ring)
+skip a folder entry: no visible 'spawn-folder-tile' #0
+   before: bg=[0, 0, 0, 0] shadow=None border=[0, [0, 0, 0, 0]] outline=0 pseudo='first-child'
+   after:  bg=[53, 132, 228, 63] shadow={'color': [53, 132, 228, 255], 'x': 0, 'y': 0, 'blur': 0, 'spread': 2, 'inset': True} border=[0, [0, 0, 0, 0]] outline=0 pseudo='first-child focus'
+ok   focus is visible on a shortcut row (face changes, with a ring)
+   before: bg=[0, 0, 0, 0] shadow=None border=[0, [0, 0, 0, 0]] outline=0 pseudo='first-child'
+   after:  bg=[53, 132, 228, 63] shadow={'color': [53, 132, 228, 255], 'x': 0, 'y': 0, 'blur': 0, 'spread': 2, 'inset': True} border=[0, [0, 0, 0, 0]] outline=0 pseudo='first-child focus'
+ok   focus is visible on the user card (face changes, with a ring)
+   before: bg=[0, 0, 0, 0] shadow=None border=[0, [0, 0, 0, 0]] outline=0 pseudo='first-child'
+   after:  bg=[53, 132, 228, 63] shadow={'color': [53, 132, 228, 255], 'x': 0, 'y': 0, 'blur': 0, 'spread': 2, 'inset': True} border=[0, [0, 0, 0, 0]] outline=0 pseudo='first-child focus'
+ok   focus is visible on a power button (face changes, with a ring)
+   before: bg=[72, 72, 76, 255] shadow=None border=[0, [0, 0, 0, 0]] outline=0 pseudo='last-child indeterminate'
+   after:  bg=[75, 77, 84, 255] shadow={'color': [53, 132, 228, 255], 'x': 0, 'y': 0, 'blur': 0, 'spread': 1, 'inset': True} border=[0, [53, 132, 228, 255]] outline=0 pseudo='last-child indeterminate focus'
+ok   focus is visible on the search entry (face changes, with a ring)
+   before: bg=[0, 0, 0, 0] shadow=None border=[0, [0, 0, 0, 0]] outline=0 pseudo=''
+   after:  bg=[53, 132, 228, 76] shadow={'color': [53, 132, 228, 255], 'x': 0, 'y': 0, 'blur': 0, 'spread': 2, 'inset': True} border=[0, [0, 0, 0, 0]] outline=0 pseudo='checked focus'
+ok   focus is visible on a category row (face changes, with a ring)
+skip an app row of a list: no visible 'spawn-list-row' #0
+   before: bg=[0, 0, 0, 0] shadow=None border=[0, [0, 0, 0, 0]] outline=0 pseudo='first-child last-child'
+   after:  bg=[53, 132, 228, 63] shadow={'color': [53, 132, 228, 255], 'x': 0, 'y': 0, 'blur': 0, 'spread': 2, 'inset': True} border=[0, [0, 0, 0, 0]] outline=0 pseudo='first-child last-child focus'
+ok   focus is visible on the Back button (face changes, with a ring)
+skip a search result: no visible 'spawn-result-row' #1
+screenshot: /work/.dev/ubu/shots/ui-a11y-focus.png
+screenshot: /work/.dev/ubu/shots/ui-a11y-focus-tile.png
+-- visible keyboard focus (custom menu colours)
+   before: bg=[0, 0, 0, 0] shadow=None border=[0, [0, 0, 0, 0]] outline=0 pseudo='first-child'
+   after:  bg=[220, 220, 235, 255] shadow={'color': [20, 20, 20, 255], 'x': 0, 'y': 0, 'blur': 0, 'spread': 2, 'inset': True} border=[0, [0, 0, 0, 0]] outline=0 pseudo='first-child focus'
+ok   focus is visible on a pinned entry (light custom colours) (face changes, with a ring)
+   before: bg=[72, 72, 76, 255] shadow=None border=[0, [255, 255, 255, 25]] outline=0 pseudo='last-child indeterminate'
+   after:  bg=[75, 77, 84, 255] shadow={'color': [53, 132, 228, 255], 'x': 0, 'y': 0, 'blur': 0, 'spread': 1, 'inset': True} border=[0, [53, 132, 228, 255]] outline=0 pseudo='last-child indeterminate focus'
+ok   focus is visible on the search entry (light custom colours) (face changes, with a ring)
+screenshot: /work/.dev/ubu/shots/ui-a11y-focus-custom.png
+   before: bg=[0, 0, 0, 0] shadow=None border=[0, [0, 0, 0, 0]] outline=0 pseudo='first-child'
+   after:  bg=[60, 60, 70, 255] shadow={'color': [255, 255, 255, 255], 'x': 0, 'y': 0, 'blur': 0, 'spread': 2, 'inset': True} border=[0, [0, 0, 0, 0]] outline=0 pseudo='first-child focus'
+ok   focus is visible on a pinned entry (dark custom colours) (face changes, with a ring)
+-- Reduce animation
+   animations at start: false
+ok   spawn-reduce-motion count 1 is right with animations false
+   after enabling: false
+ok   spawn-reduce-motion count 1 is right with animations false
+skip: St.Settings stays off in this sandbox, the animations-on checks cannot run
+ok   St.Settings follows 'Reduce animation' (false)
+ok   spawn-reduce-motion count 1 is right with animations false
+ok   transitions are zero with animations off (0)
+ok   the menu still opens with animations off (true)
+FAIL the folder popup opens at once (got 'pinned', expected 'folder')
+ok   spawn-reduce-motion count 1 is right with animations false
+RESULT: spawn errors found in the shell log
+RESULT: CRITICAL lines in the shell log:
+  (gnome-shell:55): GNOME Shell-CRITICAL **: 11:07:43.605: [spawn] ERROR: ui dev hook failed: no visible actor with class 'spawn-tile' at 0
+dbus-run-session: ignoring unknown child process 154
+dbus-run-session: ignoring unknown child process 1344
+dbus-run-session: ignoring unknown child process 129
+
+---- shell log (filtered: spawn | JS ERROR | Extension | TypeError) ----
+GNOME Shell-Message: 11:07:31.785: [spawn] theme loaded: /work/.dev/ubu/runtime/spawn/d74ee753/theme.css
+GNOME Shell-Message: 11:07:31.789: [spawn] attached to main
+GNOME Shell-Message: 11:07:31.789: [spawn] Super key intercepted (GNOME handler 10872 blocked, ours 12715)
+GNOME Shell-Message: 11:07:31.789: [spawn] enabled
+GNOME Shell-Message: 11:07:31.792: [spawn] Dev D-Bus interface enabled
+(gnome-shell:55): GNOME Shell-CRITICAL **: 11:07:43.605: [spawn] ERROR: ui dev hook failed: no visible actor with class 'spawn-tile' at 0
+installUiDevHooks/FocusActorAsync/<@file:///work/.dev/ubu/data/gnome-shell/extensions/spawn@djshiye.github.io/ui/devHooks.js:507:23
+reply@file:///work/.dev/ubu/data/gnome-shell/extensions/spawn@djshiye.github.io/ui/devHooks.js:114:37
+FocusActorAsync@file:///work/.dev/ubu/data/gnome-shell/extensions/spawn@djshiye.github.io/ui/devHooks.js:504:52
+GNOME Shell-Message: 11:08:17.482: [spawn] theme loaded: /work/.dev/ubu/runtime/spawn/d74ee753/theme.css
+GNOME Shell-Message: 11:08:22.976: [spawn] theme loaded: /work/.dev/ubu/runtime/spawn/d74ee753/theme.css
+GNOME Shell-Message: 11:08:26.717: [spawn] theme loaded: /work/.dev/ubu/runtime/spawn/d74ee753/theme.css
+---- end of log (full log: /work/.dev/ubu/shell.log) ----
+dbus-run-session: ignoring unknown child process 36
+dbus-run-session: dbus-daemon exited with code 0
