@@ -47,11 +47,21 @@ Security reports: see `SECURITY.md`.
 
 ### Fedora (DNF repository)
 
-One line installs and enables Spawn on Fedora 43, 44 or 45; then log out and back in:
+Packages and repository metadata are signed. The signing key's fingerprint is:
+
+```
+D49A 3081 6825 7FDB F9D5  AE14 BD1A C1C6 F56A 7252
+```
+
+Install on Fedora 43, 44 or 45, then log out and back in:
 
 ```sh
-sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.github.io/spawn/spawn.repo && sudo dnf install -y gnome-shell-extension-spawn && spawn-enable
+sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.github.io/spawn/spawn.repo
+sudo dnf install -y gnome-shell-extension-spawn && spawn-enable
 ```
+
+On the first install dnf shows the key and asks you to accept it. Check that the fingerprint it shows matches the one
+above (the key is downloaded from the same site as the packages, so this comparison is what makes it trustworthy).
 
 - Update: `sudo dnf upgrade` (log out and in to load the new code).
 - Uninstall: `spawn-enable --remove; sudo dnf remove gnome-shell-extension-spawn` (and `sudo rm /etc/yum.repos.d/spawn.repo` to forget the repository).
@@ -59,7 +69,7 @@ sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.gith
 `spawn-enable` (installed by the package) adds the extension to GNOME's enabled list without asking the running shell:
 `gnome-extensions enable` only works for extensions the shell already knows, and it learns about a newly installed
 system-wide extension at the next login.
-The extension declares GNOME Shell 49, 50 and 51 (Fedora 43, 44 and 45). Packages are not signed yet (`gpgcheck=0`); signing is ready in `tools/publish.sh` and starts with the first release published with a key (see `docs/RELEASING.md`, "Signing").
+The extension declares GNOME Shell 49, 50 and 51 (Fedora 43, 44 and 45). `spawn.repo` sets `gpgcheck=1` and `repo_gpgcheck=1`.
 The extension lands in `/usr/share/gnome-shell/extensions/` and its schema in `/usr/share/glib-2.0/schemas/`.
 
 **Fedora Glass:** [Fedora Glass](https://github.com/djshiye/fedora-glass) 1.5.6 and later themes Spawn the way it
