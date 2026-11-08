@@ -1,0 +1,88 @@
+# Folder popup look and placement: the card opens next to the folder it came from (below it, or above it
+# when there is no room below), stays inside the menu, and stays opaque with see-through custom menu
+# colours. Screenshots for list and grid display, dark custom colours and the light preset.
+K=/org/gnome/shell/extensions/spawn
+leave_overview
+
+# card_vs <folder class> <index>: prints "gap_below gap_above inside" for the open card and that folder
+card_vs() {
+    python3 -c '
+import json, sys
+c = json.loads(sys.argv[1]); f = json.loads(sys.argv[2]); s = json.loads(sys.argv[3])
+below = c[1] - (f[1] + f[3]); above = f[1] - (c[1] + c[3])
+inside = c[0] >= s[0] and c[1] >= s[1] and c[0] + c[2] <= s[0] + s[2] and c[1] + c[3] <= s[1] + s[3]
+print(round(below), round(above), "yes" if inside else "no")' "$(rect spawn-folder-popup 0)" "$(rect "$1" "$2")" "$(rect spawn-folder-scrim 0)"
+}
+
+# near <class> <index> <label>: the card sits right below or right above the folder, inside the menu
+near() {
+    read -r below above inside <<<"$(card_vs "$1" "$2")"
+    check "$3: card next to its folder (gap below $below px, above $above px)" \
+        "$({ [ "$below" -ge 0 ] && [ "$below" -le 12 ]; } || { [ "$above" -ge 0 ] && [ "$above" -le 12 ]; } && echo 0 || echo 1)"
+    expect "$3: card inside the menu" "$inside" yes
+}
+
+echo "-- custom colours with a see-through dark background (the reported case)"
+dconf write $K/override-menu-theme true
+dconf write $K/menu-background-color "'rgba(14,14,17,0.55)'"
+dconf write $K/menu-border-color "'rgba(14,14,17,0.55)'"
+set_display List
+close_menu; open_menu 1.5
+ui_call OpenFolder 0 >/dev/null; sleep 0.9
+near spawn-folder-row 0 "list, first folder"
+screenshot folder-popup/list-dark
+key Escape 0.6
+ui_call OpenFolder 2 >/dev/null; sleep 0.9
+near spawn-folder-row 2 "list, last folder"
+screenshot folder-popup/list-dark-last
+key Escape 0.6
+
+set_display Grid
+close_menu; open_menu 1.5
+ui_call OpenFolder 0 >/dev/null; sleep 0.9
+near spawn-folder-tile 0 "grid, first folder"
+screenshot folder-popup/grid-dark
+key Escape 0.6
+ui_call OpenFolder 1 >/dev/null; sleep 0.9
+near spawn-folder-tile 1 "grid, Games (5 apps)"
+screenshot folder-popup/grid-dark-games
+key Escape 0.6
+
+echo "-- two-line labels (multi-lined-labels on): long names wrap once instead of being cut"
+dconf write $K/multi-lined-labels true
+close_menu; open_menu 1.5
+ui_call OpenFolder 0 >/dev/null; sleep 0.9
+screenshot folder-popup/grid-dark-multiline
+key Escape 0.6
+
+echo "-- a short menu: no room below the last folder, so the card opens above it and stays inside"
+dconf write $K/menu-height 430
+close_menu; open_menu 1.5
+ui_call OpenFolder 2 >/dev/null; sleep 0.9
+read -r below above inside <<<"$(card_vs spawn-folder-tile 2)"
+expect "short menu: card inside the menu" "$inside" yes
+check "short menu: card does not cover its folder from below (gap above $above px)" "$([ "$above" -ge 0 ] || [ "$below" -ge 0 ] && echo 0 || echo 1)"
+screenshot folder-popup/grid-dark-short
+key Escape 0.6
+dconf reset $K/menu-height
+dconf reset $K/multi-lined-labels
+
+echo "-- light preset"
+dconf write $K/menu-background-color "'rgb(245,247,250)'"
+dconf write $K/menu-foreground-color "'rgb(18,51,84)'"
+dconf write $K/menu-border-color "'rgba(18,51,84,0.2)'"
+set_display List
+close_menu; open_menu 1.5
+ui_call OpenFolder 0 >/dev/null; sleep 0.9
+screenshot folder-popup/list-light
+key Escape 0.6
+
+echo "-- theme colours (no override)"
+dconf write $K/override-menu-theme false
+close_menu; open_menu 1.5
+ui_call OpenFolder 0 >/dev/null; sleep 0.9
+near spawn-folder-row 0 "theme colours"
+screenshot folder-popup/list-theme
+key Escape 0.6
+expect_state "Escape closes the folder" layout.view pinned
+close_menu

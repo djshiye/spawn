@@ -120,6 +120,44 @@ export function withAlpha(color: string, alpha: number): string {
     return c;
 }
 
+/** `[r, g, b, a]` of a hex or rgb()/rgba() colour (0..255, alpha 0..1); null for other formats. */
+export function parseColor(color: string): [number, number, number, number] | null {
+    const c = color.trim();
+    if (c.startsWith('#')) {
+        const rgb = expandHex(c);
+        if (!rgb)
+            return null;
+        const h = c.slice(1);
+        const a = h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : h.length === 4 ? parseInt(h[3]! + h[3]!, 16) / 255 : 1;
+        return [...rgb, a];
+    }
+    const m = /^rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)\s*(?:,\s*([0-9.]+)\s*)?\)$/i.exec(c);
+    if (!m)
+        return null;
+    const ch = (v: string | undefined) => Math.max(0, Math.min(255, Number(v)));
+    return [ch(m[1]), ch(m[2]), ch(m[3]), m[4] === undefined ? 1 : Math.max(0, Math.min(1, Number(m[4])))];
+}
+
+/**
+ * The folder popup's card: an opaque, slightly raised copy of the menu background. A see-through menu
+ * colour (custom colours with alpha < 1) would let the rows under the card show through it, so the colour
+ * is flattened onto black (dark menus) or white (light menus) and then lifted 7 % towards the text colour.
+ * Null when the colour is not one we can parse (the stylesheet's card colour then stays).
+ */
+export function raisedSurface(background: string, foreground: string | null): string | null {
+    const bg = parseColor(background);
+    if (!bg)
+        return null;
+    const [r, g, b, a] = bg;
+    const lum = 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+    const base = lum > 0.4 ? 255 : 0;
+    const flat = [r, g, b].map(v => v * a + base * (1 - a)) as [number, number, number];
+    const fg = (foreground ? parseColor(foreground) : null) ?? (base ? [0, 0, 0, 1] : [255, 255, 255, 1]);
+    const lift = 0.07;
+    const out = flat.map((v, i) => Math.round(v + ((fg[i] as number) - v) * lift));
+    return `rgb(${out[0]}, ${out[1]}, ${out[2]})`;
+}
+
 function num(value: unknown, min: number, max: number, fallback: number): number {
     const n = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
     return Math.max(min, Math.min(max, Math.round(n)));
@@ -246,10 +284,12 @@ function overrideRules(c: ThemeColors): string[] {
             ['border-radius', radius],
         ]),
         // The folder popup card is a raised copy of the menu background (opaque-ish over the scrim).
+        // Always opaque (see raisedSurface), with a hairline in the text colour: a custom border colour is
+        // often the menu colour itself, which would leave the card without an edge.
         rule(`${popup} .spawn-folder-popup`, [
-            ['background-color', bg],
+            ['background-color', bg === null ? null : raisedSurface(bg, fg) ?? bg],
             ['color', fg],
-            ['border-color', border],
+            ['border-color', fg === null ? border : withAlpha(fg, 0.12)],
         ]),
         rule(each(':hover', `${popup} `), [['background-color', hoverBg], ['color', hoverFg]]),
         // Custom colours: the accent ring would not be checked against the custom background, so the ring

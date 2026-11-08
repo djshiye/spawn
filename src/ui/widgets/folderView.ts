@@ -1,9 +1,12 @@
 // FolderView: the contents of one pinned folder, shown as a popup card over the menu (like app
 // folders on GNOME, Android or iOS) instead of replacing the pinned view. The whole layout is dimmed by
-// a scrim; the card in its middle has the folder name (click to rename inline), a close button and the
-// apps as a tile grid. The grid is always tiles, also when the pinned view is a list, sized to the
-// folder: 2 columns up to 4 apps, 3 up to 9, then 4 (fewer when the menu is too narrow); it scrolls when
-// the folder is taller than the menu. Clicking the scrim, the close button or Escape (the layout) closes it.
+// a scrim; the card opens next to the folder it came from (below it, or above when there is no room
+// below, always inside the menu) and grows out of it. It has the folder name (click to rename inline),
+// a close button and the apps as a tile grid. Without a folder to anchor to it is centred. The card is
+// always opaque (see raisedSurface in theme/css.ts). The grid is always tiles, also when the pinned view
+// is a list, at least MIN_TILE_WIDTH wide and sized to the folder: 2 columns up to 4 apps, 3 up to 9,
+// then 4 (fewer when the menu is too narrow); it scrolls when the folder is taller than the menu.
+// Clicking the scrim, the close button or Escape (the layout) closes it.
 // Tiles are draggable (reorder inside the folder via ui/dnd.ts); dropping one outside the card (on
 // the scrim) or on the header takes it out of the folder. Rebuilt from PinnedStore whenever it changes.
 //
@@ -11,7 +14,7 @@
 //   new FolderView(scope: Scope, services: Services, host: FolderViewHost)
 //   view.actor: St.Widget             the scrim (full size of its parent, hidden while closed); the
 //                                     host adds it on top of the menu content
-//   view.show(uuid: string, animate?): boolean  false when the folder is gone (nothing is shown, the host went back)
+//   view.show(uuid: string, animate?, anchor?: Clutter.Actor | null): boolean  false when the folder is gone (nothing is shown, the host went back)
 //   view.hide(animate?): void         close the popup (fades out when `animate`)
 //   view.refresh(): void              re-sync with the store (also called on store changes)
 //   view.uuid: string | null
@@ -71,15 +74,24 @@ const MAX_NAME_LENGTH = 40;
 
 /**
  * Space the card keeps from the edges of the menu content, and the chrome inside the card that the
- * grid cannot use: header (38) + its spacing / the card's vertical padding. Keep in step with
- * .spawn-folder-popup / .spawn-folder-header in stylesheet.css.
+ * grid cannot use: header (40) + its spacing (8) + the card's vertical padding (2 x 16). Keep in step
+ * with .spawn-folder-popup / .spawn-folder-header in stylesheet.css (an 8 px spacing scale).
  */
-const POPUP_MARGIN = 24;
-const CARD_CHROME_H = 38 + 8 + 2 * 12;
+const POPUP_MARGIN = 16;
+const CARD_CHROME_H = 40 + 8 + 2 * 16;
+/** The card's horizontal padding (2 x 8) around the grid. */
+const CARD_PAD_W = 16;
 /** TileGrid's transparent gutter at the left and right end of each row (2 x 16 px). */
 const GRID_GUTTER_W = 32;
 /** Narrowest card: room for the title, its pencil and the close button. */
-const MIN_CARD_WIDTH = 280;
+const MIN_CARD_WIDTH = 296;
+/**
+ * Folder tiles are at least this wide, so two-word names ("Zoom Workplace") fit on one line and longer
+ * ones wrap once, evenly; the pinned grid's tiles can be narrower than that.
+ */
+const MIN_TILE_WIDTH = 136;
+/** Gap between the folder and the card that opens from it. */
+const ANCHOR_GAP = 6;
 
 const OPEN_MS = 180;
 const CLOSE_MS = 120;
@@ -129,6 +141,8 @@ export class FolderView {
     private _columns = 1;
     private _tileScope: Scope;
     private _destroyed = false;
+    /** The folder the card opened from (null: centred). */
+    private _anchor: Clutter.Actor | null = null;
 
     constructor(scope: Scope, services: Services, host: FolderViewHost) {
         this._services = services;
@@ -136,10 +150,11 @@ export class FolderView {
         this._scope = scope;
         this._tileScope = scope.child('folder tiles');
 
-        // The scrim: covers the whole menu content, dims it and closes the popup on a click.
+        // The scrim: covers the whole menu content, dims it and closes the popup on a click. The card sits
+        // at its top left (fixed layout) and _place() moves it next to its folder with a translation.
         this.actor = new St.Widget({
             style_class: 'spawn-folder-scrim',
-            layout_manager: new Clutter.BinLayout(),
+            layout_manager: new Clutter.FixedLayout(),
             reactive: true,
             x_expand: true,
             y_expand: true,
@@ -158,12 +173,15 @@ export class FolderView {
         this._card = new St.BoxLayout({
             style_class: 'spawn-folder-popup',
             orientation: Clutter.Orientation.VERTICAL,
-            x_align: Clutter.ActorAlign.CENTER,
-            y_align: Clutter.ActorAlign.CENTER,
+            // A translation needs no relayout, so _place() can follow every allocation without a layout loop.
             reactive: true,
         });
         this._card.set_pivot_point(0.5, 0.5);
         this.actor.add_child(this._card);
+        // Keep the card next to its folder when either changes size (rename, store change, menu resize).
+        this._card.connect('notify::height', () => this._place());
+        this._card.connect('notify::width', () => this._place());
+        this.actor.connect('notify::allocation', () => this._place());
 
         this._header = new St.BoxLayout({style_class: 'spawn-folder-header', reactive: true, x_expand: true});
         // Balances the close button so the title sits in the middle of the card.
@@ -242,8 +260,9 @@ export class FolderView {
         return [this._nameButton, this._closeButton];
     }
 
-    show(uuid: string, animate = false): boolean {
+    show(uuid: string, animate = false, anchor: Clutter.Actor | null = null): boolean {
         this._uuid = uuid;
+        this._anchor = anchor;
         this._cancelRename();
         this.refresh();
         if (this._uuid !== uuid)
@@ -254,6 +273,7 @@ export class FolderView {
         this._card.remove_all_transitions();
         this.actor.reactive = true;
         this.actor.show();
+        this._place();
         if (animate && animationsEnabled() && !wasOpen) {
             this.actor.opacity = 0;
             this._card.opacity = 0;
@@ -274,6 +294,7 @@ export class FolderView {
             return;
         this._finish?.(true, false);
         this._uuid = null;
+        this._anchor = null;
         this._host.tooltips?.hide();
         // No second close and no launches from the fading card.
         this.actor.reactive = false;
@@ -347,24 +368,80 @@ export class FolderView {
         }
         this._tiles = tiles;
 
-        const tileWidth = metrics.tileWidth;
+        const room = metrics.width && metrics.width > 0 ? metrics.width - 2 * POPUP_MARGIN - CARD_PAD_W - GRID_GUTTER_W : Infinity;
+        const tileWidth = Math.floor(Math.min(Math.max(metrics.tileWidth, MIN_TILE_WIDTH), Math.max(metrics.tileWidth, room)));
         let columns = folderColumns(tiles.length);
-        if (metrics.width && metrics.width > 0) {
-            const fit = Math.floor((metrics.width - 2 * POPUP_MARGIN - GRID_GUTTER_W) / tileWidth);
-            columns = Math.max(1, Math.min(columns, fit));
-        }
+        if (Number.isFinite(room))
+            columns = Math.max(1, Math.min(columns, Math.floor(room / tileWidth)));
         this._columns = columns;
         this._grid.setTiles(tiles, columns, tileWidth, metrics.size);
         acceptDrops(this._tileScope, this._grid.actor, store, {kind: 'grid', index: () => -1, folderUuid: uuid});
 
         // The card hugs the grid; the scroll view takes over when the folder is taller than the menu.
-        const gridWidth = columns * tileWidth + GRID_GUTTER_W;
+        const gridWidth = columns * tileWidth + GRID_GUTTER_W + CARD_PAD_W;
         const maxWidth = metrics.width && metrics.width > 0 ? metrics.width - 2 * POPUP_MARGIN : Infinity;
         this._card.set_width(Math.min(maxWidth, Math.max(MIN_CARD_WIDTH, gridWidth)));
         const maxScroll = metrics.height && metrics.height > 0
             ? Math.max(80, metrics.height - 2 * POPUP_MARGIN - CARD_CHROME_H)
             : -1;
         this.scroll.set_style(maxScroll > 0 ? `max-height: ${Math.floor(maxScroll)}px;` : null);
+        this._place();
+    }
+
+    /**
+     * Put the card next to the folder it opened from: below it, or above when it does not fit below,
+     * else as close as the menu allows; centred on a tile, aligned with the start of a full-width row.
+     * The open animation grows out of the side that faces the folder.
+     */
+    private _place(): void {
+        if (this._destroyed || !this.actor.visible)
+            return;
+        // The scrim fills its parent (the layout). Right after show() the scrim has no allocation yet, and its
+        // size would then be the card's preferred size, so measure the parent instead.
+        const parent = this.actor.get_parent();
+        if (!parent)
+            return;
+        const W = parent.width;
+        const H = parent.height;
+        if (!(W > 0 && H > 0))
+            return;
+        const cw = this._card.width;
+        const ch = Math.min(this._card.get_preferred_height(cw)[1], H - 2 * POPUP_MARGIN);
+        const clamp = (v: number, lo: number, hi: number) => Math.round(Math.max(lo, Math.min(hi, v)));
+        const maxX = W - cw - POPUP_MARGIN;
+        const maxY = H - ch - POPUP_MARGIN;
+
+        const anchor = this._anchor;
+        if (!anchor || !anchor.mapped) {
+            this._card.set_translation(clamp((W - cw) / 2, POPUP_MARGIN, maxX), clamp((H - ch) / 2, POPUP_MARGIN, maxY), 0);
+            this._card.set_pivot_point(0.5, 0.5);
+            return;
+        }
+        const [sx, sy] = parent.get_transformed_position();
+        const [ax, ay] = anchor.get_transformed_position();
+        const [aw, ah] = anchor.get_transformed_size();
+        // Not allocated yet: the allocation that follows calls _place() again.
+        if (![sx, sy, ax, ay, aw, ah].every(Number.isFinite))
+            return;
+        const left = ax - sx, top = ay - sy, bottom = top + ah;
+        // A tile: centred under it. A full-width list row: lined up with the row's icon.
+        const x = aw <= cw ? clamp(left + aw / 2 - cw / 2, POPUP_MARGIN, maxX) : clamp(left, POPUP_MARGIN, maxX);
+        let y: number;
+        let below = true;
+        if (bottom + ANCHOR_GAP + ch <= H - POPUP_MARGIN) {
+            y = bottom + ANCHOR_GAP;
+        } else if (top - ANCHOR_GAP - ch >= POPUP_MARGIN) {
+            y = top - ANCHOR_GAP - ch;
+            below = false;
+        } else {
+            // Neither fits: as close to the folder as the menu allows.
+            below = top + ah / 2 < H / 2;
+            y = below ? bottom + ANCHOR_GAP : top - ANCHOR_GAP - ch;
+        }
+        y = clamp(y, POPUP_MARGIN, maxY);
+        this._card.set_translation(x, y, 0);
+        const px = cw > 0 ? Math.max(0, Math.min(1, (left + Math.min(aw, cw) / 2 - x) / cw)) : 0.5;
+        this._card.set_pivot_point(px, below ? 0 : 1);
     }
 
     private _ghostTile(id: string, metrics: FolderMetrics): St.Widget {

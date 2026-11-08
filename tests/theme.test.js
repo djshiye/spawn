@@ -1,4 +1,4 @@
-import {ACCENT_COLORS, accentColor, accentForeground, buildCss, sanitizeColor, withAlpha} from '../build/theme/css.js';
+import {ACCENT_COLORS, accentColor, accentForeground, buildCss, parseColor, raisedSurface, sanitizeColor, withAlpha} from '../build/theme/css.js';
 import {assert, assertEquals, run, test} from './harness.js';
 
 const off = v => [false, v];
@@ -22,6 +22,22 @@ test('accent palette maps every GNOME accent name, unknown -> blue', () => {
         assert(/^#[0-9a-f]{6}$/.test(accentColor(name)), name);
     assertEquals(accentColor('blue'), '#3584e4');
     assertEquals(accentColor('nonsense'), ACCENT_COLORS.blue);
+});
+
+test('folder popup card is opaque even when the custom menu colour is see-through', () => {
+    assertEquals(parseColor('rgba(10, 20, 30, 0.5)'), [10, 20, 30, 0.5]);
+    assertEquals(parseColor('#ffffff80')?.[3].toFixed(2), '0.50');
+    assertEquals(parseColor('hsl(0, 0%, 0%)'), null);
+    // Dark and 40 % opaque: flattened onto black, lifted 7 % towards white text.
+    assertEquals(raisedSurface('rgba(20,20,24,0.4)', 'rgb(255,255,255)'), 'rgb(25, 25, 27)');
+    // Light: flattened onto white, lifted towards the dark text.
+    assertEquals(raisedSurface('rgba(245,247,250,0.5)', 'rgb(18,51,84)'), 'rgb(234, 237, 241)');
+    assertEquals(raisedSurface('hsl(0,0%,0%)', null), null);
+    const css = buildCss(input({override: true, colors: {...input().colors, background: 'rgba(12,12,14,0.55)'}}));
+    const card = css.slice(css.indexOf('.spawn-folder-popup'));
+    const bg = /background-color: ([^;]+);/.exec(card)[1];
+    assert(bg.startsWith('rgb('), `card background must be opaque, got ${bg}`);
+    assert(!card.slice(0, card.indexOf('}')).includes('rgba(12,12,14,0.55)'), 'menu colour not reused as is');
 });
 
 test('default CSS: accent only, no override or button rules', () => {
