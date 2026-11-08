@@ -5,6 +5,14 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- **Folder popup:** an open pinned folder now opens right next to the folder you clicked (below it, or above it when
+  there is no room) instead of in the middle of the menu, and it grows out of that folder. The card is always solid,
+  so the rows behind it no longer show through when custom menu colours are see-through, and it has a clear edge. It
+  is roomier: more padding on an 8 px spacing scale, wider tiles so names like "Zoom Workplace" fit, a round close
+  button and a quieter rename pencil that brightens on hover.
+
 ## [1.1.0] - 2026-11-08
 
 ### Added

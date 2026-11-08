@@ -1411,9 +1411,11 @@ export class SpawnLayout implements ShortcutHost {
 
     private _showFolder(uuid: string): void {
         const fv = this._ensureFolderView();
+        // The card opens next to the folder it came from when that folder is on screen (pinned view).
+        const tile = this._view === 'pinned' ? this._tileEntries.get(`f:${uuid}`)?.widget ?? null : null;
         // The folder vanished (deleted elsewhere, emptied): show() already went back to the default
         // view, so do not switch to an empty folder view.
-        if (!fv.show(uuid, this._isOpen))
+        if (!fv.show(uuid, this._isOpen, tile?.mapped ? tile : null))
             return;
         this._setView('folder');
         const first = fv.tiles()[0];
