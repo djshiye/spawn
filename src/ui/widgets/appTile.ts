@@ -133,6 +133,7 @@ export function styleTileLabel(label: St.Label, multiLine: boolean): void {
     ct.ellipsize = Pango.EllipsizeMode.END;
     if (multiLine) {
         label.add_style_class_name('spawn-tile-label-multi');
+        ct.line_alignment = Pango.Alignment.CENTER;
         ct.line_wrap = true;
         ct.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
     }
@@ -145,7 +146,10 @@ export function buildTileContent(button: St.Button, name: string, icon: Gio.Icon
         button.y_expand = true;
     const box = new St.BoxLayout({
         orientation: Clutter.Orientation.VERTICAL,
-        x_align: Clutter.ActorAlign.CENTER,
+        // Wrapped labels need the tile's real width: a centred box is measured at its natural width (one
+        // long line), so its height is one line and the name gets an ellipsis instead of a second line.
+        x_align: multiLine ? Clutter.ActorAlign.FILL : Clutter.ActorAlign.CENTER,
+        x_expand: multiLine,
         y_align: multiLine ? Clutter.ActorAlign.START : Clutter.ActorAlign.CENTER,
         style_class: 'spawn-tile-box',
     });

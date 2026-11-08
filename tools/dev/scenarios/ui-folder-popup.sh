@@ -54,9 +54,15 @@ close_menu; open_menu 1.5
 ui_call OpenFolder 0 >/dev/null; sleep 0.9
 screenshot folder-popup/grid-dark-multiline
 key Escape 0.6
+ui_call OpenFolder 1 >/dev/null; sleep 0.9
+h="$(ui_call TextRect 'Heroic Games Launcher' 0 | unwrap | python3 -c 'import json,sys; print(round(json.loads(sys.stdin.read())[3]))')"
+check "a long name wraps onto a second line (label height $h px)" "$([ "${h:-0}" -ge 28 ] && echo 0 || echo 1)"
+screenshot folder-popup/grid-dark-multiline-games
+key Escape 0.6
+dconf reset $K/multi-lined-labels
 
 echo "-- a short menu: no room below the last folder, so the card opens above it and stays inside"
-dconf write $K/menu-height 430
+dconf write $K/menu-height 500
 close_menu; open_menu 1.5
 ui_call OpenFolder 2 >/dev/null; sleep 0.9
 read -r below above inside <<<"$(card_vs spawn-folder-tile 2)"
@@ -65,7 +71,6 @@ check "short menu: card does not cover its folder from below (gap above $above p
 screenshot folder-popup/grid-dark-short
 key Escape 0.6
 dconf reset $K/menu-height
-dconf reset $K/multi-lined-labels
 
 echo "-- light preset"
 dconf write $K/menu-background-color "'rgb(245,247,250)'"

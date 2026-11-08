@@ -90,6 +90,8 @@ const MIN_CARD_WIDTH = 296;
  * ones wrap once, evenly; the pinned grid's tiles can be narrower than that.
  */
 const MIN_TILE_WIDTH = 136;
+/** Least grid height worth keeping the card off its folder for (about one row of tiles). */
+const MIN_SCROLL_H = 96;
 /** Gap between the folder and the card that opens from it. */
 const ANCHOR_GAP = 6;
 
@@ -143,6 +145,9 @@ export class FolderView {
     private _destroyed = false;
     /** The folder the card opened from (null: centred). */
     private _anchor: Clutter.Actor | null = null;
+    /** The scroll view's max-height from refresh() (whole menu), and the one in effect now (_place may lower it). */
+    private _maxScroll = -1;
+    private _scrollCap = -1;
 
     constructor(scope: Scope, services: Services, host: FolderViewHost) {
         this._services = services;
@@ -384,7 +389,8 @@ export class FolderView {
         const maxScroll = metrics.height && metrics.height > 0
             ? Math.max(80, metrics.height - 2 * POPUP_MARGIN - CARD_CHROME_H)
             : -1;
-        this.scroll.set_style(maxScroll > 0 ? `max-height: ${Math.floor(maxScroll)}px;` : null);
+        this._maxScroll = maxScroll > 0 ? Math.floor(maxScroll) : -1;
+        this._setScrollCap(this._maxScroll);
         this._place();
     }
 
@@ -434,14 +440,27 @@ export class FolderView {
             y = top - ANCHOR_GAP - ch;
             below = false;
         } else {
-            // Neither fits: as close to the folder as the menu allows.
-            below = top + ah / 2 < H / 2;
+            // Neither fits: take the roomier side and let the grid scroll there, so the card never covers its
+            // folder. The new height re-runs _place(), which then fits. Too little room either way: overlap.
+            const roomBelow = H - POPUP_MARGIN - bottom - ANCHOR_GAP;
+            const roomAbove = top - ANCHOR_GAP - POPUP_MARGIN;
+            below = roomBelow >= roomAbove;
+            const cap = Math.floor(Math.max(roomBelow, roomAbove) - CARD_CHROME_H);
+            if (cap >= MIN_SCROLL_H && (this._scrollCap < 0 || cap < this._scrollCap)) {
+                this._setScrollCap(cap);
+                return;
+            }
             y = below ? bottom + ANCHOR_GAP : top - ANCHOR_GAP - ch;
         }
         y = clamp(y, POPUP_MARGIN, maxY);
         this._card.set_translation(x, y, 0);
         const px = cw > 0 ? Math.max(0, Math.min(1, (left + Math.min(aw, cw) / 2 - x) / cw)) : 0.5;
         this._card.set_pivot_point(px, below ? 0 : 1);
+    }
+
+    private _setScrollCap(cap: number): void {
+        this._scrollCap = cap;
+        this.scroll.set_style(cap > 0 ? `max-height: ${cap}px;` : null);
     }
 
     private _ghostTile(id: string, metrics: FolderMetrics): St.Widget {
