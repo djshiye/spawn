@@ -102,7 +102,7 @@ export function createShortcutsGroup(ctx: PrefsContext): Adw.PreferencesGroup {
         shortcutRow(['Move a pinned app to the start or end', '<Control>Home <Control>End']),
         shortcutRow(['Rename a folder', 'F2']),
         shortcutRow(['Unpin an app', 'Delete']),
-        shortcutRow(['Undo deleting a folder or hiding an app', '<Control>z']),
+        shortcutRow(['Undo the last change', '<Control>z', 'Unpin, pin, hide, remove from a folder or delete a folder']),
         shortcutRow(['Jump to the first or last item', 'Home End']),
         wordKeysRow('Jump a page at a time', ['Page Up', 'Page Down']),
         shortcutRow(['Step back', 'Escape', 'Clears the search, goes back a view, then closes the menu']),
