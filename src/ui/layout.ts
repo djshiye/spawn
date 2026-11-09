@@ -55,7 +55,7 @@ import type {Entry, PinnedItemSize} from '../core/settings.js';
 import {addHidden, removeHidden} from '../model/hiddenApps.js';
 import type {FolderUndo, PinnedItem} from '../model/pinned.js';
 import {Places, type FakePlace, type Place} from '../model/places.js';
-import {pageTarget, searchStep, type Pos} from '../model/listNav.js';
+import {nearestIndex, pageTarget, searchStep, type Pos} from '../model/listNav.js';
 import {reorderTarget, type ReorderKey} from '../model/reorder.js';
 import type {SearchHandle, SearchResult} from '../search/engine.js';
 import {AppContextMenu} from './contextMenu.js';
@@ -176,6 +176,21 @@ function centreOf(actor: Clutter.Actor): Pos {
     const [x, y] = actor.get_transformed_position();
     const [w, h] = actor.get_transformed_size();
     return {x: x + w / 2, y: y + h / 2};
+}
+
+/** Is `actor` (at least half of it) inside the visible part of the scroll view it is in, if any? */
+function inView(actor: Clutter.Actor): boolean {
+    if (!actor.mapped)
+        return false;
+    let scroll = actor.get_parent();
+    while (scroll && !(scroll instanceof St.ScrollView))
+        scroll = scroll.get_parent();
+    if (!scroll)
+        return true;
+    const c = centreOf(actor).y;
+    const [, top] = scroll.get_transformed_position();
+    const [, height] = scroll.get_transformed_size();
+    return c >= top && c <= top + height;
 }
 
 function isDefaultViewPinnedish(view: string): boolean {
@@ -311,11 +326,7 @@ export class SpawnLayout implements ShortcutHost {
             deleteFolder: uuid => this._deleteFolder(uuid),
             hideApp: app => this._hideApp(app),
             renameFolder: uuid => {
-                this._scope.idle(() => {
-                    this._showFolder(uuid);
-                    if (this._view === 'folder' && this._folderView?.uuid === uuid)
-                        this._folderView.startRename();
-                });
+                this._scope.idle(() => this._renameFolder(uuid));
             },
         });
 
@@ -1474,6 +1485,13 @@ export class SpawnLayout implements ShortcutHost {
         (fv.tiles()[0] ?? fv.headerButtons()[0]).grab_key_focus();
     }
 
+    /** Open the folder and start renaming it (its context menu's Rename, F2). */
+    private _renameFolder(uuid: string): void {
+        this._showFolder(uuid);
+        if (this._view === 'folder' && this._folderView?.uuid === uuid)
+            this._folderView.startRename();
+    }
+
     // ---- delete folder + undo ----
 
     /** "Delete Folder": the apps move to the top level; the banner offers to put the folder back. */
@@ -2032,20 +2050,17 @@ export class SpawnLayout implements ShortcutHost {
                 if (t >= rowStart && t <= rowEnd)
                     return this._focusItem(group, t);
             }
-            // leaving the group sideways
+            // Leaving the pane sideways: the item of the other pane at the same height (nearest column).
             if (onRight) {
-                if (delta < 0) {
-                    const target = group.id === 'power' ? (this._navGroup() ?? leftCol.filter(g => g.id !== 'search').pop()) : leftCol.find(g => g.id !== 'search' && g.id !== 'links');
-                    return this._focusItem(target, 'first');
-                }
+                if (delta < 0)
+                    this._focusNearest(leftCol.filter(g => g.id !== 'search'), focus as Clutter.Actor);
                 return true;
             }
             if (inFolder)
                 return true;
             if (delta > 0) {
-                // By rank among the non-search groups: the search entry on top must not shift the mapping.
-                const rank = leftCol.filter(g => g.id !== 'search' && g.id !== 'undo' && g.id !== 'links').indexOf(group);
-                return this._focusItem(rightCol[Math.min(Math.max(rank, 0), rightCol.length - 1)] ?? rightCol[0], 'first');
+                this._focusNearest(rightCol, focus as Clutter.Actor);
+                return true;
             }
             if (cats && group.id === 'apps')
                 return this._focusItem(cats, Math.max(0, cats.items.findIndex(c => (c as St.Widget).has_style_pseudo_class('checked'))));
@@ -2060,6 +2075,14 @@ export class SpawnLayout implements ShortcutHost {
         }
     }
 
+    /** Focus the item of `groups` nearest to `from` on screen, vertically first (only items scrolled into view). */
+    private _focusNearest(groups: Group[], from: Clutter.Actor): boolean {
+        const items = groups.flatMap(g => g.items).filter(inView);
+        const target = items[nearestIndex(items.map(centreOf), centreOf(from))];
+        target?.grab_key_focus();
+        return Boolean(target);
+    }
+
     /** The keyboard groups by pane: the left column, the right pane (none in a folder popup), the category column. */
     private _paneGroups(): {left: Group[]; right: Group[]; cats: Group | null} {
         const inFolder = this._view === 'folder';
@@ -2068,6 +2091,66 @@ export class SpawnLayout implements ShortcutHost {
             right: inFolder ? [] : this._rightGroups().filter(g => g.items.length > 0),
             cats: inFolder ? null : this._categoryGroup(),
         };
+    }
+
+    /** Home / End (first / last item) and Page Up / Down (one visible page) inside the focused list or grid. */
+    private _jump(sym: number): boolean {
+        const focus = global.stage.key_focus as Clutter.Actor | null;
+        const {left, right, cats} = this._paneGroups();
+        const loc = this._locate([...left, ...right, ...(cats ? [cats] : [])], focus);
+        if (!loc || loc.group.id === 'search')
+            return false;
+        const items = loc.group.items;
+        const current = items[loc.index];
+        let target: Clutter.Actor | null;
+        if (sym === Clutter.KEY_Home || sym === Clutter.KEY_KP_Home)
+            target = items[0];
+        else if (sym === Clutter.KEY_End || sym === Clutter.KEY_KP_End)
+            target = items[items.length - 1];
+        else
+            target = this._pageTo(items, current, sym === Clutter.KEY_Page_Down || sym === Clutter.KEY_KP_Page_Down ? 1 : -1);
+        if (target && target !== current)
+            target.grab_key_focus();
+        return true;
+    }
+
+    /** F2 on a pinned folder (or anywhere in its open popup): rename it. */
+    private _renameFocused(): boolean {
+        const focus = global.stage.key_focus as Clutter.Actor | null;
+        const fv = this._folderView;
+        if (!focus)
+            return false;
+        if (this._view === 'folder' && fv?.uuid && fv.actor.contains(focus)) {
+            if (!fv.renaming)
+                fv.startRename();
+            return true;
+        }
+        if (this._view !== 'pinned')
+            return false;
+        for (const [key, entry] of this._tileEntries) {
+            if (key.startsWith('f:') && entry.widget === focus) {
+                this._renameFolder(key.slice(2));
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Delete on a pinned app or command (top level): Unpin, exactly as its context menu does it. */
+    private _unpinFocused(): boolean {
+        const focus = global.stage.key_focus as Clutter.Actor | null;
+        if (!focus || this._view !== 'pinned')
+            return false;
+        for (const [key, entry] of this._tileEntries) {
+            if (entry.widget !== focus)
+                continue;
+            if (key.startsWith('f:'))
+                return false;
+            // a:<id>[*] (an app, * = "New" badge), m:<id> (not installed), c:<id> (command / shortcut)
+            this._context.unpin(key.slice(2).replace(/\*$/, ''));
+            return true;
+        }
+        return false;
     }
 
     /** The pointer is on `item` (widgets/highlight.ts): a search result takes the search highlight. */
@@ -2175,6 +2258,26 @@ export class SpawnLayout implements ShortcutHost {
             return moved(this._move('left'));
         case Clutter.KEY_Right:
             return moved(this._move('right'));
+        case Clutter.KEY_Home:
+        case Clutter.KEY_KP_Home:
+        case Clutter.KEY_End:
+        case Clutter.KEY_KP_End:
+        case Clutter.KEY_Page_Up:
+        case Clutter.KEY_KP_Page_Up:
+        case Clutter.KEY_Page_Down:
+        case Clutter.KEY_KP_Page_Down:
+            if (ctrl)
+                break;
+            return moved(this._jump(sym));
+        case Clutter.KEY_F2:
+            if (!ctrl && this._renameFocused())
+                return Clutter.EVENT_STOP;
+            return Clutter.EVENT_PROPAGATE;
+        case Clutter.KEY_Delete:
+        case Clutter.KEY_KP_Delete:
+            if (!ctrl && !(state & Clutter.ModifierType.SHIFT_MASK) && this._unpinFocused())
+                return Clutter.EVENT_STOP;
+            return Clutter.EVENT_PROPAGATE;
         case Clutter.KEY_BackSpace:
             if (this._search.actor.visible && this._search.text.length > 0 && !this._search.hasFocus) {
                 this._search.deleteBackward();

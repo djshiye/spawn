@@ -13,6 +13,7 @@
 //   menu.open(source: St.Widget, target: ContextTarget): void   popup at `source`
 //   menu.close(): void
 //   menu.isOpen: boolean
+//   menu.unpin(id): void            the "Unpin from Menu" action (also Delete on a pinned entry, layout.ts)
 //   ContextTarget: {kind: 'app', app: Shell.App, folderUuid?: string}
 //                | {kind: 'folder', uuid: string}
 //                | {kind: 'custom', id: string}           (pinned command entry or a pinned app whose
@@ -105,6 +106,11 @@ export class AppContextMenu {
         }
     }
 
+    /** "Unpin from Menu" (the app and command menus run it; the layout's Delete key too). */
+    unpin(id: string): void {
+        this._services.pinned.unpin(id);
+    }
+
     close(): void {
         try {
             if (this._menu) closeMenu(this._menu, false);
@@ -144,7 +150,7 @@ export class AppContextMenu {
         };
 
         if (store.isPinned(id))
-            action(_('Unpin from Menu'), () => store.unpin(id));
+            action(_('Unpin from Menu'), () => this.unpin(id));
         else
             action(_('Pin to Menu'), () => store.pin(id));
 
@@ -210,7 +216,7 @@ export class AppContextMenu {
             add(_('Delete Folder'), () => (this._host.deleteFolder ? this._host.deleteFolder(uuid) : store.dissolveFolder(uuid)));
         } else {
             const id = target.id;
-            add(_('Unpin from Menu'), () => store.unpin(id));
+            add(_('Unpin from Menu'), () => this.unpin(id));
         }
         return menu;
     }
