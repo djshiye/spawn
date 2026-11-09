@@ -5,6 +5,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-11-09
+
 ### Fixed
 
 - **Folder popup highlight:** only the app you point at, or the one you reach with the arrow keys, is highlighted,
