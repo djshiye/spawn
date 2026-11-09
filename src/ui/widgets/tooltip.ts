@@ -164,7 +164,9 @@ export class TooltipManager {
         const [, lh] = label.get_transformed_size();
         // a wrapped name is a small card, not a pill
         // (tight vertical padding: two wrapped lines have to fit inside a 40 px row)
-        const look = 'border-radius: 12px; padding-top: 3px; padding-bottom: 3px;';
+        // (opaque: it lies over the row's own cut-off name, which must not show through)
+        const bg = tip.get_theme_node().get_background_color();
+        const look = `border-radius: 12px; padding-top: 3px; padding-bottom: 3px; background-color: rgb(${bg.red}, ${bg.green}, ${bg.blue});`;
         tip.set_style(look);
         const node = tip.get_theme_node();
         const padX = node.get_padding(St.Side.LEFT) + node.get_padding(St.Side.RIGHT);
