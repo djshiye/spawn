@@ -117,6 +117,7 @@ export class TooltipManager {
         }
         const tip = this._label;
         tip.set_style(null);
+        tip.set_width(-1);
         tip.text = text;
         this._owner = widget;
         Main.uiGroup.set_child_above_sibling(tip, null);
@@ -162,14 +163,18 @@ export class TooltipManager {
         const [lx, ly] = label.get_transformed_position();
         const [, lh] = label.get_transformed_size();
         // a wrapped name is a small card, not a pill
-        const look = 'border-radius: 12px;';
+        // (tight vertical padding: two wrapped lines have to fit inside a 40 px row)
+        const look = 'border-radius: 12px; padding-top: 3px; padding-bottom: 3px;';
         tip.set_style(look);
         const node = tip.get_theme_node();
         const padX = node.get_padding(St.Side.LEFT) + node.get_padding(St.Side.RIGHT);
         const availW = Math.max(80, Math.floor(fx + fw - lx + node.get_padding(St.Side.LEFT) - 4));
         tip.set_style(`${look} max-width: ${Math.max(40, availW - padX)}px;`);
         const [, natW] = tip.get_preferred_width(-1);
-        const [, natH] = tip.get_preferred_height(natW);
+        // the height of the text wrapped to the content width (a label queried without a width is one line)
+        tip.set_width(natW);
+        const padY = node.get_padding(St.Side.TOP) + node.get_padding(St.Side.BOTTOM);
+        const natH = tip.clutter_text.get_preferred_height(natW - padX)[1] + padY;
         let tx = Math.floor(lx - node.get_padding(St.Side.LEFT));
         let ty = Math.floor(ly + (lh - natH) / 2);
         ty = natH >= fh ? Math.floor(fy) : Math.max(Math.floor(fy), Math.min(ty, Math.floor(fy + fh - natH)));
@@ -177,7 +182,9 @@ export class TooltipManager {
             tx = Math.max(monitor.x + 4, Math.min(tx, monitor.x + monitor.width - natW - 4));
             ty = Math.max(monitor.y + 4, Math.min(ty, monitor.y + monitor.height - natH - 4));
         }
-        tip.set_position(tx, ty);
+        // the theme gives the dash label a margin (a shadow room): the actor's origin is outside the visible box
+        tip.ensure_style();
+        tip.set_position(tx - tip.margin_left, ty - tip.margin_top);
     }
 
     private _destroy(): void {

@@ -187,12 +187,12 @@ check "truncated name shows its tooltip" "$([ "$(state_get layout.tooltip)" != n
 echo "tooltip: $(state_get layout.tooltip)"
 screenshot ui-list-tooltip
 # the tooltip of a truncated row name lies over its own row: it never covers the next row's name
-python3 - "$(rect spawn-tooltip 0)" "$(rect spawn-pinned-row 0)" "$(rect spawn-pinned-row 1)" <<'PY' || { echo "FAIL the tooltip covers the next row"; status=1; }
+if python3 - "$(rect spawn-tooltip 0)" "$(rect spawn-pinned-row 0)" "$(rect spawn-pinned-row 1)" <<'PY'
 import json, sys
 t, r0, r1 = (json.loads(a) for a in sys.argv[1:4])
 assert t[1] >= r0[1] - 1 and t[1] + t[3] <= r1[1] + 1, (t, r0, r1)
 PY
-echo "ok   the tooltip stays within its own row"
+then echo "ok   the tooltip stays within its own row"; else echo "FAIL the tooltip covers the next row"; status=1; fi
 ui_call Move 300 300 >/dev/null; sleep 0.5
 move_class spawn-pinned-row 1 1.5
 expect "short name: no tooltip" "$(state_get layout.tooltip)" null
