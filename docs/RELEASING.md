@@ -1,6 +1,6 @@
 # Releasing Spawn
 
-Spawn is distributed as an RPM (`gnome-shell-extension-spawn`) from a DNF repository on GitHub Pages
+Spawn is distributed as an RPM (`spawn`) from a DNF repository on GitHub Pages
 (https://djshiye.github.io/spawn/). It is not published on extensions.gnome.org.
 
 ## Versions
@@ -40,7 +40,7 @@ What it does, in order:
 
 1. Refuses a dirty tree (unless `--allow-dirty`), refuses `--push` off `main`, checks the versions agree.
 2. Exports the tree (`git archive HEAD`) to a temp dir, runs `npm ci` (from `package-lock.json`, `--prefer-offline`) and
-   `tools/build.sh` there, and packs the export plus its `build/` into `gnome-shell-extension-spawn-<version>.tar.gz`
+   `tools/build.sh` there, and packs the export plus its `build/` into `spawn-<version>.tar.gz`
    (sorted, uid 0, mtime = commit time, `gzip -n`).
 3. Creates or updates the `.gh-pages/` git worktree (orphan `gh-pages` branch on first use; fast-forwards from `origin/gh-pages` when it exists).
 4. For each of Fedora 43, 44, 45:
@@ -68,8 +68,10 @@ The price is that the SRPM holds a prebuilt `build/` tree next to the sources (d
 
 ### Package layout
 
-`gnome-shell-extension-spawn` (Fedora's naming convention for shell extensions; `dnf repoquery '*spawn*'` finds no clashing
-package in F43/44/45), noarch, `Requires: gnome-shell >= 49`, `glib2`, `gjs`:
+`spawn` (short to type; no package in Fedora 43-45 or RPM Fusion is called or provides `spawn`, and `publish.sh` checks
+that again on every release, because a real Fedora package of that name would clash). Up to 1.1.1 it was
+`gnome-shell-extension-spawn`; the spec `Obsoletes` that name, so `dnf upgrade` moves old installs over, and `Provides` it,
+so `dnf install gnome-shell-extension-spawn` still works. noarch, `Requires: gnome-shell >= 49`, `glib2`, `gjs`:
 
 - `/usr/share/gnome-shell/extensions/spawn@djshiye.github.io/`: the `build/` tree minus `schemas/`.
 - `/usr/share/glib-2.0/schemas/org.gnome.shell.extensions.spawn.gschema.xml`, compiled by glib2's file trigger. Spawn's own
@@ -88,9 +90,9 @@ create the key (next section) before the first public publish if you can.
 User commands (also in the README):
 
 ```sh
-sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.github.io/spawn/spawn.repo && sudo dnf install -y gnome-shell-extension-spawn && spawn-enable
+sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.github.io/spawn/spawn.repo && sudo dnf install -y spawn && spawn-enable
 sudo dnf upgrade
-spawn-enable --remove; sudo dnf remove gnome-shell-extension-spawn
+spawn-enable --remove; sudo dnf remove spawn
 ```
 
 ## Signing
@@ -124,7 +126,7 @@ Signing happens on the host (`tools/lib/signing.sh`), never in a container, so t
    curl -sSfO https://djshiye.github.io/spawn/RPM-GPG-KEY-spawn
    gpg --show-keys --fingerprint RPM-GPG-KEY-spawn      # compare with the fingerprint in the README
    sudo rpm --import RPM-GPG-KEY-spawn
-   sudo dnf install -y gnome-shell-extension-spawn && spawn-enable
+   sudo dnf install -y spawn && spawn-enable
    ```
 
    Say that the key comes from the same site as the packages (trust on first use), so users should compare the fingerprint.

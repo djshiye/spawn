@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the gnome-shell-extension-spawn RPM in a Fedora container and publish it to the DNF repository
+# Build the spawn RPM in a Fedora container and publish it to the DNF repository
 # that lives on the gh-pages branch (served by GitHub Pages). No CI: everything runs locally with podman.
 #
 #   tools/publish.sh                 build from HEAD, commit to the local gh-pages worktree
@@ -25,7 +25,9 @@ REPO_URL="https://djshiye.github.io/spawn"
 # The package is noarch and identical everywhere; one directory per Fedora release keeps the layout
 # (and the $releasever baseurl) the same as the other repositories.
 FEDORA_RELEASES=(43 44 45)
-PKG="gnome-shell-extension-spawn"
+PKG="spawn"
+# the package name up to 1.1.1; the new package Obsoletes it, so its files are only pruned from the repository
+OLD_PKG="gnome-shell-extension-spawn"
 IMAGE_BASE="registry.fedoraproject.org/fedora"
 KEEP=3
 COMMIT_NAME="Dino Klisura"
@@ -206,6 +208,12 @@ podman run --rm \
     "$IMAGE" bash -euo pipefail -c '
         dnf install -y --setopt=install_weak_deps=False rpm-build glib2 >/dev/null
         [ "$(rpm -E %fedora)" = "$FEDORA" ] || { echo "container is not Fedora $FEDORA" >&2; exit 1; }
+        # The package is called plain "spawn": refuse to publish if Fedora itself ever ships something by that name
+        clash=$(dnf -q repoquery --whatprovides spawn --qf "%{name}\n" 2>/dev/null | sort -u)
+        if [ -n "$clash" ]; then
+            echo "Fedora $FEDORA now has a package providing \"spawn\" ($clash): rename ours first" >&2
+            exit 1
+        fi
         mkdir -p /root/rpmbuild/SOURCES
         cp /work/$NAME.tar.gz /root/rpmbuild/SOURCES/
         tar -xzOf /work/$NAME.tar.gz $NAME/build-aux/spawn.spec > /work/spawn.spec
@@ -230,6 +238,9 @@ if [ "$signed" -eq 1 ]; then
     # everyone: drop them (see docs/RELEASING.md for why they are dropped and not re-signed).
     signing_drop_unverifiable "$pubkey" "$repo_dir"
 fi
+# the renamed package replaces the old one (Obsoletes), so the old-name files are no longer needed
+# shellcheck disable=SC2086
+rm -fv "$repo_dir"/$OLD_PKG-[0-9]*.rpm
 # keep the newest $KEEP binary and source packages
 for pat in "$PKG-[0-9]*.noarch.rpm" "$PKG-[0-9]*.src.rpm"; do
     # shellcheck disable=SC2012,SC2086
@@ -325,8 +336,7 @@ cat > "$wt/index.html" <<HTML
   <h1>Spawn</h1>
   <p>DNF repository for Fedora (GNOME Shell extension)</p>
   <pre>sudo dnf config-manager addrepo --from-repofile=$REPO_URL/spawn.repo
-sudo dnf install $PKG
-gnome-extensions enable spawn@djshiye.github.io</pre>
+sudo dnf install spawn &amp;&amp; spawn-enable</pre>
   $trust_html
   <small><a href="https://github.com/djshiye/spawn">github.com/djshiye/spawn</a>
   &middot; $trust_note &middot; not affiliated with ArcMenu</small>

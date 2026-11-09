@@ -57,14 +57,14 @@ Install on Fedora 43, 44 or 45, then log out and back in:
 
 ```sh
 sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.github.io/spawn/spawn.repo
-sudo dnf install -y gnome-shell-extension-spawn && spawn-enable
+sudo dnf install -y spawn && spawn-enable
 ```
 
 On the first install dnf shows the key and asks you to accept it. Check that the fingerprint it shows matches the one
 above (the key is downloaded from the same site as the packages, so this comparison is what makes it trustworthy).
 
 - Update: `sudo dnf upgrade` (log out and in to load the new code).
-- Uninstall: `spawn-enable --remove; sudo dnf remove gnome-shell-extension-spawn` (and `sudo rm /etc/yum.repos.d/spawn.repo` to forget the repository).
+- Uninstall: `spawn-enable --remove; sudo dnf remove spawn` (and `sudo rm /etc/yum.repos.d/spawn.repo` to forget the repository).
 
 `spawn-enable` (installed by the package) adds the extension to GNOME's enabled list without asking the running shell:
 `gnome-extensions enable` only works for extensions the shell already knows, and it learns about a newly installed
