@@ -5,6 +5,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-11-09
+
+### Changed
+
+- **Folder popup stays connected to its folder:** while a folder is open, the folder you clicked stays lit above the
+  dimmed menu, like the item of an open submenu, so it is always clear which folder the card belongs to.
+
 ## [1.1.2] - 2026-11-09
 
 ### Fixed
