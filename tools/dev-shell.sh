@@ -20,6 +20,9 @@
 #     dtp-intellihide  with --with-dtp, seeded: Dash to Panel with intellihide: the panel stays revealed while the
 #                  menu is open and hides again after it closed once the pointer is off the panel; toggling
 #                  Dash to Panel with the menu open leaks no hold; screenshots
+#     core-fullscreen  seeded, optionally --with-dtp: Super over a real fullscreen window shows the hidden panel
+#                  (top bar, or Dash to Panel without intellihide) with the menu attached to it, and hides it again
+#                  on close; screenshots
 #     button-menu  seeded: the panel button context menu (right click / Menu key / Shift+F10, items, Power Options,
 #                  Show Desktop toggle, mutual exclusion with the Spawn popup; with --with-dtp also Panel Extension Settings)
 #     runner       seeded: the standalone runner (D-Bus ToggleRunner and the runner-hotkey accelerator, typing,
@@ -27,7 +30,7 @@
 #     shots        seeded: the review screenshots into .dev/shots/final/
 #     bench        seeded: in-shell benchmark (Dev.Benchmark) -> table, raw JSON in .dev/bench.json
 #     all          smoke, lifecycle, hotkeys, theme, dtp-toggle (with DtP), dtp-open (with DtP), dtp-intellihide (with DtP),
-#                  ui, runner, shots, bench; each in its own fresh shell; prints a summary and exits
+#                  core-fullscreen (with and without DtP), ui, runner, shots, bench; each in its own fresh shell; prints a summary and exits
 #                  non-zero if any scenario failed or logged a spawn error
 #     <other>      any tools/dev/scenarios/<name>.sh is run as a scenario
 #   --seed       load tools/dev/seed.ini (the user's pinned apps, 3 folders, shortcuts, Orchis theme
@@ -75,12 +78,12 @@ case "$scenario" in
         fi
         ;;
 esac
-case "$scenario" in ui | ui-* | dtp-open | dtp-intellihide | shots | bench | button-menu | runner) seed=1 ;; esac
+case "$scenario" in ui | ui-* | dtp-open | dtp-intellihide | core-fullscreen | shots | bench | button-menu | runner) seed=1 ;; esac
 
 if [ "$scenario" = "all" ]; then
     # Each scenario runs in its own fresh isolated shell (this script, recursively).
     mkdir -p "$dev/logs"
-    runs=("smoke" "lifecycle" "hotkeys" "theme" "dtp-toggle --with-dtp" "dtp-open --with-dtp" "dtp-intellihide --with-dtp" "ui" "runner" "shots" "bench")
+    runs=("smoke" "lifecycle" "hotkeys" "theme" "dtp-toggle --with-dtp" "dtp-open --with-dtp" "dtp-intellihide --with-dtp" "core-fullscreen" "core-fullscreen --with-dtp" "ui" "runner" "shots" "bench")
     summary=()
     failed=0
     for run in "${runs[@]}"; do

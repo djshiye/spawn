@@ -7,6 +7,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [1.1.3] - 2026-11-09
 
+### Fixed
+
+- **Menu over fullscreen games:** pressing Super (or the menu shortcut) while a game or other app is fullscreen now
+  brings back the panel the menu belongs to, the top bar or Dash to Panel, and opens the menu attached to it, the way
+  GNOME's own Overview shows the panel over a fullscreen window. The panel hides again as soon as the menu closes.
+  Before, the menu floated on its own at the top-left corner over the game, with no panel.
+
 ### Changed
 
 - **Folder popup stays connected to its folder:** while a folder is open, the folder you clicked stays lit above the

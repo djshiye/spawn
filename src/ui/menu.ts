@@ -8,7 +8,10 @@
 // Re-anchoring recreates the PopupMenu shell for the new anchor and re-parents the (already
 // built, expensive) layout actor into it; the layout itself is built once.
 // While the popup is open on a Dash to Panel panel with intellihide, that panel is held revealed
-// (panel/intellihide.ts); the hold is given back on close, once the pointer is off the panel.
+// (panel/intellihide.ts); the hold is given back on close, once the pointer is off the panel. A panel a
+// fullscreen window has hidden (top bar, or Dash to Panel without intellihide) is shown while the popup is
+// open on it and hidden again on close (panel/fullscreenReveal.ts), so Super in a fullscreen game opens the
+// menu attached to its panel instead of floating at the screen edge.
 // The popup actor carries `spawn-popup spawn-menu-popup` (the theme's `menu-arrow-rise` targets
 // .spawn-menu-popup only; the runner shares .spawn-popup). `menu-position-alignment` moves a popup under
 // a panel button that is centred in the panel (see _align).
@@ -44,8 +47,9 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import type {Services} from '../core/services.js';
 import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
+import type {FullscreenReveal} from '../panel/fullscreenReveal.js';
 import type {IntellihideHold} from '../panel/intellihide.js';
-import {createIntellihideHold} from '../panel/targets.js';
+import {createFullscreenReveal, createIntellihideHold} from '../panel/targets.js';
 import {isActorAlive} from '../panel/validate.js';
 import type {FakePlace} from '../model/places.js';
 import {installUiDevHooks} from './devHooks.js';
@@ -73,11 +77,13 @@ export class SpawnPopup {
     private _layoutScope: Scope | null = null;
     private _open = false;
     private readonly _intellihide: IntellihideHold;
+    private readonly _fullscreen: FullscreenReveal;
 
     constructor(scope: Scope, services: Services) {
         this._scope = scope;
         this._services = services;
         this._intellihide = createIntellihideHold(scope.child('intellihide'));
+        this._fullscreen = createFullscreenReveal(scope.child('fullscreen reveal'));
         scope.add(() => this._teardown(), 'SpawnPopup');
         try {
             installUiDevHooks(scope.child('ui dev hooks'), services.settings, this, services.appIndex);
@@ -200,10 +206,14 @@ export class SpawnPopup {
                 this._attach(anchor);
             if (this._menu) {
                 // Reveal an intellihide panel BEFORE the menu positions itself against the button.
+                // Likewise show a panel a fullscreen window has hidden, so the menu opens attached to it.
                 this._intellihide.hold(anchor);
+                this._fullscreen.show(anchor);
                 openMenu(this._menu);
-                if (!this._open)
+                if (!this._open) {
                     this._intellihide.release();
+                    this._fullscreen.restore();
+                }
             }
         } catch (e) {
             error('popup open failed', e);
@@ -356,8 +366,10 @@ export class SpawnPopup {
         } catch (e) {
             error('popup open-state handler failed', e);
         }
-        if (!open)
+        if (!open) {
             this._intellihide.release();
+            this._fullscreen.restore();
+        }
         for (const cb of [...this._listeners]) {
             try {
                 cb(open, anchor);
