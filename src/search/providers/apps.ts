@@ -31,6 +31,8 @@ export interface AppsProviderOptions {
 export class AppsProvider implements SearchProvider {
     readonly id = 'apps';
     readonly title = 'Applications';
+    /** In memory and synchronous: answers every keystroke, without the engine's debounce. */
+    readonly immediate = true;
 
     private readonly _index: AppIndex;
     private readonly _settings: SpawnSettings;

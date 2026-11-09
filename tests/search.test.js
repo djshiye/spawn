@@ -324,4 +324,61 @@ test('immediate searches deliver synchronous providers before returning', () => 
     scope.dispose();
 });
 
+test('an immediate provider answers every keystroke; the others wait for the debounce', () => {
+    const {scope, engine, batches, onBatch} = setup(40);
+    const apps = Object.assign(fake('apps', q => [result('apps', q)]), {immediate: true});
+    const files = fake('files', q => [result('files', q)]);
+    engine.addProvider(apps);
+    engine.addProvider(files);
+    const h = engine.search('f', onBatch);
+    assertEquals(batches.map(b => `${b.providerId}:${b.query}`), ['apps:f']); // before search() returned
+    assertEquals(h.pending, true);
+    sleep(10);
+    engine.search('fi', onBatch);
+    assertEquals(batches.map(b => `${b.providerId}:${b.query}`), ['apps:f', 'apps:fi']);
+    assertEquals(files.calls.length, 0);
+    sleep(100);
+    assertEquals(apps.calls.map(c => c.query), ['f', 'fi']); // not run again after the debounce
+    assertEquals(files.calls.map(c => c.query), ['fi']);
+    assertEquals(batches.map(b => `${b.providerId}:${b.query}`), ['apps:f', 'apps:fi', 'files:fi']);
+    // order stays the registration order, whichever part ran first
+    assert(batches[0].order < batches[2].order, 'apps sort before files');
+    scope.dispose();
+});
+
+test('only immediate providers: nothing is pending; flush() and cancel() stay harmless', () => {
+    const {scope, engine, batches, onBatch} = setup(40);
+    const apps = Object.assign(fake('apps', q => [result('apps', q)]), {immediate: true});
+    engine.addProvider(apps);
+    engine.addProvider(fake('off', q => [result('off', q)], false)); // disabled: no debounced run at all
+    const h = engine.search('abc', onBatch);
+    assertEquals(batches.length, 1);
+    assertEquals(h.pending, false);
+    h.flush();
+    h.cancel();
+    sleep(80);
+    assertEquals(apps.calls.length, 1);
+    assertEquals(batches.length, 1);
+    scope.dispose();
+});
+
+test('flush() runs the debounced providers of a query whose immediate ones already answered', () => {
+    const {scope, engine, batches, onBatch} = setup(60);
+    engine.addProvider(Object.assign(fake('apps', q => [result('apps', q)]), {immediate: true}));
+    const files = fake('files', q => [result('files', q)]);
+    engine.addProvider(files);
+    const h = engine.search('doc', onBatch);
+    h.flush();
+    assertEquals(h.pending, false);
+    assertEquals(batches.map(b => b.providerId), ['apps', 'files']);
+    sleep(120);
+    assertEquals(files.calls.length, 1); // the timer did not run it twice
+    const h2 = engine.search('docs', onBatch);
+    h2.cancel();
+    sleep(120);
+    assertEquals(files.calls.length, 1); // cancelled before the debounce
+    assertEquals(batches.map(b => b.query), ['doc', 'doc', 'docs']);
+    scope.dispose();
+});
+
 run();

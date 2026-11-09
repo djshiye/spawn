@@ -8,12 +8,13 @@
 // when present (GNOME remote providers: Characters glyphs, Files icons), else result.icon.
 //
 // Flicker-free queries: instead of reset() on every keystroke, call beginQuery(). The rows of
-// the previous query stay on screen, dimmed ("stale"), until the first batch of the new query
-// arrives (they are then replaced at once) or STALE_MS (150 ms) elapse (they are then dropped
-// and the pending / "No results" state follows). While stale, first() returns null and
-// activateFirst() does nothing, so Return can never activate a row of an OLD query: call
-// SearchHandle.flush() (engine) first, which delivers the synchronous batches before it
-// returns, then activateFirst().
+// the previous query stay on screen, dimmed ("stale"), section by section: a provider's section is
+// replaced at once when that provider's batch of the new query arrives (the apps run on every key,
+// slower providers after the engine's debounce, so their old rows stay in place meanwhile), and
+// whatever is still stale STALE_MS (150 ms) after beginQuery() is dropped (then the pending /
+// "No results" state follows). Stale rows are never first() and cannot be activated, so Return can
+// never activate a row of an OLD query: call SearchHandle.flush() (engine) first, which delivers
+// the synchronous batches before it returns, then activateFirst().
 //
 // Public API:
 //   new ResultList(scope: Scope, settings: SpawnSettings, host: ResultHost)
@@ -22,7 +23,7 @@
 //   list.reset(): void                  hard clear (menu closed / view left): rows gone now
 //   list.addBatch(batch: SearchBatch): void   empty batches are ignored
 //   list.rows(): St.Widget[]            rows of the CURRENT query in display order (keyboard
-//                                       nav); [] while stale. Stale rows are also made
+//                                       nav), never stale ones. Stale rows are also made
 //                                       non-reactive / non-focusable, so neither the keyboard
 //                                       nor the mouse can activate a result of an old query
 //   list.first(): St.Widget | null      first row of the CURRENT query; null while stale
@@ -66,6 +67,8 @@ interface Section {
     order: number;
     box: St.BoxLayout;
     rows: St.Button[];
+    /** Belongs to the previous query (dimmed, inert) until this provider's new batch replaces it. */
+    stale: boolean;
 }
 
 const EMPTY_DELAY_MS = 700;
@@ -86,7 +89,6 @@ export class ResultList {
     private readonly _results = new Map<St.Button, SearchResult>();
     private _cancelEmpty: (() => void) | null = null;
     private _cancelStale: (() => void) | null = null;
-    private _stale = false;
     private _pending = false;
     private _selected: St.Button | null = null;
     private readonly _announcer: ResultAnnouncer;
@@ -132,7 +134,7 @@ export class ResultList {
     }
 
     get hasResults(): boolean {
-        return !this._stale && this._sections.some(s => s.rows.length > 0);
+        return this._sections.some(s => !s.stale && s.rows.length > 0);
     }
 
     get hasPending(): boolean {
@@ -152,10 +154,10 @@ export class ResultList {
             this._armEmpty();
             return;
         }
-        if (this._stale)
-            return; // already waiting; the drop timer keeps its original deadline
-        this._stale = true;
         for (const s of this._sections) {
+            if (s.stale)
+                continue;
+            s.stale = true;
             s.box.opacity = STALE_OPACITY;
             for (const row of s.rows) {
                 row.reactive = false;
@@ -163,10 +165,15 @@ export class ResultList {
             }
         }
         this._updateSelection();
+        if (this._cancelStale)
+            return; // already waiting; the drop timer keeps its original deadline
         this._cancelStale = this._scope.timeout(STALE_MS, () => {
             this._cancelStale = null;
-            this._clearSections();
-            this._armEmpty();
+            this._dropStale();
+            if (!this.hasResults) {
+                this._clearSections();
+                this._armEmpty();
+            }
         });
     }
 
@@ -185,8 +192,9 @@ export class ResultList {
         const results = batch.results.slice(0, max);
         if (results.length === 0)
             return;
-        if (this._stale)
-            this._clearSections();
+        // This provider's rows of the previous query make way; the other providers' stay until theirs arrive.
+        for (const old of this._sections.filter(s => s.providerId === batch.providerId))
+            this._removeSection(old);
         this._pending = false;
         this._cancelEmpty?.();
         this._cancelEmpty = null;
@@ -195,7 +203,7 @@ export class ResultList {
         const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-result-section'});
         box.add_child(new St.Label({text: batch.providerTitle, style_class: 'spawn-section-title'}));
         markList(box, batch.providerTitle);
-        const section: Section = {providerId: batch.providerId, order: batch.order, box, rows: []};
+        const section: Section = {providerId: batch.providerId, order: batch.order, box, rows: [], stale: false};
         for (const result of results) {
             const row = this._makeRow(result, batch.query);
             box.add_child(row);
@@ -211,7 +219,7 @@ export class ResultList {
         this.actor.insert_child_at_index(box, at);
         this._trimTail();
         this._updateSelection();
-        this._announcer.found(this._sections.reduce((n, s) => n + s.rows.length, 0));
+        this._announcer.found(this._sections.reduce((n, s) => n + (s.stale ? 0 : s.rows.length), 0));
     }
 
     /** What the screen reader was last told about the result count (dev hook). */
@@ -220,15 +228,11 @@ export class ResultList {
     }
 
     rows(): St.Widget[] {
-        if (this._stale)
-            return [];
-        return this._sections.flatMap(s => s.rows);
+        return this._sections.flatMap(s => s.stale ? [] : s.rows);
     }
 
     first(): St.Widget | null {
-        if (this._stale)
-            return null;
-        return this._sections.find(s => s.rows.length > 0)?.rows[0] ?? null;
+        return this._sections.find(s => !s.stale && s.rows.length > 0)?.rows[0] ?? null;
     }
 
     activateFirst(): boolean {
@@ -266,10 +270,30 @@ export class ResultList {
         rows[rows.length - 1]?.set_style('padding-bottom: 0;');
     }
 
+    private _removeSection(section: Section): void {
+        const i = this._sections.indexOf(section);
+        if (i >= 0)
+            this._sections.splice(i, 1);
+        for (const row of section.rows) {
+            this._results.delete(row);
+            if (this._selected === row)
+                this._selected = null;
+        }
+        section.box.destroy();
+    }
+
+    /** The STALE_MS deadline: drop the sections no new batch replaced. */
+    private _dropStale(): void {
+        this._host.tooltips?.hide();
+        for (const s of this._sections.filter(x => x.stale))
+            this._removeSection(s);
+        this._trimTail();
+        this._updateSelection();
+    }
+
     private _clearSections(): void {
         this._cancelStale?.();
         this._cancelStale = null;
-        this._stale = false;
         for (const s of this._sections)
             s.box.destroy();
         this._sections.length = 0;
@@ -325,8 +349,12 @@ export class ResultList {
         }
     }
 
+    private _isStale(result: SearchResult): boolean {
+        return this._sections.some(s => s.stale && s.rows.some(r => this._results.get(r) === result));
+    }
+
     private _activate(result: SearchResult): void {
-        if (this._stale)
+        if (this._isStale(result))
             return; // a row of the previous query (cannot normally be reached: see beginQuery)
         this._host.close();
         try {
@@ -374,7 +402,7 @@ export class ResultList {
         wireItem(button, {
             activate: () => this._activate(result),
             context: this._host.openResultContext ? () => {
-                if (!this._stale)
+                if (!this._isStale(result))
                     this._host.openResultContext?.(button, result);
             } : undefined,
         });
