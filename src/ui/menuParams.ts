@@ -3,8 +3,11 @@
 // `& FULL` and silently mean "no animation"). The installed @girs typings declare only one of the two,
 // so calls go through these typed wrappers, which pick the form the running shell expects.
 // The shell's PopupMenu also adds its own key handling to its source actor (Return / Space / arrow
-// toggles the menu), which would bypass Spawn's click-action settings; `silenceSourceKeys` turns it off
-// on every release (a disabled Clutter.KeyController on 51, a key-press-event handler on 49 / 50).
+// toggles the menu), which would bypass Spawn's own key handling of that actor; `silenceSourceKeys` takes it
+// off on every release (a Clutter.KeyController on 51, a key-press-event handler on 49 / 50). Call it for
+// EVERY PopupMenu whose source is a Spawn item: 51's PopupMenu.destroy() leaves its controller on the
+// source, so a row whose context menu was opened once would otherwise feed Return / Space / Down to a
+// destroyed menu for the rest of the session (dead keys plus a Gjs-CRITICAL per press).
 //
 // Public API:
 //   openMenu(menu, animate = true): void      also, on 49 / 50, starts keyboard navigation when a key press
@@ -63,9 +66,13 @@ export function closeMenu(menu: PopupMenu.PopupMenu, requestAnimate = true): voi
 }
 
 export function silenceSourceKeys(menu: PopupMenu.PopupMenu): void {
-    const m = menu as unknown as {_keyController?: Clutter.ActorMeta};
+    const m = menu as unknown as {_keyController?: Clutter.Action};
     if (m._keyController) {
         m._keyController.set_enabled(false);
+        // Off the source too: it outlives the menu (a row whose context menu is rebuilt on every open).
+        const owner = m._keyController.get_actor();
+        if (owner)
+            owner.remove_action(m._keyController);
         return;
     }
     // 49 / 50: the handler is connected with connectObject(..., menu) next to a `notify::mapped` one

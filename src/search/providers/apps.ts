@@ -67,9 +67,9 @@ export class AppsProvider implements SearchProvider {
                 description: app.get_description() ?? undefined,
                 icon: app.get_icon(),
                 score,
-                activate: () => {
+                activate: (newWindow = false) => {
                     try {
-                        launchApp(app, this._settings, false);
+                        launchApp(app, this._settings, newWindow);
                     } catch (e) {
                         error(`launching ${app.get_id()} failed`, e);
                     }

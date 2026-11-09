@@ -14,6 +14,7 @@
 //   menu.open(source: St.Widget, target: ContextTarget): void   popup at `source`
 //   menu.close(): void
 //   menu.isOpen: boolean
+//   menu.unpin(id): void            the "Unpin from Menu" action (also Delete on a pinned entry, layout.ts)
 //   ContextTarget: {kind: 'app', app: Shell.App, folderUuid?: string}
 //                | {kind: 'folder', uuid: string}
 //                | {kind: 'custom', id: string}           (pinned command entry or a pinned app whose
@@ -24,7 +25,7 @@
 
 import Pango from 'gi://Pango';
 import St from 'gi://St';
-import type Shell from 'gi://Shell';
+import Shell from 'gi://Shell';
 
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 import {AppMenu} from 'resource:///org/gnome/shell/ui/appMenu.js';
@@ -78,6 +79,8 @@ export class AppContextMenu {
                 ? this._buildAppMenu(source, target, scope)
                 : this._buildSimpleMenu(source, target, scope);
             this._menu = menu;
+            // The row's own keys (Return / Space / arrows) stay Spawn's, also after this menu is destroyed.
+            silenceSourceKeys(menu);
 
             // The row the menu belongs to stays lit while it is open (the pointer is on the menu, so it would not be).
             source.add_style_class_name('spawn-context-source');
@@ -125,6 +128,23 @@ export class AppContextMenu {
         }
     }
 
+    /** "Unpin from Menu" (the app and command menus run it; the layout's Delete key too). */
+    unpin(id: string, name?: string): void {
+        const store = this._services.pinned;
+        if (!this._host.unpin) {
+            store.unpin(id);
+            return;
+        }
+        // The layout's Undo banner needs a display name: the app's, else the pinned command's, else the id.
+        let label = name;
+        if (!label) {
+            const entry = store.items(true).find(i => i.kind === 'custom' && i.entry.id === id);
+            label = (entry?.kind === 'custom' && entry.entry.name) ||
+                Shell.AppSystem.get_default().lookup_app(id)?.get_name() || id.replace(/\.desktop$/, '');
+        }
+        this._host.unpin(id, label);
+    }
+
     close(): void {
         try {
             if (this._menu) closeMenu(this._menu, false);
@@ -165,7 +185,7 @@ export class AppContextMenu {
 
         const appName = target.app.get_name() || id;
         if (store.isPinned(id))
-            action(_('Unpin from Menu'), () => (this._host.unpin ? this._host.unpin(id, appName) : store.unpin(id)));
+            action(_('Unpin from Menu'), () => this.unpin(id, appName));
         else
             action(_('Pin to Menu'), () => (this._host.pin ? this._host.pin(id, appName) : store.pin(id)));
 
@@ -237,7 +257,7 @@ export class AppContextMenu {
             const id = target.id;
             const entry = store.items(true).find(i => i.kind === 'custom' && i.entry.id === id);
             const name = (entry?.kind === 'custom' && entry.entry.name) || id.replace(/\.desktop$/, '');
-            add(_('Unpin from Menu'), () => (this._host.unpin ? this._host.unpin(id, name) : store.unpin(id)));
+            add(_('Unpin from Menu'), () => this.unpin(id, name));
         } else if (target.kind === 'shortcut') {
             const {entry, name, app} = target;
             // Open closes the menu itself where it should (All Apps keeps it open), so no automatic close here.

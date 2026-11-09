@@ -1,7 +1,8 @@
 // Shared interaction wiring for focusable menu items (tiles, rows, shortcuts).
 //
 // Public API:
-//   makeItemButton(styleClass): St.Button       focusable, reactive, left/middle/right capable
+//   makeItemButton(styleClass): St.Button       focusable, reactive, left/middle/right capable; reports its hover
+//                                               to the menu's / runner's one-highlight rule (highlight.ts)
 //   wireItem(button, handlers)                  click / Return -> activate(ctrl, button);
 //                                               right click, Menu key, Shift+F10 -> context()
 //   applyStyleVariant(widget, className, on)    toggle a style class
@@ -22,6 +23,7 @@ import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 
 import {isCtrlPressed} from '../util.js';
+import {trackItem} from './highlight.js';
 
 export interface ItemHandlers {
     /** `ctrl`: Ctrl held or middle click. `button`: 0 keyboard, 1 left, 2 middle. */
@@ -37,7 +39,7 @@ export interface ItemHandlers {
 const ALL_BUTTONS = (1 | 2 | 4) as St.ButtonMask;
 
 export function makeItemButton(styleClass: string): St.Button {
-    return new St.Button({
+    const button = new St.Button({
         style_class: styleClass,
         can_focus: true,
         reactive: true,
@@ -45,6 +47,8 @@ export function makeItemButton(styleClass: string): St.Button {
         button_mask: ALL_BUTTONS,
         x_expand: true,
     });
+    trackItem(button);
+    return button;
 }
 
 /**

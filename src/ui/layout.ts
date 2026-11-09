@@ -58,6 +58,7 @@ import type {Entry, PinnedItemSize, SettingsSnapshot} from '../core/settings.js'
 import {addHidden, removeHidden} from '../model/hiddenApps.js';
 import type {FolderUndo, PinnedItem} from '../model/pinned.js';
 import {Places, type FakePlace, type Place} from '../model/places.js';
+import {nearestIndex, pageTarget, searchStep, type Pos} from '../model/listNav.js';
 import {reorderTarget, type ReorderKey} from '../model/reorder.js';
 import type {SearchHandle, SearchResult} from '../search/engine.js';
 import {AppContextMenu} from './contextMenu.js';
@@ -70,6 +71,7 @@ import {CategoryList} from './widgets/categoryList.js';
 import {ExtraList} from './widgets/extraList.js';
 import {FolderRow, FolderTile, type FolderHost} from './widgets/folderTile.js';
 import {FolderView} from './widgets/folderView.js';
+import {PointerHighlight} from './widgets/highlight.js';
 import {makeFace, makeItemButton, wireItem} from './widgets/interact.js';
 import {sizeMetrics} from './widgets/pinnedSize.js';
 import {PlaceRow} from './widgets/placeRow.js';
@@ -181,6 +183,28 @@ interface TileEntry {
     folder?: FolderTile | FolderRow;
 }
 
+/** Centre of an actor on the stage. */
+function centreOf(actor: Clutter.Actor): Pos {
+    const [x, y] = actor.get_transformed_position();
+    const [w, h] = actor.get_transformed_size();
+    return {x: x + w / 2, y: y + h / 2};
+}
+
+/** Is `actor` (at least half of it) inside the visible part of the scroll view it is in, if any? */
+function inView(actor: Clutter.Actor): boolean {
+    if (!actor.mapped)
+        return false;
+    let scroll = actor.get_parent();
+    while (scroll && !(scroll instanceof St.ScrollView))
+        scroll = scroll.get_parent();
+    if (!scroll)
+        return true;
+    const c = centreOf(actor).y;
+    const [, top] = scroll.get_transformed_position();
+    const [, height] = scroll.get_transformed_size();
+    return c >= top && c <= top + height;
+}
+
 function isDefaultViewPinnedish(view: string): boolean {
     return view === 'Pinned_Apps' || view === 'Frequent_Apps' || view === 'Pinned_And_Frequent_Apps';
 }
@@ -213,6 +237,7 @@ export class SpawnLayout implements ShortcutHost {
     private readonly _search: SearchBox;
     private readonly _tooltips: TooltipManager;
     private readonly _context: AppContextMenu;
+    private readonly _highlight: PointerHighlight;
 
     // right pane (rebuilt as a unit)
     private _rightScope: Scope;
@@ -263,6 +288,8 @@ export class SpawnLayout implements ShortcutHost {
     private _searchTop = false;
     /** Return was pressed before the first batch of the query arrived: activate it when it does. */
     private _activateWhenReady = false;
+    /** ... and it was Ctrl+Return. */
+    private _activateCtrl = false;
     private _cancelActivateWait: (() => void) | null = null;
     /** cols|tile width|icon size of the last `_applyMetrics`: a change means the pinned tiles are stale. */
     private _metricsSig = '';
@@ -327,11 +354,7 @@ export class SpawnLayout implements ShortcutHost {
                 this._scope.idle(() => openSpawnPrefs(this._services.settings, this._services.info.uuid, shortcuts ? 'pinned' : undefined));
             },
             renameFolder: uuid => {
-                this._scope.idle(() => {
-                    this._showFolder(uuid);
-                    if (this._view === 'folder' && this._folderView?.uuid === uuid)
-                        this._folderView.startRename();
-                });
+                this._scope.idle(() => this._renameFolder(uuid));
             },
         });
 
@@ -349,6 +372,11 @@ export class SpawnLayout implements ShortcutHost {
         });
         this.actor.add_child(this._panes);
         bindReducedMotion(scope, this.actor);
+        // One highlight: the pointed-at item is it (the folder popup has its own rule, widgets/folderView.ts).
+        this._highlight = new PointerHighlight(scope, this.actor, {
+            ignore: item => Boolean(this._folderView?.actor.contains(item)),
+            onHover: item => this._onItemHover(item),
+        });
 
         // Registered FIRST so it runs LAST (LIFO): every widget scope is torn down while its
         // actors are still alive, then the root actor takes the remaining children with it.
@@ -410,7 +438,7 @@ export class SpawnLayout implements ShortcutHost {
             });
         });
         this._search.onActivate(scope, () => this._onSearchActivate());
-        this._search.onNavigate(scope, (key, shift) => this._onSearchKey(key, shift));
+        this._search.onNavigate(scope, (key, shift, ctrl) => this._onSearchKey(key, shift, ctrl));
 
         // input
         this.actor.connect('key-press-event', (_a: Clutter.Actor, event: Clutter.Event) => this._onKeyPress(event));
@@ -459,6 +487,7 @@ export class SpawnLayout implements ShortcutHost {
             error('layout warm-up failed', e);
         }
         try {
+            this._highlight.reset();
             this._folderView?.commitRename();
             this._dismissUndo();
             this._context.close();
@@ -609,7 +638,21 @@ export class SpawnLayout implements ShortcutHost {
             // accessible names of the app rows of the visible category list ("Firefox", "Firefox, new")
             appRows: (this._categories?.appRows() ?? []).map(r => r.accessible_name ?? ''),
             undo: this._undoBanner.visible,
+            // the search highlight (Return target) and what the screen reader was told last
+            selected: this._results?.selected()?.accessible_name ?? null,
+            selectedIndex: this._results?.rows().indexOf(this._results.selected() as St.Widget) ?? -1,
+            announcement: this._results?.announcement ?? '',
+            // one-highlight rule: the item the pointer highlights, and every item showing a hover tint
+            hovered: this._highlight.hovered?.accessible_name ?? null,
+            hoverTints: this._hoverTints(),
         };
+    }
+
+    /** Accessible names of the items showing a hover tint (dev hook: at most one may). */
+    private _hoverTints(): string[] {
+        const {left, right, cats} = this._paneGroups();
+        return [...left, ...right, ...(cats ? [cats] : [])].flatMap(g => g.items)
+            .filter(a => a instanceof St.Widget && a.hover).map(a => (a as St.Widget).accessible_name ?? '');
     }
 
     // ---- sizes ----
@@ -813,6 +856,8 @@ export class SpawnLayout implements ShortcutHost {
         if (!top)
             add(this._search.actor);
         this._search.actor.add_style_class_name(top ? 'spawn-search-top' : 'spawn-search-bottom');
+        // Entry below the list: the best match sits right above it.
+        this._results?.setReversed(!top);
     }
 
     /** The enabled quick links, minus the start view itself and All Apps where its nav button shows (none for the category list). */
@@ -1141,8 +1186,17 @@ export class SpawnLayout implements ShortcutHost {
         }
         case 'results': {
             if (!this._resultsScroll) {
-                this._results = new ResultList(this._scope, this._services.settings, this._resultHost);
-                this._resultsScroll = this._makeScroll(this._results.actor, 'spawn-results');
+                const results = new ResultList(this._scope, this._services.settings, this._resultHost);
+                results.setReversed(!this._searchTop);
+                const scroll = this._makeScroll(results.actor, 'spawn-results');
+                // New rows (a batch, the reversed list growing upwards): keep the highlighted one in view.
+                scroll.vadjustment.connect('notify::upper', () => {
+                    const row = this._view === 'results' ? results.selected() : null;
+                    if (row)
+                        scrollIntoView(scroll, row);
+                });
+                this._results = results;
+                this._resultsScroll = scroll;
             }
             return [add(this._resultsScroll)];
         }
@@ -1512,6 +1566,13 @@ export class SpawnLayout implements ShortcutHost {
         (fv.tiles()[0] ?? fv.headerButtons()[0]).grab_key_focus();
     }
 
+    /** Open the folder and start renaming it (its context menu's Rename, F2). */
+    private _renameFolder(uuid: string): void {
+        this._showFolder(uuid);
+        if (this._view === 'folder' && this._folderView?.uuid === uuid)
+            this._folderView.startRename();
+    }
+
     // ---- delete folder + undo ----
 
     /** "Delete Folder": the apps move to the top level; the banner offers to put the folder back. */
@@ -1734,6 +1795,8 @@ export class SpawnLayout implements ShortcutHost {
         const query = text.trim();
         this._cancelSearch();
         this._setActivateWhenReady(false);
+        // Typing: new rows appearing under a resting pointer must not take the highlight from the best match.
+        this._highlight.keyMoved(null);
         if (query.length === 0) {
             // Drop the old rows now: the next query must not flash them (dimmed) or let Down focus them.
             this._results?.reset();
@@ -1759,8 +1822,9 @@ export class SpawnLayout implements ShortcutHost {
                     return;
                 results.addBatch(batch);
                 if (this._activateWhenReady && results.first()) {
+                    const ctrl = this._activateCtrl;
                     this._setActivateWhenReady(false);
-                    results.activateFirst();
+                    results.activateSelected(ctrl);
                 }
             });
         } catch (e) {
@@ -1769,12 +1833,13 @@ export class SpawnLayout implements ShortcutHost {
     }
 
     /**
-     * Return in the search entry: activate the first result of the CURRENT query. Typing and
-     * pressing Return inside the debounce window must not do nothing: flush the pending query
-     * (synchronous providers deliver before flush() returns); if slower providers still owe the
-     * first row, activate it as soon as it arrives.
+     * Return in the search entry: activate the highlighted result of the CURRENT query (the first
+     * one until Up / Down / the pointer moved the highlight). Typing and pressing Return inside the
+     * debounce window must not do nothing: flush the pending query (synchronous providers deliver
+     * before flush() returns); if slower providers still owe the first row, activate it as soon as
+     * it arrives. `ctrl` (Ctrl+Return): as a Ctrl+click on the row.
      */
-    private _onSearchActivate(): void {
+    private _onSearchActivate(ctrl = false): void {
         if (this._view !== 'results' || this._search.text.trim().length === 0)
             return;
         const results = this._results;
@@ -1785,18 +1850,19 @@ export class SpawnLayout implements ShortcutHost {
         } catch (e) {
             error('search flush failed', e);
         }
-        if (!results.activateFirst())
-            this._setActivateWhenReady(true);
+        if (!results.activateSelected(ctrl))
+            this._setActivateWhenReady(true, ctrl);
     }
 
     /**
      * "Return was pressed before the first row arrived". Expires after ACTIVATE_WAIT_MS: a provider
      * answering long after "No results" showed must not launch something the user never saw.
      */
-    private _setActivateWhenReady(on: boolean): void {
+    private _setActivateWhenReady(on: boolean, ctrl = false): void {
         this._cancelActivateWait?.();
         this._cancelActivateWait = null;
         this._activateWhenReady = on;
+        this._activateCtrl = on && ctrl;
         if (on)
             this._cancelActivateWait = this._scope.timeout(ACTIVATE_WAIT_MS, () => {
                 this._cancelActivateWait = null;
@@ -1804,28 +1870,86 @@ export class SpawnLayout implements ShortcutHost {
             });
     }
 
-    private _onSearchKey(key: number, shift: boolean): boolean {
+    /**
+     * Keys in the search entry. While results show, the typing focus stays in the entry: Up / Down move
+     * the highlight one result (wrapping; the first is highlighted already, so the key pointing away from
+     * the entry goes to the second; with the entry below the list, whose order is mirrored, that is Up),
+     * Page Up / Down one page of results, Return / Ctrl+Return activate the highlighted one, Tab goes to
+     * the results. Without a query, Down (and Up when the entry is below) enter the list.
+     */
+    private _onSearchKey(key: number, shift: boolean, ctrl = false): boolean {
+        const results = this._view === 'results' ? this._results : null;
         switch (key) {
         case Clutter.KEY_Down:
-            // Deliver the synchronous batches of the pending query first: the rows we focus must
-            // belong to what the entry says now, not to the previous keystroke.
-            try {
-                this._searchHandle?.flush();
-            } catch (e) {
-                error('search flush failed', e);
+        case Clutter.KEY_Up: {
+            const down = key === Clutter.KEY_Down;
+            if (results) {
+                // Deliver the synchronous batches of the pending query first: the highlight must move
+                // over what the entry says now, not over the rows of the previous keystroke.
+                this._flushSearch();
+                this._showSelection(results.moveSelection(searchStep(down ? 'down' : 'up', this._searchTop), false));
+            } else if (down || !this._searchTop) {
+                this._focusMain(!down);
+                this._highlight.keyMoved();
             }
-            this._focusMain();
             return true;
-        case Clutter.KEY_Up:
-            if (!this._searchTop)
-                this._focusMain(true);
+        }
+        case Clutter.KEY_Page_Up:
+        case Clutter.KEY_Page_Down:
+            if (!results)
+                return false;
+            this._flushSearch();
+            this._showSelection(this._pageTo(results.visualRows(), results.selected(), key === Clutter.KEY_Page_Down ? 1 : -1));
+            return true;
+        case Clutter.KEY_Return:
+        case Clutter.KEY_KP_Enter:
+        case Clutter.KEY_ISO_Enter:
+            // Plain Return reaches the entry's `activate`; Ctrl+Return does not.
+            if (!ctrl)
+                return false;
+            this._onSearchActivate(true);
             return true;
         case Clutter.KEY_Tab:
         case Clutter.KEY_ISO_Left_Tab:
+            this._flushSearch();
             this._cyclePane(key === Clutter.KEY_ISO_Left_Tab || shift ? -1 : 1);
+            this._highlight.keyMoved();
             return true;
         }
         return false;
+    }
+
+    private _flushSearch(): void {
+        try {
+            this._searchHandle?.flush();
+        } catch (e) {
+            error('search flush failed', e);
+        }
+    }
+
+    /** The search highlight moved to `row` by a key: the hover tint elsewhere goes, the row scrolls into view. */
+    private _showSelection(row: Clutter.Actor | null): void {
+        if (!row)
+            return;
+        this._results?.select(row, true);
+        this._highlight.keyMoved(row);
+        scrollIntoView(this._resultsScroll, row);
+    }
+
+    /**
+     * Page Up (-1) / Page Down (1) from `from` among `items` (screen order): the item one visible page of
+     * their scroll view away, in the same column. Null when there is nothing to move to.
+     */
+    private _pageTo(items: Clutter.Actor[], from: Clutter.Actor | null, dir: 1 | -1): Clutter.Actor | null {
+        const index = from ? items.indexOf(from) : -1;
+        if (index < 0)
+            return null;
+        let scroll: Clutter.Actor | null = from;
+        while (scroll && !(scroll instanceof St.ScrollView))
+            scroll = scroll.get_parent();
+        const page = scroll ? Math.max(scroll.height - (from as Clutter.Actor).height, (from as Clutter.Actor).height) : 0;
+        const target = pageTarget(items.map(centreOf), index, dir, page);
+        return target === index ? null : items[target];
     }
 
     // ---- navigation ----
@@ -1880,7 +2004,7 @@ export class SpawnLayout implements ShortcutHost {
             return [{id: 'extra', items: this._extraList?.rows() ?? [], cols: 1}];
         case 'results':
             // Rows of a superseded query (stale, dimmed) are never keyboard targets.
-            return [{id: 'results', items: this._results?.hasResults ? this._results.rows() : [], cols: 1}];
+            return [{id: 'results', items: this._results?.hasResults ? this._results.visualRows() : [], cols: 1}];
         }
     }
 
@@ -2074,20 +2198,17 @@ export class SpawnLayout implements ShortcutHost {
                 if (t >= rowStart && t <= rowEnd)
                     return this._focusItem(group, t);
             }
-            // leaving the group sideways
+            // Leaving the pane sideways: the item of the other pane at the same height (nearest column).
             if (onRight) {
-                if (delta < 0) {
-                    const target = group.id === 'power' ? (this._navGroup() ?? leftCol.filter(g => g.id !== 'search').pop()) : leftCol.find(g => g.id !== 'search' && g.id !== 'links');
-                    return this._focusItem(target, 'first');
-                }
+                if (delta < 0)
+                    this._focusNearest(leftCol.filter(g => g.id !== 'search'), focus as Clutter.Actor);
                 return true;
             }
             if (inFolder)
                 return true;
             if (delta > 0) {
-                // By rank among the non-search groups: the search entry on top must not shift the mapping.
-                const rank = leftCol.filter(g => g.id !== 'search' && g.id !== 'undo' && g.id !== 'links').indexOf(group);
-                return this._focusItem(rightCol[Math.min(Math.max(rank, 0), rightCol.length - 1)] ?? rightCol[0], 'first');
+                this._focusNearest(rightCol, focus as Clutter.Actor);
+                return true;
             }
             if (cats && group.id === 'apps')
                 return this._focusItem(cats, Math.max(0, cats.items.findIndex(c => (c as St.Widget).has_style_pseudo_class('checked'))));
@@ -2100,6 +2221,94 @@ export class SpawnLayout implements ShortcutHost {
         case 'left': return horizontal(-1);
         case 'right': return horizontal(1);
         }
+    }
+
+    /** Focus the item of `groups` nearest to `from` on screen, vertically first (only items scrolled into view). */
+    private _focusNearest(groups: Group[], from: Clutter.Actor): boolean {
+        const items = groups.flatMap(g => g.items).filter(inView);
+        const target = items[nearestIndex(items.map(centreOf), centreOf(from))];
+        target?.grab_key_focus();
+        return Boolean(target);
+    }
+
+    /** The keyboard groups by pane: the left column, the right pane (none in a folder popup), the category column. */
+    private _paneGroups(): {left: Group[]; right: Group[]; cats: Group | null} {
+        const inFolder = this._view === 'folder';
+        return {
+            left: this._leftColumn(),
+            right: inFolder ? [] : this._rightGroups().filter(g => g.items.length > 0),
+            cats: inFolder ? null : this._categoryGroup(),
+        };
+    }
+
+    /** Home / End (first / last item) and Page Up / Down (one visible page) inside the focused list or grid. */
+    private _jump(sym: number): boolean {
+        const focus = global.stage.key_focus as Clutter.Actor | null;
+        const {left, right, cats} = this._paneGroups();
+        const loc = this._locate([...left, ...right, ...(cats ? [cats] : [])], focus);
+        if (!loc || loc.group.id === 'search')
+            return false;
+        const items = loc.group.items;
+        const current = items[loc.index];
+        let target: Clutter.Actor | null;
+        if (sym === Clutter.KEY_Home || sym === Clutter.KEY_KP_Home)
+            target = items[0];
+        else if (sym === Clutter.KEY_End || sym === Clutter.KEY_KP_End)
+            target = items[items.length - 1];
+        else
+            target = this._pageTo(items, current, sym === Clutter.KEY_Page_Down || sym === Clutter.KEY_KP_Page_Down ? 1 : -1);
+        if (target && target !== current)
+            target.grab_key_focus();
+        return true;
+    }
+
+    /** F2 on a pinned folder (or anywhere in its open popup): rename it. */
+    private _renameFocused(): boolean {
+        const focus = global.stage.key_focus as Clutter.Actor | null;
+        const fv = this._folderView;
+        if (!focus)
+            return false;
+        if (this._view === 'folder' && fv?.uuid && fv.actor.contains(focus)) {
+            if (!fv.renaming)
+                fv.startRename();
+            return true;
+        }
+        if (this._view !== 'pinned')
+            return false;
+        for (const [key, entry] of this._tileEntries) {
+            if (key.startsWith('f:') && entry.widget === focus) {
+                this._renameFolder(key.slice(2));
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Delete on a pinned app or command (top level): Unpin, exactly as its context menu does it. */
+    private _unpinFocused(): boolean {
+        const focus = global.stage.key_focus as Clutter.Actor | null;
+        if (!focus || this._view !== 'pinned')
+            return false;
+        for (const [key, entry] of this._tileEntries) {
+            if (entry.widget !== focus)
+                continue;
+            if (key.startsWith('f:'))
+                return false;
+            // a:<id>[*] (an app, * = "New" badge), m:<id> (not installed), c:<id> (command / shortcut)
+            this._context.unpin(key.slice(2).replace(/\*$/, ''));
+            return true;
+        }
+        return false;
+    }
+
+    /** The pointer is on `item` (widgets/highlight.ts): a search result takes the search highlight. */
+    private _onItemHover(item: St.Widget): boolean {
+        const results = this._view === 'results' ? this._results : null;
+        if (!results || !results.rows().includes(item))
+            return false;
+        results.select(item);
+        // Typing focus in the entry stays; a focus ring on another row goes (the generic rule).
+        return this._search.hasFocus;
     }
 
     private _cyclePane(delta: number): void {
@@ -2120,16 +2329,18 @@ export class SpawnLayout implements ShortcutHost {
         const nav = this._navGroup();
         const right = this._rightGroups().filter(g => g.items.length > 0);
         const focus = global.stage.key_focus as Clutter.Actor | null;
-        const top = this._searchTop;
 
         const add = (g: Group | null | undefined, which: 'first' | 'last' = 'first') => {
-            if (g && g.items.length)
-                panes.push(() => this._focusItem(g, which));
+            if (!g || !g.items.length)
+                return;
+            // Into the search results: the highlighted one.
+            const at = g.id === 'results' ? g.items.indexOf(this._results?.selected() as Clutter.Actor) : -1;
+            panes.push(() => this._focusItem(g, at >= 0 ? at : which));
         };
         const links = this._linksGroup();
         const linksTop = this._links?.location === 'Top';
-        if (search && top)
-            add(search);
+        // Reading order wherever the entry sits: search, the list (and what is below it), right pane, power buttons.
+        add(search);
         if (linksTop)
             add(links);
         add(cats, 'first');
@@ -2140,13 +2351,11 @@ export class SpawnLayout implements ShortcutHost {
         const undo = this._undoGroup();
         add(undo);
         add(nav);
-        if (search && !top)
-            add(search);
         for (const g of right)
             add(g);
 
         // Which pane holds the focus?
-        const all: Array<Group | null> = [search && top ? search : null, linksTop ? links : null, cats, ...main, linksTop ? null : links, undo, nav, search && !top ? search : null, ...right];
+        const all: Array<Group | null> = [search, linksTop ? links : null, cats, ...main, linksTop ? null : links, undo, nav, ...right];
         const groups = all.filter((g): g is Group => Boolean(g && g.items.length));
         const loc = this._locate(groups, focus);
         const current = loc ? groups.indexOf(loc.group) : -1;
@@ -2160,6 +2369,9 @@ export class SpawnLayout implements ShortcutHost {
         const focus = global.stage.key_focus as Clutter.Actor | null;
         if (this._folderView?.renaming && focus && this._folderView.actor.contains(focus) && !(focus instanceof St.Button))
             return Clutter.EVENT_PROPAGATE;
+        // Only pointed at (the layout holds the focus): the key acts on the pointed-at item.
+        if (this._highlight.takeKey(event) === 'redeliver')
+            return Clutter.EVENT_STOP;
 
         const sym = event.get_key_symbol();
         const state = event.get_state();
@@ -2176,19 +2388,44 @@ export class SpawnLayout implements ShortcutHost {
             }
         }
 
+        // A key that moves the focus leaves it as the only highlight (no hover tint under a resting pointer).
+        const moved = (handled: boolean): boolean => {
+            this._highlight.keyMoved();
+            return handled ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
+        };
         switch (sym) {
         case Clutter.KEY_Tab:
         case Clutter.KEY_ISO_Left_Tab:
             this._cyclePane(sym === Clutter.KEY_ISO_Left_Tab || (state & Clutter.ModifierType.SHIFT_MASK) ? -1 : 1);
-            return Clutter.EVENT_STOP;
+            return moved(true);
         case Clutter.KEY_Up:
-            return this._move('up') ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
+            return moved(this._move('up'));
         case Clutter.KEY_Down:
-            return this._move('down') ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
+            return moved(this._move('down'));
         case Clutter.KEY_Left:
-            return this._move('left') ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
+            return moved(this._move('left'));
         case Clutter.KEY_Right:
-            return this._move('right') ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
+            return moved(this._move('right'));
+        case Clutter.KEY_Home:
+        case Clutter.KEY_KP_Home:
+        case Clutter.KEY_End:
+        case Clutter.KEY_KP_End:
+        case Clutter.KEY_Page_Up:
+        case Clutter.KEY_KP_Page_Up:
+        case Clutter.KEY_Page_Down:
+        case Clutter.KEY_KP_Page_Down:
+            if (ctrl)
+                break;
+            return moved(this._jump(sym));
+        case Clutter.KEY_F2:
+            if (!ctrl && this._renameFocused())
+                return Clutter.EVENT_STOP;
+            return Clutter.EVENT_PROPAGATE;
+        case Clutter.KEY_Delete:
+        case Clutter.KEY_KP_Delete:
+            if (!ctrl && !(state & Clutter.ModifierType.SHIFT_MASK) && this._unpinFocused())
+                return Clutter.EVENT_STOP;
+            return Clutter.EVENT_PROPAGATE;
         case Clutter.KEY_BackSpace:
             if (this._search.actor.visible && this._search.text.length > 0 && !this._search.hasFocus) {
                 this._search.deleteBackward();
@@ -2256,8 +2493,13 @@ export class SpawnLayout implements ShortcutHost {
             }
             a = a.get_parent();
         }
-        // The first search result shows as selected only while the entry has focus.
-        if (this._results)
-            this._results.setSelectionVisible(!this._results.actor.contains(focus));
+        // The search highlight follows a result row that takes the keyboard focus, and shows only while no
+        // row has it (the focus ring is the highlight then).
+        if (this._results) {
+            const inResults = this._results.actor.contains(focus);
+            if (inResults)
+                this._results.select(focus);
+            this._results.setSelectionVisible(!inResults);
+        }
     }
 }

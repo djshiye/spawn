@@ -32,7 +32,8 @@ focus_class $ITEM 0
 key Right 0.4
 echo "focus after Right: $(state_get layout.focus)"
 state_get layout.focus | grep -q 'spawn-power-button' && { echo "FAIL Right landed on the power bar"; status=1; } || echo "ok   Right does not skip to the power bar"
-state_get layout.focus | grep -q 'spawn-user-card' && echo "ok   Right lands on the user card" || { echo "FAIL Right did not land on the user card"; status=1; }
+# Since 1.2.0 Right goes to the right-pane item at the same height (ui-panes): the card or the first shortcuts.
+state_get layout.focus | grep -Eq 'spawn-user-card|spawn-shortcut-row' && echo "ok   Right lands at the top of the right pane" || { echo "FAIL Right did not land at the top of the right pane"; status=1; }
 dconf write $K/search-entry-location "'Bottom'"
 
 echo "-- ui2 #3: closing a folder with search-hidden focuses the list, not the invisible entry"

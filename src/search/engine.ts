@@ -65,8 +65,8 @@ export interface SearchResult {
     alwaysShowDescription?: boolean;
     /** Higher is better; comparable across providers only after rank.ts normalisation. */
     score: number;
-    /** Perform the default action (launch app, focus window, open file). */
-    activate(): void;
+    /** Perform the default action (launch app, focus window, open file). `newWindow` (Ctrl+Return / Ctrl+click): an app opens a new window. */
+    activate(newWindow?: boolean): void;
 }
 
 export interface SearchProvider {

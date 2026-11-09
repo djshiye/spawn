@@ -12,7 +12,8 @@
 //   box.text: string (get/set)
 //   box.onTextChanged(scope, cb: (text: string) => void)
 //   box.onActivate(scope, cb: () => void)                        Return pressed
-//   box.onNavigate(scope, cb: (key: number, shift: boolean) => boolean)   Up/Down/Tab/Escape...;
+//   box.onNavigate(scope, cb: (key: number, shift: boolean, ctrl: boolean) => boolean)   Up/Down/Tab/Page Up/Down,
+//                                                                 Ctrl+Return...;
 //                                                                 return true when handled
 //   box.focus(): void
 //   box.hasFocus: boolean
@@ -34,7 +35,7 @@ export class SearchBox {
     readonly actor: St.Entry;
     private readonly _textListeners = new Set<(text: string) => void>();
     private readonly _activateListeners = new Set<() => void>();
-    private readonly _navListeners = new Set<(key: number, shift: boolean) => boolean>();
+    private readonly _navListeners = new Set<(key: number, shift: boolean, ctrl: boolean) => boolean>();
     private _silent = false;
 
     constructor(scope: Scope, settings: SpawnSettings) {
@@ -76,8 +77,9 @@ export class SearchBox {
         ct.connect('key-press-event', (_a: Clutter.Actor, event: Clutter.Event) => {
             const key = event.get_key_symbol();
             const shift = Boolean(event.get_state() & Clutter.ModifierType.SHIFT_MASK);
+            const ctrl = Boolean(event.get_state() & Clutter.ModifierType.CONTROL_MASK);
             for (const cb of [...this._navListeners]) {
-                if (cb(key, shift))
+                if (cb(key, shift, ctrl))
                     return Clutter.EVENT_STOP;
             }
             return Clutter.EVENT_PROPAGATE;
@@ -111,7 +113,7 @@ export class SearchBox {
         scope.add(() => this._activateListeners.delete(cb), 'SearchBox activate listener');
     }
 
-    onNavigate(scope: Scope, cb: (key: number, shift: boolean) => boolean): void {
+    onNavigate(scope: Scope, cb: (key: number, shift: boolean, ctrl: boolean) => boolean): void {
         this._navListeners.add(cb);
         scope.add(() => this._navListeners.delete(cb), 'SearchBox nav listener');
     }

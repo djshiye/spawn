@@ -22,10 +22,13 @@
 // offers the same two lists: `Pinned_Apps` (top-level pinned apps, folders left out) and
 // `Frequent_Apps` (`max-frequent-apps`, at most 10). Return on the empty box launches the first app.
 //
-// Keyboard: Up / Down move between the entry and the rows, Tab / Shift+Tab cycle through them, Return
-// in the entry activates the first result, Return on a row activates it, typing from a row goes
-// back to the entry, Escape closes. Activating a result closes the runner. Context menus (right
-// click) are not part of the runner.
+// Keyboard: as in the menu, the typing focus stays in the entry while results show: Up / Down move the
+// highlight one result (wrapping; Down goes to the second, the first is highlighted already), Page Up /
+// Down one page, Return / Ctrl+Return activate the highlighted one (Ctrl: an app as with a Ctrl+click).
+// With the default list (no query) Down enters it. Tab / Shift+Tab cycle between the entry and the rows
+// (into the results at the highlighted one), Return on a row activates it, typing from a row goes back to
+// the entry, Escape closes. One highlight: the pointer moves it (widgets/highlight.ts). Activating a result
+// closes the runner. Context menus (right click) are not part of the runner.
 //
 // Public API:
 //   new SpawnRunner(scope, services, host: RunnerHost)
@@ -45,6 +48,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {error} from '../core/log.js';
+import {pageTarget} from '../model/listNav.js';
 import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
 import type {SearchHandle} from '../search/engine.js';
@@ -54,6 +58,7 @@ import {
 } from './util.js';
 import {bindReducedMotion, markDialog, markList} from './widgets/a11y.js';
 import {AppRow, DEFAULT_ROW_ICON_SIZE} from './widgets/appRow.js';
+import {PointerHighlight} from './widgets/highlight.js';
 import {ResultList} from './widgets/resultList.js';
 import {SearchBox} from './widgets/searchBox.js';
 import {TooltipManager} from './widgets/tooltip.js';
@@ -85,6 +90,7 @@ interface Ui {
     scroll: St.ScrollView;
     defaultBox: St.BoxLayout;
     tooltips: TooltipManager;
+    highlight: PointerHighlight;
 }
 
 export class SpawnRunner {
@@ -99,6 +105,7 @@ export class SpawnRunner {
     private _searchHandle: SearchHandle | null = null;
     private _searchToken = 0;
     private _activateWhenReady = false;
+    private _activateCtrl = false;
     private _cancelActivateWait: (() => void) | null = null;
     private _defaultRows: St.Button[] = [];
 
@@ -178,6 +185,9 @@ export class SpawnRunner {
             results: ui?.results.rows().length ?? 0,
             defaultRows: this._defaultRows.length,
             focus: where,
+            // the search highlight (Return target)
+            selectedIndex: ui ? ui.results.rows().indexOf(ui.results.selected() as St.Widget) : -1,
+            selected: ui?.results.selected()?.accessible_name ?? null,
             rect: actor && actor.visible ? [actor.x, actor.y, actor.width, actor.height] : null,
         };
     }
@@ -236,12 +246,21 @@ export class SpawnRunner {
             content.add_child(scroll);
             menu.box.add_child(content);
 
-            const ui: Ui = {scope, menu, content, search, results, scroll, defaultBox, tooltips};
+            const highlight = new PointerHighlight(scope, content, {
+                // A result row under the pointer takes the search highlight; the typing focus stays in the entry.
+                onHover: item => {
+                    if (!results.rows().includes(item))
+                        return false;
+                    results.select(item);
+                    return search.hasFocus;
+                },
+            });
+            const ui: Ui = {scope, menu, content, search, results, scroll, defaultBox, tooltips, highlight};
             this._ui = ui;
 
             search.onTextChanged(scope, text => this._onText(ui, text));
             search.onActivate(scope, () => this._onActivate(ui));
-            search.onNavigate(scope, (key, shift) => this._onSearchKey(ui, key, shift));
+            search.onNavigate(scope, (key, shift, ctrl) => this._onSearchKey(ui, key, shift, ctrl));
             scope.connect(content, 'key-press-event', (_a: Clutter.Actor, event: Clutter.Event) => this._onKeyPress(ui, event));
             scope.connect(menu, 'open-state-changed', (_m: unknown, open: boolean) => this._onOpenState(ui, open));
             scope.connect(global.stage, 'notify::key-focus', () => this._onFocusChanged(ui));
@@ -294,6 +313,7 @@ export class SpawnRunner {
         this._open = open;
         try {
             this._reset(ui);
+            ui.highlight.reset();
             if (open) {
                 this._fillDefault(ui);
                 ui.search.focus();
@@ -395,6 +415,8 @@ export class SpawnRunner {
         const query = text.trim();
         this._cancelSearch();
         this._setActivateWhenReady(false);
+        // New rows under a resting pointer must not take the highlight from the best match.
+        ui.highlight.keyMoved(null);
         if (query.length === 0) {
             ui.results.reset();
             this._showView(ui, false);
@@ -410,8 +432,9 @@ export class SpawnRunner {
                     return;
                 ui.results.addBatch(batch);
                 if (this._activateWhenReady && ui.results.first()) {
+                    const ctrl = this._activateCtrl;
                     this._setActivateWhenReady(false);
-                    ui.results.activateFirst();
+                    ui.results.activateSelected(ctrl);
                 }
             });
         } catch (e) {
@@ -419,15 +442,18 @@ export class SpawnRunner {
         }
     }
 
-    /** Return in the entry: activate the first result of the CURRENT query (or the first default app). */
-    private _onActivate(ui: Ui): void {
+    /**
+     * Return in the entry: activate the highlighted result of the CURRENT query (or the first default app).
+     * `ctrl`: Ctrl+Return, as a Ctrl+click on the row.
+     */
+    private _onActivate(ui: Ui, ctrl = false): void {
         if (ui.search.text.trim().length === 0) {
-            this._defaultRows[0]?.emit('clicked', 1);
+            this._defaultRows[0]?.emit('clicked', ctrl ? 2 : 1);
             return;
         }
         this._flush();
-        if (!ui.results.activateFirst())
-            this._setActivateWhenReady(true);
+        if (!ui.results.activateSelected(ctrl))
+            this._setActivateWhenReady(true, ctrl);
     }
 
     private _flush(): void {
@@ -439,10 +465,11 @@ export class SpawnRunner {
     }
 
     /** "Return was pressed before the first row arrived"; expires so a late provider cannot launch unseen. */
-    private _setActivateWhenReady(on: boolean): void {
+    private _setActivateWhenReady(on: boolean, ctrl = false): void {
         this._cancelActivateWait?.();
         this._cancelActivateWait = null;
         this._activateWhenReady = on;
+        this._activateCtrl = on && ctrl;
         if (on) {
             this._cancelActivateWait = this._scope.timeout(ACTIVATE_WAIT_MS, () => {
                 this._cancelActivateWait = null;
@@ -463,9 +490,11 @@ export class SpawnRunner {
         const focus = global.stage.key_focus as Clutter.Actor | null;
         const at = focus ? rows.findIndex(r => r === focus || r.contains(focus)) : -1;
         if (at < 0) {
-            // On the entry: Down / Tab goes to the first row, Shift+Tab wraps to the last.
+            // On the entry: Down / Tab goes to the highlighted result (or the first default row), Shift+Tab
+            // wraps to the last.
+            const selected = ui.search.text.trim() === '' ? null : ui.results.selected();
             if (dir === 1)
-                rows[0]?.grab_key_focus();
+                (selected ?? rows[0])?.grab_key_focus();
             else if (wrap)
                 rows[rows.length - 1]?.grab_key_focus();
             return;
@@ -481,40 +510,93 @@ export class SpawnRunner {
         }
     }
 
-    private _onSearchKey(ui: Ui, key: number, shift: boolean): boolean {
+    private _onSearchKey(ui: Ui, key: number, shift: boolean, ctrl = false): boolean {
+        const searching = ui.search.text.trim() !== '';
         switch (key) {
         case Clutter.KEY_Down:
-            this._flush();
-            this._navigate(ui, 1, false);
-            return true;
         case Clutter.KEY_Up:
+            this._flush();
+            if (searching)
+                this._showSelection(ui, ui.results.moveSelection(key === Clutter.KEY_Down ? 1 : -1, false));
+            else if (key === Clutter.KEY_Down)
+                this._navigate(ui, 1, false);
+            return true;
+        case Clutter.KEY_Page_Up:
+        case Clutter.KEY_Page_Down: {
+            if (!searching)
+                return false;
+            this._flush();
+            const rows = ui.results.rows();
+            const from = ui.results.selected();
+            const index = from ? rows.indexOf(from) : -1;
+            if (index < 0)
+                return true;
+            const page = Math.max(ui.scroll.height - (from as St.Widget).height, (from as St.Widget).height);
+            const centres = rows.map(r => {
+                const [x, y] = r.get_transformed_position();
+                return {x: x + r.width / 2, y: y + r.height / 2};
+            });
+            this._showSelection(ui, rows[pageTarget(centres, index, key === Clutter.KEY_Page_Down ? 1 : -1, page)] ?? null);
+            return true;
+        }
+        case Clutter.KEY_Return:
+        case Clutter.KEY_KP_Enter:
+        case Clutter.KEY_ISO_Enter:
+            // Plain Return reaches the entry's `activate`; Ctrl+Return does not.
+            if (!ctrl)
+                return false;
+            this._onActivate(ui, true);
             return true;
         case Clutter.KEY_Tab:
         case Clutter.KEY_ISO_Left_Tab:
             this._flush();
             this._navigate(ui, key === Clutter.KEY_ISO_Left_Tab || shift ? -1 : 1, true);
+            ui.highlight.keyMoved();
             return true;
         }
         return false;
+    }
+
+    /** The search highlight moved to `row` by a key: announced, the only highlight, scrolled into view. */
+    private _showSelection(ui: Ui, row: St.Widget | null): void {
+        if (!row)
+            return;
+        ui.results.select(row, true);
+        ui.highlight.keyMoved(row);
+        scrollIntoView(ui.scroll, row);
     }
 
     /** Keys that reach the content from a focused row (the entry's own keys go through _onSearchKey). */
     private _onKeyPress(ui: Ui, event: Clutter.Event): boolean {
         if (this._disposed)
             return Clutter.EVENT_PROPAGATE;
+        // Only pointed at (the content holds the focus): the key acts on the pointed-at row.
+        if (ui.highlight.takeKey(event) === 'redeliver')
+            return Clutter.EVENT_STOP;
         const sym = event.get_key_symbol();
         const state = event.get_state();
         switch (sym) {
         case Clutter.KEY_Down:
             this._navigate(ui, 1, false);
+            ui.highlight.keyMoved();
             return Clutter.EVENT_STOP;
         case Clutter.KEY_Up:
             this._navigate(ui, -1, false);
+            ui.highlight.keyMoved();
             return Clutter.EVENT_STOP;
         case Clutter.KEY_Tab:
         case Clutter.KEY_ISO_Left_Tab:
             this._navigate(ui, sym === Clutter.KEY_ISO_Left_Tab || (state & Clutter.ModifierType.SHIFT_MASK) ? -1 : 1, true);
+            ui.highlight.keyMoved();
             return Clutter.EVENT_STOP;
+        case Clutter.KEY_Home:
+        case Clutter.KEY_End: {
+            // A focused row: the first / last one (the entry keeps Home / End for its text).
+            const rows = this._rows(ui);
+            (sym === Clutter.KEY_Home ? rows[0] : rows[rows.length - 1])?.grab_key_focus();
+            ui.highlight.keyMoved();
+            return Clutter.EVENT_STOP;
+        }
         case Clutter.KEY_Escape:
             // like the main menu: the first Escape clears the query, Escape on an empty one closes
             if (ui.search.text.length > 0) {
@@ -555,8 +637,11 @@ export class SpawnRunner {
         if (!ui.content.contains(focus))
             return;
         scrollIntoView(ui.scroll, focus);
-        // The first result shows as selected only while the entry has focus.
-        ui.results.setSelectionVisible(!ui.results.actor.contains(focus));
+        // The search highlight follows a result row that takes the focus and shows only while no row has it.
+        const inResults = ui.results.actor.contains(focus);
+        if (inResults)
+            ui.results.select(focus);
+        ui.results.setSelectionVisible(!inResults);
     }
 
     // ---- teardown ----
