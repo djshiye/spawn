@@ -25,7 +25,7 @@
 //   MenuItems(s cls) -> s    JSON: the items of the visible menu whose actor carries `cls` (e.g. spawn-button-menu):
 //                            [{kind: 'item'|'separator'|'submenu', label, visible, open?, items?}]
 //   Windows() -> s           JSON: [{title, appId, type, minimized, skipTaskbar}] of every window (Show Desktop checks)
-//   FocusInfo() -> s         JSON: {type, cls} of the actor holding the keyboard focus (null when none)
+//   FocusInfo() -> s         JSON: {type, cls, name (accessible name)} of the actor holding the keyboard focus (null when none)
 //   HitSweep(s itemCls) -> s JSON: hit-tests every pixel of the visible pinned list / grid (the first visible
 //                            `spawn-tile-grid`, clipped to its scroll view) with Clutter.PickMode.REACTIVE and
 //                            checks that each point belongs to an actor carrying `itemCls` (spawn-pinned-row /
@@ -588,7 +588,7 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
         }),
         FocusInfoAsync: (_p: unknown[], inv: Invocation) => reply(inv, () => {
             const f = global.stage.key_focus as Clutter.Actor | null;
-            const info = f && f !== global.stage ? {type: f.constructor.name, cls: (f as St.Widget).style_class ?? ''} : null;
+            const info = f && f !== global.stage ? {type: f.constructor.name, cls: (f as St.Widget).style_class ?? '', name: f.accessible_name ?? ''} : null;
             return new GLib.Variant('(s)', [JSON.stringify(info)]);
         }),
         HitSweepAsync: ([cls]: [string], inv: Invocation) => reply(inv, () => new GLib.Variant('(s)', [hitSweep(cls)])),

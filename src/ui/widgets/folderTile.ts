@@ -12,7 +12,7 @@
 //   tile.update(name: string, icons: Gio.Icon[], count?: number): void   count = apps in the folder (the accessible name "Folder: X, N apps")
 //   tile.setWidth(px)
 //   tile.destroy()
-//   FolderHost: {open(uuid), openContext(tile, uuid), tooltips?}
+//   FolderHost: {open(uuid, pointer?), openContext(tile, uuid), tooltips?}   pointer: opened with a click
 //   opts: {iconSize?, multiLine?, count?}
 
 import Clutter from 'gi://Clutter';
@@ -27,9 +27,11 @@ import {DEFAULT_TILE_ICON_SIZE, styleTileLabel} from './appTile.js';
 import {nameItem} from './a11y.js';
 import {makeItemButton, makeSurface, wireItem} from './interact.js';
 import type {TooltipManager} from './tooltip.js';
+import {isPointerEvent} from '../util.js';
 
 export interface FolderHost {
-    open(uuid: string): void;
+    /** `pointer`: opened with a click (the popup then highlights nothing until hover or an arrow key). */
+    open(uuid: string, pointer?: boolean): void;
     openContext(tile: St.Widget, uuid: string): void;
     tooltips?: TooltipManager;
 }
@@ -145,7 +147,7 @@ export class FolderTile {
 
         host.tooltips?.attach(button, this._label);
         wireItem(button, {
-            activate: () => host.open(uuid),
+            activate: () => host.open(uuid, isPointerEvent()),
             context: () => host.openContext(button, uuid),
         });
         this.update(name, icons, opts.count);
@@ -199,7 +201,7 @@ export class FolderRow {
 
         host.tooltips?.attach(button, this._label);
         wireItem(button, {
-            activate: () => host.open(uuid),
+            activate: () => host.open(uuid, isPointerEvent()),
             context: () => host.openContext(button, uuid),
         });
         this.update(name, icons, opts.count);

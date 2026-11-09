@@ -534,10 +534,12 @@
 
 /* ---- folder popup ----
  * An open folder is a card over the menu (ui/widgets/folderView.ts): the scrim dims both panes, the
- * card opens next to its folder and holds the header (title + pencil, close) and the app grid. One 8 px
- * spacing scale: 16 px card padding top / bottom, 8 px at the sides (the grid's own 16 px gutter makes
- * 24 px to the first tile), 8 px between header and grid, a 40 px header. Keep the 16 px margin, the
- * paddings and the 40 px header in step with POPUP_MARGIN / CARD_CHROME_H / CARD_PAD_W there. */
+ * card opens next to its folder and holds the header (title + pencil, close) and the app grid. Compact,
+ * like GNOME's popovers: 12 px card padding top / bottom, 4 px at the sides (the grid's own 8 px gutter
+ * makes the same 12 px inset to the first tile), 4 px between header and grid, a 32 px header, 16 px
+ * corners. Keep the 16 px margin, the paddings and the 32 px header in step with POPUP_MARGIN /
+ * CARD_CHROME_H / CARD_PAD_W / GRID_GUTTER there. The card holds the keyboard focus while no app is
+ * picked: it has no :focus style on purpose. */
 
 .spawn-folder-scrim {
     background-color: rgba(0, 0, 0, 0.5);
@@ -556,17 +558,17 @@
 .spawn-folder-popup {
     background-color: rgb(48, 48, 54);
     border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 20px;
-    padding: 16px 8px;
-    spacing: 8px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+    border-radius: 16px;
+    padding: 12px 4px;
+    spacing: 4px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
 .spawn-folder-header {
-    min-height: 40px;
-    spacing: 8px;
+    min-height: 32px;
+    spacing: 4px;
     margin: 0 8px;
-    border-radius: 12px;
+    border-radius: 8px;
 }
 
 .spawn-folder-header:drag {
@@ -575,15 +577,15 @@
 
 /* as wide as the close button, so the title is centred in the card */
 .spawn-folder-header-balance {
-    width: 32px;
+    width: 28px;
 }
 
-/* a round 32 px button (the doubled class beats .spawn-row's padding, which comes later in this file) */
+/* a round 28 px button (the doubled class beats .spawn-row's padding, which comes later in this file) */
 .spawn-row.spawn-folder-close {
-    border-radius: 16px;
-    width: 32px;
-    height: 32px;
-    min-height: 32px;
+    border-radius: 14px;
+    width: 28px;
+    height: 28px;
+    min-height: 28px;
     padding: 0;
     color: rgba(255, 255, 255, 0.7);
     background-color: rgba(255, 255, 255, 0.08);
@@ -596,16 +598,22 @@
 
 .spawn-row.spawn-folder-name {
     border-radius: 8px;
-    padding: 6px 10px;
+    min-height: 20px;
+    padding: 4px 8px;
 }
 
 .spawn-folder-name .spawn-row-box {
-    spacing: 8px;
+    spacing: 6px;
 }
 
+/* body size, bold: a popover title, not a page heading */
 .spawn-folder-title {
-    font-size: 1.2em;
     font-weight: bold;
+}
+
+/* app tiles in the card: 8 + icon + 6 + label + 8, a little tighter than the pinned grid */
+.spawn-folder-popup .spawn-tile-box {
+    spacing: 6px;
 }
 
 /* quiet until the title is pointed at or focused: the rename affordance without the clutter */
@@ -625,7 +633,7 @@
 
 .spawn-folder-rename {
     margin: 2px 4px;
-    min-height: 32px;
+    min-height: 28px;
 }
 
 /* ---- rows (lists, results, categories) ---- */
