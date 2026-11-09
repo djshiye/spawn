@@ -1,7 +1,7 @@
 // FolderView: the contents of one pinned folder, shown as a popup card over the menu (like app
 // folders on GNOME, Android or iOS) instead of replacing the pinned view. The whole layout is dimmed by
-// a scrim; the card opens next to the folder it came from (below it, or above when there is no room
-// below, always inside the menu) and grows out of it. It has the folder name (click to rename inline),
+// a scrim; the card opens next to the folder it came from and grows out of it: below a grid tile (or
+// above when there is no room below), beside a list row like a submenu, always inside the menu. It has the folder name (click to rename inline),
 // a close button and the apps as a tile grid. Without a folder to anchor to it is centred. The card is
 // always opaque (see raisedSurface in theme/css.ts). The grid is always tiles, also when the pinned view
 // is a list: compact, fixed-size tiles (FOLDER_TILE_WIDTH, a 40 px icon, 48 px from the Large tier up)
@@ -86,7 +86,9 @@ const MAX_NAME_LENGTH = 40;
  * with .spawn-folder-popup / .spawn-folder-header in stylesheet.css.
  */
 const POPUP_MARGIN = 16;
-const CARD_CHROME_H = 32 + 4 + 2 * 12;
+const HEADER_H = 32;
+const CARD_PAD_TOP = 12;
+const CARD_CHROME_H = HEADER_H + 4 + 2 * CARD_PAD_TOP;
 /** The card's horizontal padding (2 x 4) around the grid. */
 const CARD_PAD_W = 8;
 /** Transparent gutter at the left and right end of each grid row: with the card's 4 px, a 12 px inset. */
@@ -439,8 +441,8 @@ export class FolderView {
     }
 
     /**
-     * Put the card next to the folder it opened from: below it, or above when it does not fit below,
-     * else as close as the menu allows; centred on a tile, aligned with the start of a full-width row.
+     * Put the card next to the folder it opened from. A tile: centred below it, or above when it does not
+     * fit below, else as close as the menu allows. A full-width list row: beside it (_placeBesideRow).
      * The open animation grows out of the side that faces the folder.
      */
     private _place(): void {
@@ -474,8 +476,12 @@ export class FolderView {
         if (![sx, sy, ax, ay, aw, ah].every(Number.isFinite))
             return;
         const left = ax - sx, top = ay - sy, bottom = top + ah;
-        // A tile: centred under it. A full-width list row: lined up with the row's icon.
-        const x = aw <= cw ? clamp(left + aw / 2 - cw / 2, POPUP_MARGIN, maxX) : clamp(left, POPUP_MARGIN, maxX);
+        if (aw > cw) {
+            this._placeBesideRow(left, top, aw, ah, cw, ch, W, maxX, maxY);
+            return;
+        }
+        // A tile: centred under it.
+        const x = clamp(left + aw / 2 - cw / 2, POPUP_MARGIN, maxX);
         let y: number;
         let below = true;
         if (bottom + ANCHOR_GAP + ch <= H - POPUP_MARGIN) {
@@ -498,8 +504,35 @@ export class FolderView {
         }
         y = clamp(y, POPUP_MARGIN, maxY);
         this._card.set_translation(x, y, 0);
-        const px = cw > 0 ? Math.max(0, Math.min(1, (left + Math.min(aw, cw) / 2 - x) / cw)) : 0.5;
+        const px = cw > 0 ? Math.max(0, Math.min(1, (left + aw / 2 - x) / cw)) : 0.5;
         this._card.set_pivot_point(px, below ? 0 : 1);
+    }
+
+    /**
+     * A list row (its chevron says "submenu"): the card opens beside the row like a cascading menu, on the
+     * chevron's side when there is room (else the other side, else as far that way as the menu allows),
+     * with its header level with the row; it moves up when it would run past the bottom of the menu.
+     */
+    private _placeBesideRow(left: number, top: number, aw: number, ah: number, cw: number, ch: number, W: number, maxX: number, maxY: number): void {
+        const clamp = (v: number, lo: number, hi: number) => Math.round(Math.max(lo, Math.min(hi, v)));
+        const rtl = this.actor.get_text_direction() === Clutter.TextDirection.RTL;
+        const after = rtl ? left - ANCHOR_GAP - cw : left + aw + ANCHOR_GAP;
+        const before = rtl ? left + aw + ANCHOR_GAP : left - ANCHOR_GAP - cw;
+        const fits = (v: number) => v >= POPUP_MARGIN && v + cw <= W - POPUP_MARGIN;
+        let x: number;
+        if (fits(after))
+            x = after;
+        else if (fits(before))
+            x = before;
+        else
+            x = rtl ? POPUP_MARGIN : maxX;
+        x = clamp(x, POPUP_MARGIN, maxX);
+        // The header's centre (card padding + half the header) on the row's centre.
+        const y = clamp(top + ah / 2 - CARD_PAD_TOP - HEADER_H / 2, POPUP_MARGIN, maxY);
+        this._card.set_translation(x, y, 0);
+        const towardRow = x + cw / 2 < left + aw / 2 ? 1 : 0;
+        const py = ch > 0 ? Math.max(0, Math.min(1, (top + ah / 2 - y) / ch)) : 0.5;
+        this._card.set_pivot_point(towardRow, py);
     }
 
     private _setScrollCap(cap: number): void {

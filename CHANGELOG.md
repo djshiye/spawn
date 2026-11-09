@@ -19,6 +19,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Compact folder popup:** smaller, fixed-size tiles and icons (40 px, 48 px with Large items), a slimmer header with
   a body-size title and a smaller close button, tighter padding and rounder 16 px corners, in line with GNOME's own
   popovers.
+- **Folder popup in the list view** now opens beside its folder row, like a submenu, with its title level with the
+  row, instead of below the row reaching down towards the search bar. In the grid view it still opens below the folder.
 
 - **Shorter package name:** the RPM is now called `spawn` instead of `gnome-shell-extension-spawn`, so it is
   `sudo dnf install spawn` and `sudo dnf remove spawn`. Existing installs switch over by themselves on the next
