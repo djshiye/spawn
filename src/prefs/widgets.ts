@@ -7,7 +7,13 @@
 //   label(widget, text)                sets the accessible label of a widget
 //   switchRow / spinRow / enumRow / entryRow / colorRow
 //   optionalColorRow / optionalSpinRow  expander rows with an enable switch for the (bs) / (bi) override keys
-//   group(title, rows, {description?, reset?})   PreferencesGroup with an optional Reset button
+//   group(title, rows, {description?, reset?})   PreferencesGroup with an optional revert icon button
+//   resetButton(ctx, title, keys, onReset, extra?)  small revert icon button, shown only while `keys` differ from
+//                                      their defaults (live); `extra` adds an own "modified" test and its keys
+//   isModified(ctx, keys)              true when any key holds a user value different from its default
+//   LIST_ICON_SIZE / SYMBOLIC_ICON_SIZE  list row icon sizes: 32 px full-colour, 16 px symbolic
+//   listIcon(icon, fallback?)          image that never comes out blank: a name the theme lacks falls
+//                                      back to its non-symbolic form, then to application-x-executable(-symbolic)
 //   resetKeys(ctx, keys)               resets keys (one SpawnSettings.batch(); ctx.settings.raw is never delayed)
 //   resetWithUndo(ctx, keys, message)  resetKeys + a toast whose Undo button restores the old values
 //   toast(ctx, message, undo?)         plain-text toast; with `undo` it shows an Undo button (8 s)
@@ -19,6 +25,48 @@ import Gtk from 'gi://Gtk?version=4.0';
 
 import type {SettingKey} from '../core/settings.js';
 import type {PrefsContext} from './context.js';
+
+/**
+ * Icon sizes at the start of a list row, as in the GNOME HIG: full-colour app icons are LIST_ICON_SIZE, symbolic
+ * glyphs SYMBOLIC_ICON_SIZE, centred in a LIST_ICON_SIZE-wide slot so the titles of a mixed list line up.
+ */
+export const LIST_ICON_SIZE = 32;
+export const SYMBOLIC_ICON_SIZE = 16;
+
+/** True when the icon theme can draw `name`. */
+function themeHas(name: string): boolean {
+    const display = Gdk.Display.get_default();
+    return display ? Gtk.IconTheme.get_for_display(display).has_icon(name) : true;
+}
+
+/** The first of the themed `names` (then their non-symbolic forms, then the fallbacks) that the theme has. */
+export function resolveIconName(names: readonly string[], fallback = 'application-x-executable-symbolic'): string {
+    const candidates = [
+        ...names,
+        ...names.map(n => n.replace(/-symbolic$/, '')),
+        fallback,
+        fallback.replace(/-symbolic$/, ''),
+        'application-x-executable-symbolic',
+        'application-x-executable',
+    ];
+    return candidates.find(n => n !== '' && themeHas(n)) ?? fallback;
+}
+
+/** The row icon of every settings list (see LIST_ICON_SIZE), with a fallback icon instead of a blank image. */
+export function listIcon(icon: Gio.Icon | string, fallback?: string): Gtk.Image {
+    let image: Gtk.Image;
+    let symbolic = false;
+    if (typeof icon === 'string' || icon instanceof Gio.ThemedIcon) {
+        const name = resolveIconName(typeof icon === 'string' ? [icon] : icon.get_names(), fallback);
+        symbolic = name.endsWith('-symbolic');
+        image = new Gtk.Image({icon_name: name});
+    } else {
+        image = new Gtk.Image({gicon: icon});
+    }
+    image.set_pixel_size(symbolic ? SYMBOLIC_ICON_SIZE : LIST_ICON_SIZE);
+    image.set_size_request(LIST_ICON_SIZE, -1);
+    return image;
+}
 
 export type Option = readonly [nick: string, label: string];
 
@@ -100,6 +148,42 @@ export function resetWithUndo(ctx: PrefsContext, keys: readonly SettingKey[], me
     toast(ctx, message, () => ctx.settings.restore(before));
 }
 
+/** True when a key holds a user value that differs from the schema default. */
+export function isModified(ctx: PrefsContext, keys: readonly SettingKey[]): boolean {
+    const raw = ctx.settings.raw;
+    return keys.some(key => {
+        const user = raw.get_user_value(key);
+        const def = raw.get_default_value(key);
+        return user !== null && def !== null && !user.equal(def);
+    });
+}
+
+/**
+ * A small revert icon for a group header. It is only visible while one of `keys` differs from its default
+ * (`extra` can add a test for state outside those keys, e.g. folders) and follows the settings live.
+ */
+export function resetButton(
+    ctx: PrefsContext,
+    title: string,
+    keys: readonly SettingKey[],
+    onReset: () => void,
+    extra?: {modified: () => boolean; keys: readonly SettingKey[]},
+): Gtk.Button {
+    const button = new Gtk.Button({
+        icon_name: 'edit-undo-symbolic',
+        valign: Gtk.Align.CENTER,
+        css_classes: ['flat'],
+        tooltip_text: 'Reset to defaults',
+        visible: false,
+    });
+    label(button, `Reset ${title} to defaults`);
+    button.connect('clicked', onReset);
+    const update = (): void => button.set_visible(isModified(ctx, keys) || (extra?.modified() ?? false));
+    update();
+    watch(ctx, button, [...keys, ...(extra?.keys ?? [])], update);
+    return button;
+}
+
 export function group(
     ctx: PrefsContext,
     title: string,
@@ -115,14 +199,7 @@ export function group(
         g.set_header_suffix(opts.suffix);
     } else if (opts.reset) {
         const keys = opts.reset;
-        const button = new Gtk.Button({
-            label: 'Reset',
-            valign: Gtk.Align.CENTER,
-            tooltip_text: 'Restore the defaults of this section',
-            css_classes: ['flat'],
-        });
-        label(button, `Reset ${title}`);
-        button.connect('clicked', () => resetWithUndo(ctx, keys, `${title} reset to defaults`));
+        const button = resetButton(ctx, title, keys, () => resetWithUndo(ctx, keys, `${title} reset to defaults`));
         g.set_header_suffix(button);
     }
     return g;

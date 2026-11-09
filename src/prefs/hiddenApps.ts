@@ -15,7 +15,7 @@ import Gtk from 'gi://Gtk?version=4.0';
 import {addHidden, removeHidden} from '../model/hiddenApps.js';
 import type {PrefsContext} from './context.js';
 import {describeEntry} from './lists.js';
-import {label, switchRow, toast, watch} from './widgets.js';
+import {label, listIcon, switchRow, toast, watch} from './widgets.js';
 
 interface HiddenRow {
     id: string;
@@ -89,8 +89,7 @@ export function hiddenAppsGroup(ctx: PrefsContext): Adw.PreferencesGroup {
         items.forEach((item, index) => {
             const row = new Adw.ActionRow({title: GLib.markup_escape_text(item.title, -1), subtitle: item.installed ? '' : 'Not installed'});
             row.set_tooltip_text(item.id);
-            const icon = typeof item.icon === 'string' ? new Gtk.Image({icon_name: item.icon}) : new Gtk.Image({gicon: item.icon});
-            icon.set_pixel_size(32);
+            const icon = listIcon(item.icon);
             row.add_prefix(icon);
             if (!item.installed) // dim the icon only: the Remove button must not look disabled
                 icon.add_css_class('dim-label');

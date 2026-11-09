@@ -22,7 +22,7 @@ import {isValidFolderId} from '../core/folderId.js';
 import {resolveButtonIcon} from '../core/icons.js';
 import type {Entry, FolderSettings, SettingKey} from '../core/settings.js';
 import type {PrefsContext} from './context.js';
-import {connectDisposable, label, onWindowClose, resetWithUndo, toast} from './widgets.js';
+import {connectDisposable, label, listIcon, onWindowClose, resetButton, resetWithUndo, toast} from './widgets.js';
 
 export type ListKind = 'pinned' | 'folder' | 'directory' | 'application' | 'context';
 
@@ -143,10 +143,6 @@ function clearGroup(group: Adw.PreferencesGroup, rows: Gtk.Widget[]): void {
         group.remove(row);
 }
 
-function iconWidget(icon: Gio.Icon | string): Gtk.Image {
-    return typeof icon === 'string' ? new Gtk.Image({icon_name: icon}) : new Gtk.Image({gicon: icon});
-}
-
 function flatButton(icon: string, tooltip: string, name = tooltip): Gtk.Button {
     const button = new Gtk.Button({icon_name: icon, tooltip_text: tooltip, valign: Gtk.Align.CENTER, css_classes: ['flat']});
     label(button, name);
@@ -190,9 +186,11 @@ export function chooseApplication(ctx: PrefsContext, exclude: ReadonlySet<string
     const dialog = new Adw.Dialog({title: 'Add Application', content_width: 440, content_height: 560});
     const toolbar = new Adw.ToolbarView();
     toolbar.add_top_bar(new Adw.HeaderBar());
-    const search = new Gtk.SearchEntry({placeholder_text: 'Search applications', margin_start: 12, margin_end: 12, margin_top: 6, margin_bottom: 6});
+    const search = new Gtk.SearchEntry({placeholder_text: 'Search applications', hexpand: true});
     label(search, 'Search applications');
-    const list = new Gtk.ListBox({selection_mode: Gtk.SelectionMode.NONE, css_classes: ['boxed-list'], margin_start: 12, margin_end: 12, margin_bottom: 12});
+    // Edge-to-edge rows scroll cleanly under the search bar and out of the dialog's bottom edge; a boxed list
+    // would be cut off mid-row with no padding there.
+    const list = new Gtk.ListBox({selection_mode: Gtk.SelectionMode.NONE, show_separators: true});
     label(list, 'Applications');
     const apps = Gio.AppInfo.get_all()
         .filter(app => app.should_show() && app.get_id() && !exclude.has(app.get_id() as string))
@@ -205,7 +203,7 @@ export function chooseApplication(ctx: PrefsContext, exclude: ReadonlySet<string
             row.set_subtitle(GLib.markup_escape_text(desc, -1));
         row.set_subtitle_lines(1);
         const icon = app.get_icon();
-        row.add_prefix(icon ? new Gtk.Image({gicon: icon, pixel_size: 32}) : new Gtk.Image({icon_name: 'application-x-executable', pixel_size: 32}));
+        row.add_prefix(listIcon(icon ?? 'application-x-executable'));
         row.connect('activated', () => {
             dialog.close();
             cb(app.get_id() as string);
@@ -217,12 +215,26 @@ export function chooseApplication(ctx: PrefsContext, exclude: ReadonlySet<string
         const q = search.text.trim().toLowerCase();
         return q === '' || (rows.get(row) ?? '').includes(q);
     });
-    search.connect('search-changed', () => list.invalidate_filter());
+    // A bottom bar with the count gives the list a clear end: rows scroll under a divider, never off a bare edge.
+    const count = new Gtk.Label({css_classes: ['dim-label', 'caption'], margin_top: 6, margin_bottom: 6});
+    const showCount = (): void => {
+        const q = search.text.trim().toLowerCase();
+        const shown = [...rows.values()].filter(text => q === '' || text.includes(q)).length;
+        count.set_label(shown === 1 ? '1 application' : `${shown} applications`);
+    };
+    showCount();
+    search.connect('search-changed', () => {
+        list.invalidate_filter();
+        showCount();
+    });
     const scroller = new Gtk.ScrolledWindow({vexpand: true, hscrollbar_policy: Gtk.PolicyType.NEVER, child: list});
-    const body = new Gtk.Box({orientation: Gtk.Orientation.VERTICAL});
-    body.append(search);
-    body.append(scroller);
-    toolbar.set_content(body);
+    const searchBar = new Gtk.Box({css_classes: ['toolbar']});
+    searchBar.append(search);
+    toolbar.add_top_bar(searchBar);
+    toolbar.set_content(scroller);
+    toolbar.add_bottom_bar(count);
+    toolbar.set_top_bar_style(Adw.ToolbarStyle.RAISED);
+    toolbar.set_bottom_bar_style(Adw.ToolbarStyle.RAISED);
     dialog.set_child(toolbar);
     dialog.set_focus(search);
     dialog.present(ctx.window);
@@ -389,9 +401,7 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
                 row.set_subtitle(GLib.markup_escape_text(d.subtitle, -1));
             if ('tooltip' in d && d.tooltip)
                 row.set_tooltip_text(d.tooltip);
-            const icon = iconWidget(d.icon);
-            icon.set_pixel_size(24);
-            row.add_prefix(icon);
+            row.add_prefix(listIcon(d.icon));
 
             if (entry.isFolder === 'true' && !damaged) {
                 const contents = flatButton('view-list-symbolic', 'Edit apps in this folder', `Edit apps in ${entry.name || 'this folder'}`);
@@ -498,12 +508,8 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
     addRef = addButton;
     if (opts.reset && source.keys?.length === 1) {
         const key = source.keys[0] as SettingKey;
-        const reset = new Gtk.Button({label: 'Reset', valign: Gtk.Align.CENTER, css_classes: ['flat'], tooltip_text: 'Restore the default list'});
-        label(reset, `Reset ${opts.title}`);
-        reset.connect('clicked', () => {
-            const folderIds = kind === 'pinned' ? items().filter(e => e.isFolder === 'true' && isValidFolderId(e.id)).map(e => e.id) : [];
-            resetWithUndo(ctx, [key], `${opts.title} reset to defaults`, folderIds);
-        });
+        const folderIdsNow = (): string[] => (kind === 'pinned' ? items().filter(e => e.isFolder === 'true' && isValidFolderId(e.id)).map(e => e.id) : []);
+        const reset = resetButton(ctx, opts.title, [key], () => resetWithUndo(ctx, [key], `${opts.title} reset to defaults`, folderIdsNow()));
         const box = new Gtk.Box({orientation: Gtk.Orientation.HORIZONTAL, spacing: 6});
         box.append(reset);
         box.append(addButton);

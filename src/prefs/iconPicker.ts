@@ -18,6 +18,7 @@ import Pango from 'gi://Pango';
 
 import {resolveButtonIcon} from '../core/icons.js';
 import type {PrefsContext} from './context.js';
+import {friendlyIconName} from './iconName.js';
 import {label, toast, watch} from './widgets.js';
 
 type Source = 'all' | 'spawn' | 'distro' | 'system';
@@ -122,7 +123,8 @@ export function openIconPicker(ctx: PrefsContext): IconPicker {
     const showCurrent = (): string => {
         const value = ctx.settings.get('menu-button-icon');
         setImage(currentImage, ctx.extensionDir, value);
-        currentLabel.set_label(`Current: ${displayName(value)}`);
+        currentLabel.set_label(`Current: ${friendlyIconName(value)}`);
+        currentLabel.set_tooltip_text(displayName(value));
         return value;
     };
     let current = showCurrent();
@@ -293,7 +295,8 @@ export function createIconRow(ctx: PrefsContext): Adw.ActionRow {
             child = next;
         }
         preview.append(iconImage(ctx, value, 28));
-        row.set_subtitle(GLib.markup_escape_text(value.startsWith('/') ? value : value.replace(/\.svg$/, ''), -1));
+        row.set_subtitle(GLib.markup_escape_text(friendlyIconName(value), -1));
+        row.set_tooltip_text(value.startsWith('/') ? value : value.replace(/\.svg$/, ''));
     };
     show();
     watch(ctx, row, ['menu-button-icon'], show);
