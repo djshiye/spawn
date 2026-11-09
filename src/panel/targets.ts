@@ -16,11 +16,15 @@
 //                                        Dash to Panel panels and the pointer
 //   createFullscreenReveal(scope)        FullscreenReveal (panel/fullscreenReveal.ts) wired to the shell's
 //                                        own panel box and the live Dash to Panel panel boxes
+//   panelClickDeps()                     PanelClickDeps (panel/panelClick.ts) for the live stage and panels
 //   dtpWrapperOfPanel(panel)             the current Dash to Panel wrapper of an inner panel, or null
 //
 // Triggers for 'changed': extension-state-changed of Dash to Panel / App Icons Taskbar,
 // 'panels-created' of the CURRENT emitter (re-bound whenever the emitter object is
 // replaced, which Dash to Panel does on every enable), and monitors-changed.
+
+import Clutter from 'gi://Clutter';
+import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
@@ -30,6 +34,7 @@ import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import {type ConnectableEmitter, EmitterBindings} from './emitterBinding.js';
 import {FullscreenReveal, type PanelBoxInfo} from './fullscreenReveal.js';
+import type {PanelClickDeps} from './panelClick.js';
 import {type DtpWrapper, IntellihideHold, wrapperOfPanel} from './intellihide.js';
 import {
     type ExtensionSnapshot,
@@ -89,6 +94,14 @@ export function createFullscreenReveal(scope: Scope): FullscreenReveal {
         overviewVisible: () => Main.overview.visible,
         alive: box => isActorAlive(box as Parameters<typeof isActorAlive>[0]),
     });
+}
+
+export function panelClickDeps(): PanelClickDeps {
+    return {
+        panels: () => panelBoxes().map(p => p.box).filter(Boolean),
+        actorAt: (x, y) => global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x, y),
+        isButton: actor => actor instanceof St.Button,
+    };
 }
 
 export function dtpWrapperOfPanel(panel: unknown): DtpWrapper | null {
