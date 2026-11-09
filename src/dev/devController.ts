@@ -75,6 +75,8 @@ export function installDevHotkeyHooks(scope: Scope, controller: MenuController, 
         ...ctx.hotkeys.status(),
         popupOpen: ctx.popupOpen(),
         overviewVisible: Main.overview.visible,
+        notifications: (Main.messageTray as unknown as {getSources(): Array<{notifications: Array<{title?: string; body?: string}>}>})
+            .getSources().flatMap(s => s.notifications.map(n => `${n.title ?? ''}. ${n.body ?? ''}`)),
         shellMenusOpen: menusOfStatusArea(Main.panel.statusArea).filter(isMenuOpen).length,
     });
     controller.emitOverlayKey = () => global.display.emit('overlay-key');

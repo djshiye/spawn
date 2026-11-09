@@ -13,6 +13,7 @@ import GLib from 'gi://GLib';
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 import {SpawnSettings} from './core/settings.js';
+import {versionOf} from './core/updateNotice.js';
 import type {PrefsContext} from './prefs/context.js';
 import {createAboutPage} from './prefs/pages/about.js';
 import {createAppearancePage} from './prefs/pages/appearance.js';
@@ -21,6 +22,7 @@ import {createGeneralPage} from './prefs/pages/general.js';
 import {createImportPage} from './prefs/pages/import.js';
 import {createMenuPage} from './prefs/pages/menu.js';
 import {createPinnedPage} from './prefs/pages/pinned.js';
+import {showUpdateNoticeIfNeeded} from './prefs/updateToast.js';
 
 const PAGES: ReadonlyArray<readonly [name: string, title: string, create: (ctx: PrefsContext) => Adw.PreferencesPage]> = [
     ['general', 'General', createGeneralPage],
@@ -73,6 +75,8 @@ export default class SpawnPreferences extends ExtensionPreferences {
         const initial = pages[Math.min(Math.max(ctx.settings.get('prefs-visible-page'), 0), pages.length - 1)];
         if (initial)
             window.set_visible_page(initial);
+        // A package update leaves the shell on the old code: say so (prefs/updateToast.ts).
+        showUpdateNoticeIfNeeded(window, versionOf(this.metadata));
         window.connect('notify::visible-page', () => {
             const index = pages.findIndex(page => page === window.get_visible_page());
             if (index >= 0 && index !== ctx.settings.get('prefs-visible-page'))

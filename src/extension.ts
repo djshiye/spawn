@@ -20,6 +20,8 @@ import {openExtensionPrefs} from './core/openPrefs.js';
 import {Scope} from './core/scope.js';
 import {type ExtensionInfo, Services} from './core/services.js';
 import {SCHEMA_ID, SpawnSettings} from './core/settings.js';
+import {UPDATE_DETAIL, updateTitle, versionOf} from './core/updateNotice.js';
+import {UpdateWatch} from './core/updateWatch.js';
 import GLib from 'gi://GLib';
 
 import {installDevController, installDevHotkeyHooks} from './dev/devController.js';
@@ -45,6 +47,8 @@ export default class SpawnExtension extends Extension {
     /** enable() timing, kept for the dev benchmark (Dev.Benchmark). */
     private _enableMs = 0;
     private _startMs: Record<string, number> = {};
+    /** The update message was shown (kept across disable / enable, which do not reload the code). */
+    private readonly _updateState = {notified: false};
 
     override enable(): void {
         const t0 = GLib.get_monotonic_time();
@@ -209,8 +213,18 @@ export default class SpawnExtension extends Extension {
             startMs: () => this._startMs,
         });
 
+        // After a package update the shell keeps running this (old) code: say so once (core/updateWatch.ts).
+        this._start(root, 'update watch', scope => {
+            new UpdateWatch(scope, {
+                file: this.dir.get_child('metadata.json'),
+                running: versionOf(this.metadata),
+                notify: version => Main.notify(updateTitle(version), UPDATE_DETAIL),
+                state: this._updateState,
+            }).start();
+        });
+
         this._start(root, 'dbus', scope => {
-            new DBusService(scope, settings, controller).start();
+            new DBusService(scope, settings, controller, versionOf(this.metadata) ?? '').start();
         });
 
         this._start(root, 'hotkeys', scope => {
