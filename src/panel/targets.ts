@@ -119,7 +119,7 @@ export function activatePanelButton(actor: unknown, button: number): void {
         return;
     }
     // Activities has a dummy menu (toggle() does nothing): it opens the Overview itself.
-    if (button === PRIMARY && actor === Main.panel.statusArea.activities) {
+    if (button === PRIMARY && actor === (Main.panel.statusArea as Record<string, unknown>)['activities']) {
         Main.overview.toggle();
         return;
     }
