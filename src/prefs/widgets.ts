@@ -11,8 +11,8 @@
 //   resetButton(ctx, title, keys, onReset, extra?)  small revert icon button, shown only while `keys` differ from
 //                                      their defaults (live); `extra` adds an own "modified" test and its keys
 //   isModified(ctx, keys)              true when any key holds a user value different from its default
-//   LIST_ICON_SIZE                     the one icon size of every row in the settings lists
-//   listIcon(icon, fallback?)          LIST_ICON_SIZE image that never comes out blank: a name the theme lacks falls
+//   LIST_ICON_SIZE / SYMBOLIC_ICON_SIZE  list row icon sizes: 32 px full-colour, 16 px symbolic
+//   listIcon(icon, fallback?)          image that never comes out blank: a name the theme lacks falls
 //                                      back to its non-symbolic form, then to application-x-executable(-symbolic)
 //   resetKeys(ctx, keys)               resets keys (one SpawnSettings.batch(); ctx.settings.raw is never delayed)
 //   resetWithUndo(ctx, keys, message)  resetKeys + a toast whose Undo button restores the old values
@@ -26,8 +26,12 @@ import Gtk from 'gi://Gtk?version=4.0';
 import type {SettingKey} from '../core/settings.js';
 import type {PrefsContext} from './context.js';
 
-/** Pixel size of the icon at the start of every list row (pinned apps, shortcuts, hidden apps, add dialog...). */
-export const LIST_ICON_SIZE = 24;
+/**
+ * Icon sizes at the start of a list row, as in the GNOME HIG: full-colour app icons are LIST_ICON_SIZE, symbolic
+ * glyphs SYMBOLIC_ICON_SIZE, centred in a LIST_ICON_SIZE-wide slot so the titles of a mixed list line up.
+ */
+export const LIST_ICON_SIZE = 32;
+export const SYMBOLIC_ICON_SIZE = 16;
 
 /** True when the icon theme can draw `name`. */
 function themeHas(name: string): boolean {
@@ -48,13 +52,20 @@ export function resolveIconName(names: readonly string[], fallback = 'applicatio
     return candidates.find(n => n !== '' && themeHas(n)) ?? fallback;
 }
 
-/** The row icon of every settings list: LIST_ICON_SIZE, and a fallback icon instead of a blank image. */
+/** The row icon of every settings list (see LIST_ICON_SIZE), with a fallback icon instead of a blank image. */
 export function listIcon(icon: Gio.Icon | string, fallback?: string): Gtk.Image {
-    if (typeof icon === 'string')
-        return new Gtk.Image({icon_name: resolveIconName([icon], fallback), pixel_size: LIST_ICON_SIZE});
-    if (icon instanceof Gio.ThemedIcon)
-        return new Gtk.Image({icon_name: resolveIconName(icon.get_names(), fallback), pixel_size: LIST_ICON_SIZE});
-    return new Gtk.Image({gicon: icon, pixel_size: LIST_ICON_SIZE});
+    let image: Gtk.Image;
+    let symbolic = false;
+    if (typeof icon === 'string' || icon instanceof Gio.ThemedIcon) {
+        const name = resolveIconName(typeof icon === 'string' ? [icon] : icon.get_names(), fallback);
+        symbolic = name.endsWith('-symbolic');
+        image = new Gtk.Image({icon_name: name});
+    } else {
+        image = new Gtk.Image({gicon: icon});
+    }
+    image.set_pixel_size(symbolic ? SYMBOLIC_ICON_SIZE : LIST_ICON_SIZE);
+    image.set_size_request(LIST_ICON_SIZE, -1);
+    return image;
 }
 
 export type Option = readonly [nick: string, label: string];
