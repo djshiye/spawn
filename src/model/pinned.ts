@@ -18,6 +18,8 @@
 //                                                   hand-edit shown once, at its first occurrence): keyboard reordering
 //   store.moveInFolder(uuid, fromIndex, toIndex): void  reorder inside a folder; indices into folderApps(uuid, true)
 //   store.captureFolder(uuid): FolderUndo | null    state dissolveFolder(uuid) is about to change
+//   store.captureState(name): FolderUndo            the whole pinned list + every folder, before any pin / unpin /
+//                                                   remove-from-folder (restoreFolder puts every app back in its slot)
 //   store.markDissolved(undo) / store.isUnchangedSince(undo)  remember / check the list right after the dissolve
 //   store.restoreFolder(undo): boolean              put the folder back exactly (uuid, name, apps in order, slot) and
 //                                                   take the apps it released off the top level; false (nothing
@@ -54,7 +56,7 @@ export type PinnedItem =
     | {kind: 'folder'; uuid: string; name: string}
     | {kind: 'custom'; entry: Entry};
 
-/** What it takes to undo a dissolveFolder (captureFolder, markDissolved, restoreFolder). */
+/** What it takes to undo a dissolveFolder, pin, unpin or remove-from-folder (captureFolder / captureState, markDissolved, restoreFolder). */
 export interface FolderUndo {
     readonly uuid: string;
     readonly name: string;
@@ -213,6 +215,12 @@ export class PinnedStore {
         this._apply(s => ops.dissolveFolder(s, uuid));
     }
 
+    /** Everything an undo of pin / unpin / remove-from-folder has to put back; `name` is for the caller's banner. */
+    captureState(name: string): FolderUndo {
+        const folders = ops.folderUuids(this._settings.get('pinned-apps')).filter(isValidFolderId);
+        return {uuid: '', name, snapshot: this._settings.snapshot(['pinned-apps'], folders), after: null};
+    }
+
     captureFolder(uuid: string): FolderUndo | null {
         const entry = this._settings.get('pinned-apps').find(e => ops.isFolderEntry(e) && e.id === uuid);
         if (!entry || !isValidFolderId(uuid))
@@ -221,11 +229,11 @@ export class PinnedStore {
     }
 
     markDissolved(undo: FolderUndo): void {
-        undo.after = this._topKey();
+        undo.after = this._stateKey(undo);
     }
 
     isUnchangedSince(undo: FolderUndo): boolean {
-        return undo.after === null || undo.after === this._topKey();
+        return undo.after === null || undo.after === this._stateKey(undo);
     }
 
     restoreFolder(undo: FolderUndo): boolean {
@@ -271,8 +279,10 @@ export class PinnedStore {
         return v;
     }
 
-    private _topKey(): string {
-        return JSON.stringify(this._settings.get('pinned-apps'));
+    /** The pinned list plus the lists of the folders the undo remembers (a folder app removed behind its back counts). */
+    private _stateKey(undo: FolderUndo): string {
+        const folders = [...undo.snapshot.folders.keys()].map(id => this._settings.folder(id).pinnedApps);
+        return JSON.stringify([this._settings.get('pinned-apps'), folders]);
     }
 
     /** Full-list indices of the entries items(true) shows (all but folder entries with an unusable id). */

@@ -290,3 +290,57 @@ test('external changes to a folder or to pinned-apps notify listeners', () => {
 });
 
 run();
+
+test('captureState + unpin + restoreFolder puts the app back in its exact slot', () => {
+    const {store, settings, scope} = fixture([app('a'), app('b'), app('c')]);
+    const undo = store.captureState('b');
+    store.unpin('b.desktop');
+    store.markDissolved(undo);
+    assertEquals(settings.get('pinned-apps'), [app('a'), app('c')]);
+    assert(store.restoreFolder(undo));
+    assertEquals(settings.get('pinned-apps'), [app('a'), app('b'), app('c')]);
+    scope.dispose();
+});
+
+test('captureState + unpin of a folder app restores its place inside the folder', () => {
+    const {store, settings, scope} = fixture([app('a'), folder('F1', 'Fold'), app('z')], {F1: [app('x'), app('y'), app('w')]});
+    const undo = store.captureState('y');
+    store.unpin('y.desktop');
+    store.markDissolved(undo);
+    assertEquals(store.folderApps('F1'), [app('x'), app('w')]);
+    assert(store.restoreFolder(undo));
+    assertEquals(store.folderApps('F1'), [app('x'), app('y'), app('w')]);
+    assertEquals(settings.get('pinned-apps'), [app('a'), folder('F1', 'Fold'), app('z')]);
+    scope.dispose();
+});
+
+test('captureState + removeFromFolder of the last app restores the folder, its name and slot', () => {
+    const {store, settings, scope} = fixture([app('a'), folder('F1', 'Fold'), app('z')], {F1: [app('x')]});
+    const undo = store.captureState('x');
+    store.removeFromFolder('F1', 'x.desktop');
+    store.markDissolved(undo);
+    assertEquals(settings.get('pinned-apps'), [app('a'), app('x'), app('z')]);
+    assert(store.restoreFolder(undo));
+    assertEquals(settings.get('pinned-apps'), [app('a'), folder('F1', 'Fold'), app('z')]);
+    assertEquals(store.folderApps('F1'), [app('x')]);
+    assertEquals(settings.folder('F1').name, 'Fold');
+    scope.dispose();
+});
+
+test('captureState + pin is undone by restoreFolder; a later change to a folder blocks it', () => {
+    const {store, settings, scope} = fixture([app('a'), folder('F1', 'Fold')], {F1: [app('x'), app('y')]});
+    const undo = store.captureState('b');
+    store.pin('b.desktop');
+    store.markDissolved(undo);
+    assert(store.restoreFolder(undo));
+    assertEquals(settings.get('pinned-apps'), [app('a'), folder('F1', 'Fold')]);
+
+    const undo2 = store.captureState('x');
+    store.removeFromFolder('F1', 'x.desktop');
+    store.markDissolved(undo2);
+    // the folder's list changes behind the banner's back
+    settings.folder('F1').pinnedApps = [app('q')];
+    assert(!store.isUnchangedSince(undo2));
+    assert(!store.restoreFolder(undo2));
+    scope.dispose();
+});

@@ -224,8 +224,16 @@ test('removeFromFolder of the last app deletes the folder and adjusts the index'
     assertEquals(Object.keys(r.folders), []);
     // slot 0 is in front of the folder: unchanged
     assertEquals(ids(ops.removeFromFolder(s, 'F', 'x.desktop', 0)), ['x.desktop', 'a.desktop', 'b.desktop']);
-    // default (undefined) appends
-    assertEquals(ids(ops.removeFromFolder(s, 'F', 'x.desktop')), ['a.desktop', 'b.desktop', 'x.desktop']);
+    // default (undefined): the last app takes the folder's slot, it does not jump to the end
+    assertEquals(ids(ops.removeFromFolder(s, 'F', 'x.desktop')), ['a.desktop', 'x.desktop', 'b.desktop']);
+});
+
+test('removeFromFolder of the last app keeps the app in the folder slot (first, middle, last)', () => {
+    const only = {F: [app('x')]};
+    assertEquals(ids(ops.removeFromFolder(snap([folder('F', 'F'), app('a'), app('b')], only), 'F', 'x.desktop')), ['x.desktop', 'a.desktop', 'b.desktop']);
+    assertEquals(ids(ops.removeFromFolder(snap([app('a'), app('b'), folder('F', 'F')], only), 'F', 'x.desktop')), ['a.desktop', 'b.desktop', 'x.desktop']);
+    // a folder that keeps other apps still sends the removed one to the end
+    assertEquals(ids(ops.removeFromFolder(snap([app('a'), folder('F', 'F'), app('b')], {F: [app('x'), app('y')]}), 'F', 'x.desktop')), ['a.desktop', 'F', 'b.desktop', 'x.desktop']);
 });
 
 test('removeFromFolder ignores ids that are not in the folder', () => {
