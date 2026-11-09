@@ -131,7 +131,7 @@ export class ExtraList {
         box.add_child(text);
         button.set_child(makeFace('spawn-row-surface', box));
         nameItem(button, title, {label, description, listItem: true});
-        this._host.tooltips?.attach(button, label, description ? () => `${title}\n${description}` : undefined);
+        this._host.tooltips?.attach(button, label);
         wireItem(button, {activate: ctrl => activate(ctrl)});
         return button;
     }

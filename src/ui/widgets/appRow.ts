@@ -100,7 +100,7 @@ export class AppRow {
         button.set_child(opts.pinned ? box : makeFace('spawn-row-surface', box));
 
         nameItem(button, newAccessibleName(name, isNew), {label, description: desc?.split('\n')[0], listItem: !opts.pinned});
-        host.tooltips?.attach(button, label, desc ? () => `${app.get_name()}\n${desc}` : undefined);
+        host.tooltips?.attach(button, label);
         wireItem(button, {
             activate: ctrl => host.launch(app, ctrl),
             context: () => host.openContext(button, app, opts.folderUuid),

@@ -1,7 +1,9 @@
 // TooltipManager: ONE shared hover tooltip for the whole menu (the shell's "dash-label" look).
 //
-// Responsibility: show the full text of truncated names (and optional descriptions) after a
-// short hover delay, positioned under the widget and clamped to the monitor. Hidden on leave,
+// Responsibility: show the full text of truncated names after a short hover delay and clamped to the
+// monitor. A truncated row name's tooltip is laid over its own row (the full name where the cut-off
+// one was), so it never covers the next row's name; tile and icon-only button tooltips sit under
+// (or over) the widget. Hidden on leave,
 // press and when the menu closes. Code that destroys widgets with tooltips calls hide() first
 // (no 'destroy' handlers are connected, so nothing is left dangling at shutdown). Gated by the `show-tooltips` setting.
 //
@@ -16,6 +18,7 @@
 //   tooltips.hide()
 
 import Clutter from 'gi://Clutter';
+import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -99,44 +102,82 @@ export class TooltipManager {
             if (!text && label && isTruncated(label))
                 text = label.text;
             if (text)
-                this._show(widget, text, !!opts.above);
+                this._show(widget, text, !!opts.above, !extra && label && isTruncated(label) ? label : null);
         });
     }
 
-    private _show(widget: St.Widget, text: string, above: boolean): void {
+    private _show(widget: St.Widget, text: string, above: boolean, truncated: St.Label | null): void {
         if (!this._label) {
             this._label = new St.Label({style_class: 'dash-label spawn-tooltip', visible: false});
+            // the full text: wrapped, never cut off with an ellipsis of its own
+            this._label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
             this._label.clutter_text.line_wrap = true;
+            this._label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
             Main.uiGroup.add_child(this._label);
         }
         const tip = this._label;
+        tip.set_style(null);
         tip.text = text;
         this._owner = widget;
         Main.uiGroup.set_child_above_sibling(tip, null);
         tip.show();
 
-        // below (or above) the visible face, not the transparent hit area around it; flipped when it
-        // would leave the monitor
         const face = surfaceOf(widget);
         const [x, y] = face.get_transformed_position();
         const [w, h] = face.get_transformed_size();
         const monitor = Main.layoutManager.findMonitorForActor(widget) ?? Main.layoutManager.primaryMonitor;
-        const [, natW] = tip.get_preferred_width(-1);
-        const [, natH] = tip.get_preferred_height(natW);
-        let tx = Math.floor(x + (w - natW) / 2);
-        const below = Math.floor(y + h + 4);
-        const over = Math.floor(y - natH - 4);
-        let ty = above ? over : below;
-        if (monitor) {
-            tx = Math.max(monitor.x + 4, Math.min(tx, monitor.x + monitor.width - natW - 4));
-            if (above && ty < monitor.y + 4)
-                ty = below;
-            else if (!above && ty + natH > monitor.y + monitor.height - 4)
-                ty = over;
+        const isTile = widget.has_style_class_name('spawn-tile');
+        if (truncated && !isTile)
+            this._place(tip, face, truncated, monitor);
+        else {
+            // below (or above) the visible face, not the transparent hit area around it; flipped when it
+            // would leave the monitor. A tile has no neighbour whose name sits right below it (an icon does).
+            const [, natW] = tip.get_preferred_width(-1);
+            const [, natH] = tip.get_preferred_height(natW);
+            let tx = Math.floor(x + (w - natW) / 2);
+            const below = Math.floor(y + h + 4);
+            const over = Math.floor(y - natH - 4);
+            let ty = above ? over : below;
+            if (monitor) {
+                tx = Math.max(monitor.x + 4, Math.min(tx, monitor.x + monitor.width - natW - 4));
+                if (above && ty < monitor.y + 4)
+                    ty = below;
+                else if (!above && ty + natH > monitor.y + monitor.height - 4)
+                    ty = over;
+            }
+            tip.set_position(tx, ty);
         }
-        tip.set_position(tx, ty);
         tip.opacity = 0;
         tip.ease({opacity: 255, duration: animationDuration(120), mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+    }
+
+    /**
+     * The tooltip of a truncated row name: laid over the row's own face, starting where its label starts, as
+     * wide as the row allows and wrapped, centred on the label's line and kept inside the face. Nothing
+     * outside the hovered row is covered (below it would hide the next row's name).
+     */
+    private _place(tip: St.Label, face: St.Widget, label: St.Label, monitor: {x: number; y: number; width: number; height: number} | null): void {
+        const [fx, fy] = face.get_transformed_position();
+        const [fw, fh] = face.get_transformed_size();
+        const [lx, ly] = label.get_transformed_position();
+        const [, lh] = label.get_transformed_size();
+        // a wrapped name is a small card, not a pill
+        const look = 'border-radius: 12px;';
+        tip.set_style(look);
+        const node = tip.get_theme_node();
+        const padX = node.get_padding(St.Side.LEFT) + node.get_padding(St.Side.RIGHT);
+        const availW = Math.max(80, Math.floor(fx + fw - lx + node.get_padding(St.Side.LEFT) - 4));
+        tip.set_style(`${look} max-width: ${Math.max(40, availW - padX)}px;`);
+        const [, natW] = tip.get_preferred_width(-1);
+        const [, natH] = tip.get_preferred_height(natW);
+        let tx = Math.floor(lx - node.get_padding(St.Side.LEFT));
+        let ty = Math.floor(ly + (lh - natH) / 2);
+        ty = natH >= fh ? Math.floor(fy) : Math.max(Math.floor(fy), Math.min(ty, Math.floor(fy + fh - natH)));
+        if (monitor) {
+            tx = Math.max(monitor.x + 4, Math.min(tx, monitor.x + monitor.width - natW - 4));
+            ty = Math.max(monitor.y + 4, Math.min(ty, monitor.y + monitor.height - natH - 4));
+        }
+        tip.set_position(tx, ty);
     }
 
     private _destroy(): void {
