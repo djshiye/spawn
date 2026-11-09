@@ -5,7 +5,18 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- **Folder popup highlight:** only the app you point at, or the one you reach with the arrow keys, is highlighted,
+  never both. Opening a folder with a click no longer puts a ring on the first app; pointing at an app takes the ring
+  off the others, and the arrow keys carry on from the app under the pointer. Opening a folder with the keyboard
+  still starts on the first app.
+
 ### Changed
+
+- **Compact folder popup:** smaller, fixed-size tiles and icons (40 px, 48 px with Large items), a slimmer header with
+  a body-size title and a smaller close button, tighter padding and rounder 16 px corners, in line with GNOME's own
+  popovers.
 
 - **Shorter package name:** the RPM is now called `spawn` instead of `gnome-shell-extension-spawn`, so it is
   `sudo dnf install spawn` and `sudo dnf remove spawn`. Existing installs switch over by themselves on the next
