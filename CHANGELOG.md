@@ -5,6 +5,15 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-11-09
+
+### Fixed
+
+- **Panel apps work in one click while the menu is open:** clicking a pinned app in Dash to Panel (or any other app
+  button in the menu's panel) while the menu is open now closes the menu and launches the app in the same click.
+  Before, the first click only closed the menu, and over a fullscreen game the panel hid again straight away, so the
+  app could not be clicked at all. Right clicks and clicks on the Spawn button itself still just close the menu.
+
 ## [1.1.3] - 2026-11-09
 
 ### Fixed

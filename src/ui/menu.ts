@@ -11,7 +11,9 @@
 // (panel/intellihide.ts); the hold is given back on close, once the pointer is off the panel. A panel a
 // fullscreen window has hidden (top bar, or Dash to Panel without intellihide) is shown while the popup is
 // open on it and hidden again on close (panel/fullscreenReveal.ts), so Super in a fullscreen game opens the
-// menu attached to its panel instead of floating at the screen edge.
+// menu attached to its panel instead of floating at the screen edge. A click that closes the popup on a
+// launcher in its panel (a Dash to Panel pinned app) is passed on to that launcher (panel/panelClick.ts),
+// so it launches in one click, also over a fullscreen game.
 // The popup actor carries `spawn-popup spawn-menu-popup` (the theme's `menu-arrow-rise` targets
 // .spawn-menu-popup only; the runner shares .spawn-popup). `menu-position-alignment` moves a popup under
 // a panel button that is centred in the panel (see _align).
@@ -49,7 +51,8 @@ import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {FullscreenReveal} from '../panel/fullscreenReveal.js';
 import type {IntellihideHold} from '../panel/intellihide.js';
-import {createFullscreenReveal, createIntellihideHold} from '../panel/targets.js';
+import {type ClickLike, panelClickTarget} from '../panel/panelClick.js';
+import {createFullscreenReveal, createIntellihideHold, panelClickDeps} from '../panel/targets.js';
 import {isActorAlive} from '../panel/validate.js';
 import type {FakePlace} from '../model/places.js';
 import {installUiDevHooks} from './devHooks.js';
@@ -367,6 +370,8 @@ export class SpawnPopup {
             error('popup open-state handler failed', e);
         }
         if (!open) {
+            // Resolve a closing click on a panel launcher BEFORE a fullscreen panel hides again.
+            this._passClickOn(anchor);
             this._intellihide.release();
             this._fullscreen.restore();
         }
@@ -376,6 +381,30 @@ export class SpawnPopup {
             } catch (e) {
                 error('popup listener threw', e);
             }
+        }
+    }
+
+    /**
+     * The menu closed because of a click outside it: when that click landed on a launcher in the menu's own
+     * panel (a Dash to Panel pinned app), click that launcher too, once the grab is gone (panel/panelClick.ts).
+     */
+    private _passClickOn(anchor: St.Widget | null): void {
+        try {
+            const event = Clutter.get_current_event();
+            const type = event?.type();
+            if (!event || (type !== Clutter.EventType.BUTTON_PRESS && type !== Clutter.EventType.BUTTON_RELEASE))
+                return;
+            const [x, y] = event.get_coords();
+            const click: ClickLike = {x, y, button: event.get_button()};
+            const target = panelClickTarget(click, anchor, panelClickDeps()) as St.Button | null;
+            if (!target)
+                return;
+            this._scope.idle(() => {
+                if (isActorAlive(target))
+                    target.emit('clicked', click.button);
+            });
+        } catch (e) {
+            error('panel click pass-through failed', e);
         }
     }
 

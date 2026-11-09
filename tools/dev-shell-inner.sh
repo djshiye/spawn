@@ -580,8 +580,10 @@ else
 fi
 # Any GLib "-CRITICAL" line from the shell process (Clutter-, St-, Gjs-, GNOME Shell-CRITICAL, ...) fails
 # the run, whoever owns it: a CRITICAL is a failed g_return_if_fail somewhere, and we have none to spare.
-# Known external noise is filtered through CRITICAL_NOISE (extended regex); currently empty: none seen.
-CRITICAL_NOISE='^$'
+# Known external noise is filtered through CRITICAL_NOISE (extended regex). Only one entry: GNOME Shell 51's own
+# overview dash (ui/dash.js _adjustIconSize) throws on a redisplay after an app's .desktop file changes while
+# Dash to Panel is on (core-fullscreen --with-dtp shadows a pinned app); it happens on main too, Spawn plays no part.
+CRITICAL_NOISE='JS ERROR: TypeError: can.t access property "ensure_style", firstIcon\.icon is null'
 criticals="$(grep -E '^\(gnome-shell:[0-9]+\): .*-CRITICAL' "$log" | grep -Ev "$CRITICAL_NOISE")"
 if [ -n "$criticals" ]; then
     echo "RESULT: CRITICAL lines in the shell log:"
