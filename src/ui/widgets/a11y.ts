@@ -179,6 +179,8 @@ export class ResultAnnouncer {
 
     /** Say `text` now through the same region (the highlighted result: "Firefox, 2 of 5"). */
     say(text: string): void {
+        // "Firefox, 2 of 5" already carries the count: a pending "5 results" would only talk over it.
+        this._counter.hold();
         this._region.say(text);
     }
 
