@@ -39,9 +39,10 @@ expect_state "folder open again" layout.view folder
 click $(scrim_point 10 10)
 expect_state "scrim click leaves the folder" layout.view pinned
 expect "the popup is gone" "$(count spawn-folder-popup)" 0
-expect "focus lands on the folder's entry again" "$(state_get layout.focus | grep -c spawn-folder-)" 1
-expect_state "... which is the Internet folder's slot (index 3)" layout.focusIndex 3
-expect_state "... and is inside the layout" layout.focusInLayout true
+# closed with the pointer: no focus ring is left on the folder, the search entry has the focus again
+# (Escape, above, is the keyboard path that returns to the folder)
+expect "no focus ring left on the folder after a click outside" "$(state_get layout.focus | grep -c spawn-folder-)" 0
+expect_state "... the focus is inside the layout" layout.focusInLayout true
 echo "-- the close button leaves the folder too"
 ui_call OpenFolder 0 >/dev/null; sleep 0.8
 click_class spawn-folder-close 0

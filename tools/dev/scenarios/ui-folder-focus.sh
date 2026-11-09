@@ -96,3 +96,24 @@ dconf reset $K/override-menu-theme
 dconf reset $K/menu-background-color
 dconf reset $K/menu-foreground-color
 dconf reset $K/menu-border-color
+
+echo "-- closing with the pointer leaves no ring on the folder; Escape gives the keyboard back to it"
+set_display List
+close_menu; open_menu 1.5
+click_class spawn-folder-row 2
+expect_state "Tarky open from its row" layout.view folder
+click_class spawn-folder-close 0
+expect_state "close button closes it" layout.view pinned
+check "the folder row has no focus after a pointer close (focus: $(focus_cls))" "$(focus_cls | grep -q spawn-folder-row && echo 1 || echo 0)"
+check "the search entry has the focus again (focus: $(focus_cls))" "$(ui_call FocusInfo | unwrap | json_get type | grep -q Text && echo 0 || echo 1)"
+expect "no folder is left marked open" "$(count spawn-folder-open)" 0
+screenshot folder-focus/list-closed-by-pointer
+click_class spawn-folder-row 2
+c="$(scrim_point 6 6)"; click $c
+expect_state "a click outside the card closes it" layout.view pinned
+check "no ring on the folder after a click outside (focus: $(focus_cls))" "$(focus_cls | grep -q spawn-folder-row && echo 1 || echo 0)"
+click_class spawn-folder-row 2
+key Escape 0.6
+expect_state "Escape closes it" layout.view pinned
+check "Escape gives the keyboard back to the folder (focus: $(focus_cls))" "$(focus_cls | grep -q spawn-folder-row && echo 0 || echo 1)"
+set_display Grid
