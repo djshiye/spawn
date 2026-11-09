@@ -22,9 +22,62 @@ The RPM `Release` is `1.<commit count>.<dist>`, appended by `publish.sh`, so eve
 2. `tools/bump-version.sh 1.1.0 "what changed"` (updates package.json, package-lock.json, metadata.json, the spec and its changelog), review and commit.
 3. If the supported shells changed: edit `shell-version` in `metadata.json` and `%global min_shell` in `build-aux/spawn.spec`
    (the RPM must not be installable on a shell the extension refuses to load on).
-4. `SPAWN_SIGNING_KEY=<fingerprint> tools/publish.sh` builds, signs and commits to the local `.gh-pages/` worktree; look at it;
-   then `SPAWN_SIGNING_KEY=<fingerprint> tools/publish.sh --push` (see "Signing"; without a key it still publishes, unsigned, with a warning).
+4. On the release machine: `tools/release.sh`. That is the whole publish (see "One-command releases" below).
 5. Optional tag: `git tag v1.1.0 && git push origin v1.1.0` (nothing depends on it).
+
+## One-command releases (`tools/release.sh`)
+
+```sh
+tools/release.sh            # the whole release: build, sign, verify, push, and wait until it is live
+tools/release.sh --check    # changes nothing: are the tools, the key and git push access ready, is the site up to date?
+tools/release.sh --no-wait  # push, but do not wait for GitHub Pages
+```
+
+Run it on the release machine (Dino's Fedora PC, where the signing key lives) from a clean checkout. In order, it:
+
+1. checks the tools (git, gpg, rpm-sign, podman, npm, curl);
+2. switches to `main`, fast-forwards it from GitHub (never merges or rebases), re-runs itself if `release.sh` changed, and checks the versions agree;
+3. checks the signing key `D49A 3081 6825 7FDB F9D5 AE14 BD1A C1C6 F56A 7252` is present and able to sign, and that it is the key already published;
+4. checks this machine's git can push to GitHub (a `--dry-run` push, which changes nothing);
+5. stops early, with only the live check, if this exact version and release are already on `gh-pages` (so running it twice never re-signs or republishes);
+6. unlocks the key once, up front: if gpg-agent needs the password it shows its own password box on screen, before the long build rather than in the middle of it;
+7. runs `SPAWN_SIGNING_KEY=<key> tools/publish.sh --push`, which builds in Fedora containers, signs on the host, verifies every
+   signature (gpg and each Fedora release's own `rpmkeys`), commits and pushes `main` and `gh-pages` (plain pushes, never forced);
+8. checks GitHub's `gh-pages` is exactly the commit built here, then waits (up to 15 minutes) until the live site serves the same
+   signed `repomd.xml` for every Fedora release, with a matching key and a `spawn.repo` that requires signatures.
+
+It prints `spawn <version>-<release> is live and signed for Fedora 43 44 45.` when everything checks out, and
+`Release stopped: <reason>` otherwise. Nothing is pushed unless every signature has verified.
+
+### Running it from a Claude session
+
+Release threads run `/home/dino/Coding/spawn/tools/release.sh` through Remote Control on the Fedora PC, so Dino does not type
+anything. Claude Code's permission checker blocks pushes to a public site by default, so that machine has one narrow allow rule,
+for that script only, in `~/Coding/.claude/settings.local.json` (local to that machine, never committed):
+
+```json
+{ "permissions": { "allow": [
+  "Bash(/home/dino/Coding/spawn/tools/release.sh)",
+  "Bash(/home/dino/Coding/spawn/tools/release.sh --check)",
+  "Bash(/home/dino/Coding/spawn/tools/release.sh --no-wait)"
+] } }
+```
+
+No `git push` or other wildcard is allowed. The script only ever publishes what is on GitHub's `main`, so the rule lets a session
+publish main, not arbitrary changes. Push access is the machine's own signed-in git; no token lives in the repository, CI or chat.
+
+### The signing password
+
+gpg-agent keeps a typed password in memory for 10 minutes after its last use (`default-cache-ttl`, Fedora's default), at most
+2 hours. `release.sh` unlocks the key once at the start and touches it every 4 minutes while `publish.sh` runs, so a release asks
+for the password at most once, and the agent forgets it about 10 minutes after the release ends. Nothing stores it on disk.
+
+If the key has no password (`release.sh --check` says so), nothing is ever asked and a release needs nobody at the PC. The cost:
+any program running as your user can sign with it, and a copy of the key file is usable without a password. On a machine with
+full-disk encryption that mostly matters against malware running as you, which could also push with your git login anyway, so the
+password adds a prompt per release for limited extra protection. To add one anyway:
+`gpg --change-passphrase D49A308168257FDBF9D5AE14BD1AC1C6F56A7252` (gpg asks in its own box; do it at the PC). Releases then ask once.
+If it has a password, do not remove it or save it in a keyring just to avoid that one prompt.
 
 ## The DNF repository (`tools/publish.sh`)
 
@@ -139,8 +192,7 @@ tools/publish.sh            # look at .gh-pages/
 tools/publish.sh --push
 ```
 
-`publish.sh` asks gpg-agent to sign (passphrase prompt, or YubiKey PIN and touch): once per package and once per `repomd.xml` (a PIN or
-touch prompt for each of the roughly 6 packages and 3 `repomd.xml` files), so expect several prompts per publish unless gpg-agent caches the passphrase.
+Normally `tools/release.sh` does this for you. `publish.sh` asks gpg-agent to sign (passphrase prompt, or YubiKey PIN and touch): once per package and once per `repomd.xml`; gpg-agent caches a typed passphrase, so a software key asks once (a YubiKey asks for a touch each time).
 Short key IDs are rejected: only the full fingerprint of the primary key is accepted. Before building it checks that the primary is
 neither revoked nor expired and that a valid, unexpired signing key (a subkey, or the primary) has its secret here or on a card; `sec#`
 and `ssb>` are fine, and a key with no usable signing subkey is refused.

@@ -88,7 +88,7 @@ Log out and in (Wayland) if the shell does not pick up a new extension.
 
 ### Releasing
 
-`docs/RELEASING.md`: version bump, the DNF repository (`tools/publish.sh`) and package signing (`tools/make-signing-key.sh`).
+`docs/RELEASING.md`: version bump, one-command releases (`tools/release.sh`), the DNF repository (`tools/publish.sh`) and package signing (`tools/make-signing-key.sh`).
 
 ## Develop without touching your session
 
