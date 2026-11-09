@@ -18,6 +18,7 @@ import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
 import type {Hotkeys} from '../input/hotkeys.js';
 import type {MenuController} from '../input/dbus.js';
+import {isMenuOpen, menusOfStatusArea} from '../panel/shellPopups.js';
 import type {SpawnPopup} from '../ui/menu.js';
 import type {SpawnRunner} from '../ui/runner.js';
 import {runBenchmark} from './benchmark.js';
@@ -74,6 +75,7 @@ export function installDevHotkeyHooks(scope: Scope, controller: MenuController, 
         ...ctx.hotkeys.status(),
         popupOpen: ctx.popupOpen(),
         overviewVisible: Main.overview.visible,
+        shellMenusOpen: menusOfStatusArea(Main.panel.statusArea).filter(isMenuOpen).length,
     });
     controller.emitOverlayKey = () => global.display.emit('overlay-key');
     controller.focusButton = () => {

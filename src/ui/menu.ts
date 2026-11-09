@@ -52,7 +52,7 @@ import type {Scope} from '../core/scope.js';
 import type {FullscreenReveal} from '../panel/fullscreenReveal.js';
 import type {IntellihideHold} from '../panel/intellihide.js';
 import {type ClickLike, panelClickTarget} from '../panel/panelClick.js';
-import {createFullscreenReveal, createIntellihideHold, panelClickDeps} from '../panel/targets.js';
+import {closeOtherShellPopups, createFullscreenReveal, createIntellihideHold, panelClickDeps} from '../panel/targets.js';
 import {isActorAlive} from '../panel/validate.js';
 import type {FakePlace} from '../model/places.js';
 import {installUiDevHooks} from './devHooks.js';
@@ -208,6 +208,8 @@ export class SpawnPopup {
             if (this._anchor !== anchor || this._side !== this._sideOf(anchor))
                 this._attach(anchor);
             if (this._menu) {
+                // Another shell menu (calendar, quick settings, a tray icon ...) holding the grab closes first.
+                closeOtherShellPopups([this._menu]);
                 // Reveal an intellihide panel BEFORE the menu positions itself against the button.
                 // Likewise show a panel a fullscreen window has hidden, so the menu opens attached to it.
                 this._intellihide.hold(anchor);

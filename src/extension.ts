@@ -28,7 +28,7 @@ import {DBusService, type MenuController} from './input/dbus.js';
 import {Hotkeys} from './input/hotkeys.js';
 import {ButtonAttacher} from './panel/attacher.js';
 import {pickAnchor} from './panel/anchor.js';
-import {PanelTargets} from './panel/targets.js';
+import {closeOtherShellPopups, PanelTargets} from './panel/targets.js';
 import {Theme} from './theme/theme.js';
 import {MenuButton} from './ui/button.js';
 import {SpawnPopup} from './ui/menu.js';
@@ -126,6 +126,7 @@ export default class SpawnExtension extends Extension {
             const r = new SpawnRunner(scope, services, {beforeOpen: () => {
                 if (popup?.isOpen)
                     popup.close();
+                closeOtherShellPopups();
             }});
             runnerAccel = new Accelerator(scope, settings, 'runner-hotkey', () => r.toggle());
             runnerAccel.start();
