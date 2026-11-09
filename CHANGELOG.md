@@ -5,6 +5,15 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.1.5] - 2026-11-09
+
+### Fixed
+
+- **A closed folder no longer stays selected:** closing a folder popup with a click (the close button, or anywhere
+  outside the card) used to leave a focus ring on the folder and take the focus away from the search box. The
+  search box now has the focus again, as it does when the menu opens. Closing with Escape still puts the keyboard
+  back on the folder, so keyboard users carry on where they were.
+
 ## [1.1.4] - 2026-11-09
 
 ### Fixed

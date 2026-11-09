@@ -78,7 +78,7 @@ import {TileGrid} from './widgets/tileGrid.js';
 import {TooltipManager} from './widgets/tooltip.js';
 import {UndoBanner} from './widgets/undoBanner.js';
 import {UserCard} from './widgets/userCard.js';
-import {applyScrollSettings, displayName, iconSizeFor, iconSizeOrHidden, launchApp, lookupApp, ownedScope, scrollIntoView, showDescriptions} from './util.js';
+import {applyScrollSettings, displayName, iconSizeFor, iconSizeOrHidden, isPointerEvent, launchApp, lookupApp, ownedScope, scrollIntoView, showDescriptions} from './util.js';
 
 export interface LayoutHost {
     /** Close the popup (e.g. after launching an app). */
@@ -1001,12 +1001,15 @@ export class SpawnLayout implements ShortcutHost {
             this._search.clear();
             return;
         }
+        const pointer = isPointerEvent();
         const folder = this._view === 'folder' ? this._folderView?.uuid ?? null : null;
         // Closing a folder popup returns to the view it was opened over (e.g. Pinned reached by a quick link).
         this._setView(this._view === 'folder' ? this._underFolder : this._defaultView());
-        // Closing a folder popup: the keyboard goes back to the folder it came from.
+        // Closing a folder popup with the keyboard (Escape, Return on Close): the keyboard goes back to the
+        // folder it came from. Closed with the pointer (close button, a click outside the card): the usual
+        // focus (search), so the folder is not left with a focus ring nobody asked for.
         const folderTile = folder && this._view === 'pinned' ? this._tileEntries.get(`f:${folder}`)?.widget : null;
-        if (this._isOpen && folderTile?.mapped) {
+        if (this._isOpen && folderTile?.mapped && !pointer) {
             folderTile.grab_key_focus();
             return;
         }
