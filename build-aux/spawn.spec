@@ -5,7 +5,7 @@
 
 # The one source of truth for the version is package.json; this line, metadata.json "version-name" and the
 # Changelog are kept equal by tools/bump-version.sh (publish.sh and %%check refuse a mismatch).
-Name:           gnome-shell-extension-spawn
+Name:           spawn
 Version:        1.1.1
 # tools/publish.sh appends .<commit count> so every build from main is a newer release.
 Release:        1%{?release_suffix}%{?dist}
@@ -18,6 +18,15 @@ URL:            https://github.com/djshiye/spawn
 # the container, so every Fedora release ships byte-identical files and the build needs no network.
 Source0:        %{name}-%{version}.tar.gz
 BuildArch:      noarch
+
+# Until 1.1.1 the package was called gnome-shell-extension-spawn (Fedora's naming convention for shell extensions). It is
+# now just "spawn", which is shorter to type: dnf5 matches install and upgrade against Provides but not remove or info, so
+# a Provides alias alone was not enough. The Obsoletes moves existing installs over on their next `dnf upgrade`; the
+# Provides keeps the old name working for `dnf install`. No package in Fedora 43-45 or RPM Fusion is called or provides
+# "spawn"; publish.sh re-checks that on every release.
+Provides:       gnome-shell-extension-spawn = %{version}-%{release}
+Obsoletes:      gnome-shell-extension-spawn < %{version}-%{release}
+
 
 # glib-compile-schemas, for the schema check in %%check
 BuildRequires:  glib2

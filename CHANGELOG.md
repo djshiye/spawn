@@ -5,6 +5,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- **Shorter package name:** the RPM is now called `spawn` instead of `gnome-shell-extension-spawn`, so it is
+  `sudo dnf install spawn` and `sudo dnf remove spawn`. Existing installs switch over by themselves on the next
+  `sudo dnf upgrade`, with settings and pinned apps kept, and the old name still works for `dnf install`.
+
 ## [1.1.1] - 2026-11-08
 
 ### Fixed
