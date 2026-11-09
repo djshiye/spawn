@@ -55,7 +55,13 @@
 /* ---- popup shell ---- */
 
 .spawn-popup .popup-menu-content {
-    padding: 8px;
+    padding: 0;
+}
+
+/* The menu's 8 px inset is the panes' margin, not the content's padding: the folder scrim is a sibling of
+ * the panes and must reach the content's edge (a padded content left a bright 8 px frame around it). */
+.spawn-panes {
+    margin: 8px;
 }
 
 /* A popup opening upward (bottom panel): Orchis keeps a 14 px shadow margin BELOW the content,
@@ -568,7 +574,7 @@
 /* Opaque on purpose: nothing under the card may show through it (theme/css.ts keeps a custom menu
  * colour opaque here too). */
 .spawn-folder-popup {
-    background-color: rgb(48, 48, 54);
+    background-color: rgb(44, 44, 44); /* fallback: folderView.ts sets the real one from the menu's background */
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 16px;
     padding: 12px 4px;

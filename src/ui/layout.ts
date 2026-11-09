@@ -109,9 +109,11 @@ const MIN_COLUMNS = 3;
  */
 const LEFT_CHROME = 32;
 const MIN_HEIGHT = 360;
-/** Popup frame around the layout: content padding 2x8, shadow margins 3+3 / 14, arrow, breathing room. */
+/** Popup frame around the layout: the panes' 2x8 inset, shadow margins 3+3 / 14, arrow, breathing room. */
 const FRAME_W = 16 + 6;
 const FRAME_H = 16 + 14 + 14;
+/** The panes' margin inside the layout root (.spawn-panes): the folder scrim lies over the root, edge to edge, around it. */
+const PANES_INSET = 8;
 const SCREEN_MARGIN = 8;
 /** Right pane margin (4) + vertical separator with its margins (1 + 2 x 6). */
 const PANE_GAP = 4;
@@ -598,7 +600,7 @@ export class SpawnLayout implements ShortcutHost {
     private _contentSize(): {width: number; height: number} {
         // Fixed sizes from _applyMetrics: readable before the layout is staged or allocated.
         const width = this._left.width + this._right.width + PANE_GAP + (this._vsep.visible ? SEPARATOR_W : 0);
-        return {width, height: this.actor.height};
+        return {width, height: this._panes.height};
     }
 
     private _workArea(): {width: number; height: number} | null {
@@ -639,7 +641,7 @@ export class SpawnLayout implements ShortcutHost {
         this._left.set_width(left);
         this._right.set_width(right);
         this._vsep.visible = sep;
-        this.actor.set_height(height);
+        this.actor.set_height(height + 2 * PANES_INSET);
 
         const avail = left - LEFT_CHROME;
         const metrics = sizeMetrics(s.get('pinned-item-size'));

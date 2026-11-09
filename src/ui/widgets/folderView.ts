@@ -50,6 +50,7 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 import type {Scope} from '../../core/scope.js';
 import type {Services} from '../../core/services.js';
 import type {PinnedItemSize} from '../../core/settings.js';
+import {cardSurface} from '../../theme/css.js';
 import {acceptDrops, enableDrag, rejectDrops} from '../dnd.js';
 import {applyScrollSettings, displayName, lookupApp} from '../util.js';
 import {animationsEnabled, markDialog} from './a11y.js';
@@ -88,6 +89,8 @@ const MAX_NAME_LENGTH = 40;
  * with .spawn-folder-popup / .spawn-folder-header in stylesheet.css.
  */
 const POPUP_MARGIN = 16;
+/** The scrim reaches the menu's edge; the panes (and the card's margins) start this far inside it (.spawn-panes margin). */
+const SCRIM_INSET = 8;
 const HEADER_H = 32;
 const CARD_PAD_TOP = 12;
 const CARD_CHROME_H = HEADER_H + 4 + 2 * CARD_PAD_TOP;
@@ -325,6 +328,7 @@ export class FolderView {
         this.actor.remove_all_transitions();
         this._card.remove_all_transitions();
         this.actor.reactive = true;
+        this._matchMenu();
         this.actor.show();
         this._place();
         if (animate && animationsEnabled() && !wasOpen) {
@@ -458,8 +462,8 @@ export class FolderView {
         const parent = this.actor.get_parent();
         if (!parent)
             return;
-        const W = parent.width;
-        const H = parent.height;
+        const W = parent.width - 2 * SCRIM_INSET;
+        const H = parent.height - 2 * SCRIM_INSET;
         if (!(W > 0 && H > 0))
             return;
         const cw = this._card.width;
@@ -472,7 +476,7 @@ export class FolderView {
         if (this._spotlight)
             this._spotlight.visible = Boolean(anchor?.mapped);
         if (!anchor || !anchor.mapped) {
-            this._card.set_translation(clamp((W - cw) / 2, POPUP_MARGIN, maxX), clamp((H - ch) / 2, POPUP_MARGIN, maxY), 0);
+            this._placeCard(clamp((W - cw) / 2, POPUP_MARGIN, maxX), clamp((H - ch) / 2, POPUP_MARGIN, maxY));
             this._card.set_pivot_point(0.5, 0.5);
             return;
         }
@@ -482,11 +486,12 @@ export class FolderView {
         // Not allocated yet: the allocation that follows calls _place() again.
         if (![sx, sy, ax, ay, aw, ah].every(Number.isFinite))
             return;
-        const left = ax - sx, top = ay - sy, bottom = top + ah;
+        // The spotlight lies in the scrim's own coordinates; everything else is measured from the panes' area.
         if (this._spotlight) {
             this._spotlight.set_size(aw, ah);
-            this._spotlight.set_translation(Math.round(left), Math.round(top), 0);
+            this._spotlight.set_translation(Math.round(ax - sx), Math.round(ay - sy), 0);
         }
+        const left = ax - sx - SCRIM_INSET, top = ay - sy - SCRIM_INSET, bottom = top + ah;
         if (aw > cw) {
             this._placeBesideRow(left, top, aw, ah, cw, ch, W, maxX, maxY);
             return;
@@ -514,9 +519,38 @@ export class FolderView {
             y = below ? bottom + ANCHOR_GAP : top - ANCHOR_GAP - ch;
         }
         y = clamp(y, POPUP_MARGIN, maxY);
-        this._card.set_translation(x, y, 0);
+        this._placeCard(x, y);
         const px = cw > 0 ? Math.max(0, Math.min(1, (left + aw / 2 - x) / cw)) : 0.5;
         this._card.set_pivot_point(px, below ? 0 : 1);
+    }
+
+    /**
+     * Dress the scrim and the card after the menu they lie on, whatever the theme: the scrim gets the content's
+     * inner corner radius (its radius less its border) and the card an opaque colour derived from the content's
+     * real background (cardSurface), so it is neither bluish on a neutral theme nor flat on a light one.
+     */
+    private _matchMenu(): void {
+        let content: Clutter.Actor | null = this.actor.get_parent();
+        while (content && !(content instanceof St.Widget && content.has_style_class_name('popup-menu-content')))
+            content = content.get_parent();
+        if (!(content instanceof St.Widget))
+            return;
+        try {
+            const node = content.get_theme_node();
+            const radius = Math.max(0, node.get_border_radius(St.Corner.TOPLEFT) - node.get_border_width(St.Side.LEFT));
+            this.actor.set_style(`border-radius: ${radius}px;`);
+            const css = (c: {red: number; green: number; blue: number; alpha: number}) => `rgba(${c.red}, ${c.green}, ${c.blue}, ${c.alpha / 255})`;
+            const surface = cardSurface(css(node.get_background_color()), css(node.get_foreground_color()));
+            this._card.set_style(surface ? `background-color: ${surface};` : null);
+        } catch {
+            this.actor.set_style(null);
+            this._card.set_style(null);
+        }
+    }
+
+    /** Move the card to (x, y), measured from the panes' area (the scrim is SCRIM_INSET larger on every side). */
+    private _placeCard(x: number, y: number): void {
+        this._card.set_translation(x + SCRIM_INSET, y + SCRIM_INSET, 0);
     }
 
     /**
@@ -540,7 +574,7 @@ export class FolderView {
         x = clamp(x, POPUP_MARGIN, maxX);
         // The header's centre (card padding + half the header) on the row's centre.
         const y = clamp(top + ah / 2 - CARD_PAD_TOP - HEADER_H / 2, POPUP_MARGIN, maxY);
-        this._card.set_translation(x, y, 0);
+        this._placeCard(x, y);
         const towardRow = x + cw / 2 < left + aw / 2 ? 1 : 0;
         const py = ch > 0 ? Math.max(0, Math.min(1, (top + ah / 2 - y) / ch)) : 0.5;
         this._card.set_pivot_point(towardRow, py);
