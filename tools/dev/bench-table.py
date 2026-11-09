@@ -85,3 +85,66 @@ if lk:
         print(f"  leak check: {lk['cycles']} cycles of open, type {lk['query']!r} letter by letter, close")
         print(f"  {'stage actors before -> after':<46} {b['stageActors']:>9} -> {a['stageActors']}   (delta {lk['stageActorsDelta']:+d})")
         print(f"  {'shell RSS KiB before -> after (after GC)':<46} {b['rssKiB']:>9} -> {a['rssKiB']}   (delta {lk['rssDeltaKiB']:+d})")
+
+aa = d.get("allApps")
+if aa:
+    print()
+    if "error" in aa:
+        print(f"  All Apps: {aa['error']}")
+    else:
+        print(f"  All Apps ({aa['apps']} apps, {aa.get('categories', '?')} categories; times in ms)")
+        f = aa["firstShow"]
+        print(f"  {'All Apps first show: blocked':<46} {f['callMs']:>9.2f}")
+        print(f"  {'All Apps first show: -> painted':<46} {f['paintedMs']:>9.2f}")
+        for key, label in (("laterShowSameOpen", "later show, same open"), ("laterShowAfterReopen", "later show, after close / reopen"),
+                           ("categoryVisit", "category selected"), ("refreshAllAppsShowing", "refresh (app installed), showing")):
+            v = aa.get(key)
+            if v:
+                row(f"{label}: blocked", v["openCallMs"])
+                row(f"{label}: -> painted", v["paintedMs"])
+        print(f"  {'popup actors / shell RSS MiB (after GC):':<46}")
+        base = aa["memOpen"]["rssKiB"]
+        for key, label in (("memOpen", "menu open, start view"), ("memAllApps", "after All Apps"),
+                           ("memEveryCategory", "after every category"), ("memClosed", "closed, 3 s later")):
+            m = aa.get(key)
+            if m:
+                split = ""
+                if "rssAnonKiB" in m:
+                    b0 = aa["memOpen"]
+                    split = "   of which anon {:+.1f}, file {:+.1f}, shmem {:+.1f}".format(
+                        *((m[k] - b0[k]) / 1024 for k in ("rssAnonKiB", "rssFileKiB", "rssShmemKiB")))
+                print(f"    {label:<44} {m['menuActors']:>9} actors   RSS {m['rssKiB'] / 1024:>7.1f} MiB  ({(m['rssKiB'] - base) / 1024:+.1f}){split}")
+
+ty = d.get("typing")
+if ty:
+    print()
+    if "error" in ty:
+        print(f"  typing: {ty['error']}")
+    else:
+        print(f"  typing: {', '.join(ty['words'])}, a key every {ty['gapMs']} ms; keystroke -> apps rows painted (debounce included)")
+        row("per key, end to end", ty["keystrokeToAppsPaintedMs"])
+        if ty.get("keysWithoutAppsBatch"):
+            print(f"  WARNING: {ty['keysWithoutAppsBatch']} keys without an apps batch within the timeout")
+
+rc = d.get("recent")
+if rc:
+    print()
+    if "error" in rc:
+        print(f"  recent files: {rc['error']}")
+    else:
+        print(f"  recent files (2000-entry recently-used.xbel), {rc['opens']} menu opens, query {rc['query']!r} typed; keystroke -> rows painted")
+        row("first key after an open, end to end", rc["firstKeyToPaintedMs"])
+        row("later keys, end to end", rc["laterKeyToPaintedMs"])
+        row("provider search() until its results are ready", rc["providerMs"])
+        if rc.get("rowsPerBatch", {}).get("n"):
+            print(f"  {'rows per recent-files batch (median)':<46} {rc['rowsPerBatch']['median']:>9.0f}")
+        if rc.get("keysWithoutBatch"):
+            print(f"  WARNING: {rc['keysWithoutBatch']} keys without a recent-files batch within the timeout")
+
+sk = d.get("soak")
+if sk:
+    b, a = sk["before"], sk["after"]
+    print()
+    print(f"  disable / enable soak: {sk['cycles']} cycles")
+    print(f"  {'stage actors before -> after':<46} {b['stageActors']:>9} -> {a['stageActors']}   (delta {sk['stageActorsDelta']:+d})")
+    print(f"  {'shell RSS KiB before -> after (after GC)':<46} {b['rssKiB']:>9} -> {a['rssKiB']}   (delta {sk['rssDeltaKiB']:+d})")
