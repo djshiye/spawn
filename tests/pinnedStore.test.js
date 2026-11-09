@@ -289,7 +289,6 @@ test('external changes to a folder or to pinned-apps notify listeners', () => {
     scope.dispose();
 });
 
-run();
 
 test('captureState + unpin + restoreFolder puts the app back in its exact slot', () => {
     const {store, settings, scope} = fixture([app('a'), app('b'), app('c')]);
@@ -316,6 +315,7 @@ test('captureState + unpin of a folder app restores its place inside the folder'
 
 test('captureState + removeFromFolder of the last app restores the folder, its name and slot', () => {
     const {store, settings, scope} = fixture([app('a'), folder('F1', 'Fold'), app('z')], {F1: [app('x')]});
+    settings.folder('F1').name = 'Fold';
     const undo = store.captureState('x');
     store.removeFromFolder('F1', 'x.desktop');
     store.markDissolved(undo);
@@ -344,3 +344,5 @@ test('captureState + pin is undone by restoreFolder; a later change to a folder 
     assert(!store.restoreFolder(undo2));
     scope.dispose();
 });
+
+run();
