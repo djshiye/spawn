@@ -834,6 +834,8 @@
 /* ---- tooltip ---- */
 
 .spawn-tooltip {
+/* The shell theme draws the menu's shadow; a custom one is clipped by the popup's actor into a hard-edged
+ * rectangle. Only the hairline border is ours. */
     max-width: 320px;
 }
 
@@ -845,7 +847,6 @@
 
 .spawn-context-menu .popup-menu-content {
     border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
 /* ---- panel button context menu (src/ui/buttonMenu.ts) ----
@@ -1031,7 +1032,6 @@
 
 .spawn-light.spawn-context-menu .popup-menu-content {
     border-color: rgba(0, 0, 0, 0.12);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
 /* ---- standalone runner (ui/runner.ts) ----
