@@ -316,6 +316,13 @@
 .spawn-power-button:active .spawn-power-surface {
     background-color: rgba(255, 255, 255, 0.18);
 }
+/* a red ring, not the accent: the ring should say "careful" as well as "focused" (more specific than the
+ * theme module's accent focus rules, which come later in the cascade) */
+.spawn-popup .spawn-power-button.spawn-power-destructive:focus .spawn-power-surface {
+    background-color: rgba(224, 27, 36, 0.22);
+    box-shadow: inset 0 0 0 2px rgb(224, 27, 36);
+}
+
 
 /* Restart / Power Off: a quiet destructive tint (not the accent: that one means selection). */
 .spawn-power-button.spawn-power-destructive:hover .spawn-power-surface,
