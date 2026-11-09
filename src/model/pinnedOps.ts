@@ -270,7 +270,10 @@ export function addToFolder(s: PinnedSnapshot, uuid: string, id: string, index?:
     return m;
 }
 
-/** Move `id` out of folder `uuid` to the top level at `toIndex` (default end). An emptied folder is deleted. */
+/**
+ * Move `id` out of folder `uuid` to the top level at `toIndex` (default end). An emptied folder is deleted, and when
+ * no `toIndex` is given its last app takes the folder's slot (it does not jump to the end of the list).
+ */
 export function removeFromFolder(s: PinnedSnapshot, uuid: string, id: string, toIndex?: number): PinnedSnapshot {
     const list = s.folders[uuid];
     if (!list || !list.some(e => e.id === id) || topIndexOfFolder(s.top, id) >= 0)
@@ -281,7 +284,9 @@ export function removeFromFolder(s: PinnedSnapshot, uuid: string, id: string, to
     let wanted = toIndex;
     if (fl.length === 0) {
         const f = dropFolder(m, uuid);
-        if (wanted !== undefined && f >= 0 && f < wanted)
+        if (wanted === undefined)
+            wanted = f >= 0 ? f : undefined;
+        else if (f >= 0 && f < wanted)
             wanted -= 1;
     }
     m.top.splice(clamp(wanted ?? m.top.length, m.top.length), 0, e);

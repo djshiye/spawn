@@ -12,7 +12,7 @@
 //   row.destroy()
 //   ShortcutRow.resolve(entry): ResolvedShortcut | null    null when it cannot be shown (missing app)
 //   ShortcutHost: {close(), showAllApps?(), tooltips?}
-//   ShortcutOptions: {iconSize?, symbolic?, scope?}   iconSize 0 = no icon
+//   ShortcutOptions: {iconSize?, symbolic?, scope?, context?(row)}   iconSize 0 = no icon
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
@@ -47,6 +47,8 @@ export interface ShortcutOptions {
     symbolic?: boolean;
     /** Scope for deferred actions (power); required for power shortcuts. */
     scope?: Scope;
+    /** Right click / Menu key / Shift+F10 on the row. */
+    context?: (row: St.Button) => void;
 }
 
 export interface ResolvedShortcut {
@@ -229,7 +231,11 @@ export class ShortcutRow {
 
         nameItem(button, label.text, {label, listItem: true});
         host.tooltips?.attach(button, label);
-        wireItem(button, {activate: () => resolved?.run(host, scope as Scope)});
+        const context = opts.context;
+        wireItem(button, {
+            activate: () => resolved?.run(host, scope as Scope),
+            context: context ? () => context(button) : undefined,
+        });
     }
 
     destroy(): void {

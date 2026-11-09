@@ -40,6 +40,7 @@
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
+import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
@@ -47,12 +48,13 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {CategoryLink, ShortcutId} from '../core/constants.js';
+import {openSpawnPrefs} from '../core/openPrefs.js';
 import {debounce} from '../core/debounce.js';
 import {gridIconSize} from '../core/limits.js';
 import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
-import type {Entry, PinnedItemSize} from '../core/settings.js';
+import type {Entry, PinnedItemSize, SettingsSnapshot} from '../core/settings.js';
 import {addHidden, removeHidden} from '../model/hiddenApps.js';
 import type {FolderUndo, PinnedItem} from '../model/pinned.js';
 import {Places, type FakePlace, type Place} from '../model/places.js';
@@ -92,6 +94,15 @@ export interface LayoutHost {
     deleteFolder?(uuid: string): void;
     /** Hide an app from the generated lists (All Apps, categories, Frequent) and offer Undo. */
     hideApp?(app: Shell.App): void;
+    /** Pin / unpin an app (or pinned command) and offer Undo. `name` is for the banner. */
+    pin?(id: string, name: string): void;
+    unpin?(id: string, name: string): void;
+    /** Take an app out of a pinned folder (back to the top level) and offer Undo. */
+    removeFromFolder?(uuid: string, id: string, name: string): void;
+    /** Remove a right-pane shortcut and offer Undo. */
+    removeShortcut?(entry: Entry, name: string): void;
+    /** Open Spawn's settings window, on the Pinned page when `shortcuts` is set. */
+    openSettings?(shortcuts: boolean): void;
 }
 
 export type ViewId = 'pinned' | 'frequent' | 'categories' | 'all' | 'folder' | 'results' | 'favorites' | 'recent';
@@ -192,6 +203,10 @@ export class SpawnLayout implements ShortcutHost {
     private _undo: FolderUndo | null = null;
     /** The app hidden last (its banner offers Undo). */
     private _undoHide: {id: string; name: string} | null = null;
+    /** Right-pane shortcut lists as they were before "Remove from Menu" (its banner offers Undo). */
+    private _undoShortcuts: SettingsSnapshot | null = null;
+    /** Tile to put the keyboard on after an Undo (key of `_tileEntries`), when the restored thing is a pinned tile. */
+    private _undoFocusKey: string | null = null;
     private _cancelUndoTimer: (() => void) | null = null;
     private readonly _backButton: St.Button;
     private readonly _allAppsButton: St.Button;
@@ -211,6 +226,9 @@ export class SpawnLayout implements ShortcutHost {
     // lazily built views
     private _pinnedScroll: St.ScrollView | null = null;
     private _pinnedBox: St.BoxLayout | null = null;
+    private _pinnedTitle: St.Label | null = null;
+    private _pinnedEmpty: St.BoxLayout | null = null;
+    private _pinnedEmptyButton: St.Button | null = null;
     private readonly _grid = new TileGrid();
     private _frequentBox: St.BoxLayout | null = null;
     private _frequentScroll: St.ScrollView | null = null;
@@ -299,6 +317,15 @@ export class SpawnLayout implements ShortcutHost {
             },
             deleteFolder: uuid => this._deleteFolder(uuid),
             hideApp: app => this._hideApp(app),
+            pin: (id, name) => this._changePinned(_('Pinned \u201c%s\u201d').format(name), () => this._services.pinned.pin(id)),
+            unpin: (id, name) => this._changePinned(_('Unpinned \u201c%s\u201d').format(name), () => this._services.pinned.unpin(id), id),
+            removeFromFolder: (uuid, id, name) => this._changePinned(_('Removed \u201c%s\u201d from folder').format(name),
+                () => this._services.pinned.removeFromFolder(uuid, id), id),
+            removeShortcut: (entry, name) => this._removeShortcut(entry, name),
+            openSettings: shortcuts => {
+                host.close();
+                this._scope.idle(() => openSpawnPrefs(this._services.settings, this._services.info.uuid, shortcuts ? 'pinned' : undefined));
+            },
             renameFolder: uuid => {
                 this._scope.idle(() => {
                     this._showFolder(uuid);
@@ -875,7 +902,7 @@ export class SpawnLayout implements ShortcutHost {
         const scope = this._rightScope;
         const hostWithTips: ShortcutHost = {close: () => this.close(), showAllApps: () => this.showAllApps(), tooltips: this._tooltips};
 
-        this._userCard = new UserCard(scope, s, hostWithTips);
+        this._userCard = new UserCard(scope, s, hostWithTips, card => this._context.open(card, {kind: 'usercard'}));
         this._right.add_child(this._userCard.actor);
         if (s.get('show-user-avatar'))
             this._right.remove_style_class_name('spawn-no-card');
@@ -938,7 +965,7 @@ export class SpawnLayout implements ShortcutHost {
                     box.add_child(row.actor);
                     continue;
                 }
-                const row = new ShortcutRow(item, host, {iconSize, symbolic, scope});
+                const row = new ShortcutRow(item, host, {iconSize, symbolic, scope, context: button => this._openShortcutContext(button, item, host)});
                 if (row.isSeparator) {
                     if (lastWasSeparator) {
                         row.destroy();
@@ -963,6 +990,15 @@ export class SpawnLayout implements ShortcutHost {
             last.destroy();
             this._shortcutRows.pop();
         }
+    }
+
+    /** Right click / Menu key on a right-pane shortcut: Open, New Window, Remove from Menu, Edit Shortcuts…. */
+    private _openShortcutContext(row: St.Widget, entry: Entry, host: ShortcutHost): void {
+        const resolved = resolveShortcut(entry);
+        if (!resolved)
+            return;
+        const app = entry.id.endsWith('.desktop') ? lookupApp(this._services, entry.id) : null;
+        this._context.open(row, {kind: 'shortcut', entry, name: resolved.name, app, open: () => resolved.run(host, this._rightScope)});
     }
 
     /** Dev hook (Ui.SetPlaces): show fake devices / network locations / bookmarks, null = the real ones. */
@@ -1116,9 +1152,11 @@ export class SpawnLayout implements ShortcutHost {
     private _ensurePinned(): St.ScrollView {
         if (!this._pinnedScroll) {
             this._pinnedBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-pinned-box'});
-            this._pinnedBox.add_child(new St.Label({text: _('Pinned'), style_class: 'spawn-section-title'}));
+            this._pinnedTitle = new St.Label({text: _('Pinned'), style_class: 'spawn-section-title'});
+            this._pinnedBox.add_child(this._pinnedTitle);
             markList(this._grid.actor, _('Pinned apps'));
             this._pinnedBox.add_child(this._grid.actor);
+            this._pinnedBox.add_child(this._makePinnedEmpty());
             this._pinnedScroll = this._makeScroll(this._pinnedBox, 'spawn-pinned');
             acceptDrops(this._scope, this._pinnedScroll, this._services.pinned, {kind: 'grid', index: () => -1});
             if (!this._pinnedSubscribed) {
@@ -1131,6 +1169,38 @@ export class SpawnLayout implements ShortcutHost {
             }
         }
         return this._pinnedScroll;
+    }
+
+    /** Nothing pinned: a friendly note and a way on, in place of the "Pinned" title over empty space. */
+    private _makePinnedEmpty(): St.BoxLayout {
+        const box = new St.BoxLayout({
+            style_class: 'spawn-empty-state spawn-pinned-empty',
+            orientation: Clutter.Orientation.VERTICAL,
+            x_expand: true,
+            y_expand: true,
+            x_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.CENTER,
+            visible: false,
+        });
+        box.add_child(new St.Icon({icon_name: 'view-pin-symbolic', style_class: 'spawn-empty-icon', x_align: Clutter.ActorAlign.CENTER}));
+        const title = new St.Label({text: _('Nothing pinned yet'), style_class: 'spawn-empty-title', x_align: Clutter.ActorAlign.CENTER});
+        const hint = new St.Label({text: _('Right-click an app and choose Pin to Menu'), style_class: 'spawn-empty-hint', x_align: Clutter.ActorAlign.CENTER});
+        hint.clutter_text.line_wrap = true;
+        hint.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+        hint.clutter_text.set_line_alignment(Pango.Alignment.CENTER);
+        box.add_child(title);
+        box.add_child(hint);
+        const button = makeItemButton('spawn-nav-button spawn-pinned-empty-button');
+        button.x_expand = false;
+        button.x_align = Clutter.ActorAlign.CENTER;
+        const label = new St.Label({text: _('Browse All Apps'), y_align: Clutter.ActorAlign.CENTER});
+        button.set_child(makeFace('spawn-nav-surface', label));
+        nameItem(button, label.text, {label});
+        wireItem(button, {activate: () => this._openAllApps()});
+        box.add_child(button);
+        this._pinnedEmpty = box;
+        this._pinnedEmptyButton = button;
+        return box;
     }
 
     private _ensureCategories(): CategoryList {
@@ -1384,6 +1454,12 @@ export class SpawnLayout implements ShortcutHost {
             }
         }
         this._grid.setTiles(tiles, list ? 1 : this._cols, list ? -1 : this._tileWidth, size);
+        const empty = tiles.length === 0;
+        this._grid.actor.visible = !empty;
+        if (this._pinnedTitle)
+            this._pinnedTitle.visible = !empty;
+        if (this._pinnedEmpty)
+            this._pinnedEmpty.visible = empty;
     }
 
     private _runCustom(entry: Entry): void {
@@ -1448,8 +1524,67 @@ export class SpawnLayout implements ShortcutHost {
         store.markDissolved(undo);
         this._dismissUndo();
         this._undo = undo;
+        this._undoFocusKey = `f:${undo.uuid}`;
         this._undoBanner.show(_('Folder \u201c%s\u201d deleted').format(undo.name));
         this._cancelUndoTimer = this._scope.timeout(UNDO_MS, () => this._dismissUndo());
+    }
+
+    /**
+     * Pin, unpin or remove-from-folder with the Undo banner: the whole pinned list is remembered first, so Undo puts
+     * every app back in its exact slot (and folder, even one that went away with its last app). `focusId`: the app
+     * to put the keyboard on after Undo (an unpin leaves nothing to focus; a pin undone leaves nothing either).
+     */
+    private _changePinned(message: string, change: () => void, focusId?: string): void {
+        if (this._destroyed)
+            return;
+        const store = this._services.pinned;
+        const undo = store.captureState(message);
+        change();
+        store.markDissolved(undo);
+        this._dismissUndo();
+        this._undo = undo;
+        this._undoFocusKey = focusId ? `a:${focusId}` : null;
+        this._undoBanner.show(message);
+        this._cancelUndoTimer = this._scope.timeout(UNDO_MS, () => this._dismissUndo());
+    }
+
+    /** "Remove from Menu" on a right-pane shortcut: the entry leaves its list; the banner offers Undo. */
+    private _removeShortcut(entry: Entry, name: string): void {
+        if (this._destroyed)
+            return;
+        const settings = this._services.settings;
+        const same = (a: Entry, b: Entry) => JSON.stringify(a) === JSON.stringify(b);
+        const keys = ['directory-shortcuts', 'application-shortcuts'] as const;
+        const key = keys.find(k => settings.get(k).some(e => same(e, entry)));
+        if (!key)
+            return;
+        const snapshot = settings.snapshot(keys);
+        const list = [...settings.get(key)];
+        list.splice(list.findIndex(e => same(e, entry)), 1);
+        settings.set(key, list);
+        this._dismissUndo();
+        this._undoShortcuts = snapshot;
+        this._undoBanner.show(_('Removed \u201c%s\u201d from the menu').format(name));
+        this._cancelUndoTimer = this._scope.timeout(UNDO_MS, () => this._dismissUndo());
+    }
+
+    private _undoShortcutRemoval(): void {
+        const snapshot = this._undoShortcuts;
+        this._dismissUndo();
+        if (!snapshot || this._destroyed)
+            return;
+        try {
+            this._services.settings.restore(snapshot);
+        } catch (e) {
+            error('undo of shortcut removal failed', e);
+            return;
+        }
+        if (this._isOpen)
+            this._focusMain();
+    }
+
+    private _hasUndo(): boolean {
+        return Boolean(this._undo || this._undoHide || this._undoShortcuts);
     }
 
     private _dismissUndo(): void {
@@ -1457,6 +1592,8 @@ export class SpawnLayout implements ShortcutHost {
         this._cancelUndoTimer = null;
         this._undo = null;
         this._undoHide = null;
+        this._undoShortcuts = null;
+        this._undoFocusKey = null;
         this._undoBanner.hide();
     }
 
@@ -1475,7 +1612,8 @@ export class SpawnLayout implements ShortcutHost {
         const name = app.get_name() || id;
         this._dismissUndo();
         this._undoHide = {id, name};
-        this._undoBanner.show(_('\u201c%s\u201d hidden').format(name));
+        // A pinned app stays in the pinned list: say so, or the banner reads as if nothing happened.
+        this._undoBanner.show(this._services.pinned.isPinned(id) ? _('Hidden from All Apps, still pinned') : _('\u201c%s\u201d hidden').format(name));
         this._cancelUndoTimer = this._scope.timeout(UNDO_MS, () => this._dismissUndo());
     }
 
@@ -1494,12 +1632,15 @@ export class SpawnLayout implements ShortcutHost {
     private _undoLast(): void {
         if (this._undoHide)
             this._undoHidden();
+        else if (this._undoShortcuts)
+            this._undoShortcutRemoval();
         else
             this._undoDelete();
     }
 
     private _undoDelete(): void {
         const undo = this._undo;
+        const focusKey = this._undoFocusKey;
         this._dismissUndo();
         if (!undo || this._destroyed)
             return;
@@ -1513,7 +1654,7 @@ export class SpawnLayout implements ShortcutHost {
         // The banner (and its focus) is gone: put the keyboard on the folder that came back.
         if (this._isOpen && this._view === 'pinned') {
             this._syncPinnedIfNeeded();
-            const widget = this._tileEntries.get(`f:${undo.uuid}`)?.widget;
+            const widget = focusKey ? this._tileEntries.get(focusKey)?.widget : null;
             if (widget)
                 widget.grab_key_focus();
             else
@@ -1712,6 +1853,8 @@ export class SpawnLayout implements ShortcutHost {
         switch (this._view) {
         case 'pinned': {
             const groups: Group[] = [{id: 'tiles', items: this._grid.tiles(), cols: this._grid.columns}];
+            if (this._pinnedEmpty?.visible && this._pinnedEmptyButton)
+                groups.push({id: 'empty', items: [this._pinnedEmptyButton], cols: 1});
             if (this._frequentSection) {
                 const rows = (this._frequentSection.get_children()[2]?.get_children() ?? []).filter(c => c instanceof St.Button);
                 groups.push({id: 'frequent', items: rows, cols: 1});
@@ -2027,7 +2170,7 @@ export class SpawnLayout implements ShortcutHost {
             const reorder = REORDER_KEYS.get(sym);
             if (reorder && this._reorderFocused(reorder))
                 return Clutter.EVENT_STOP;
-            if ((sym === Clutter.KEY_z || sym === Clutter.KEY_Z) && (this._undo || this._undoHide)) {
+            if ((sym === Clutter.KEY_z || sym === Clutter.KEY_Z) && this._hasUndo()) {
                 this._undoLast();
                 return Clutter.EVENT_STOP;
             }

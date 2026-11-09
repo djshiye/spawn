@@ -8,6 +8,24 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
 import {error} from './log.js';
+import {type PrefsPageName, prefsPageIndex} from './prefsPages.js';
+import type {SpawnSettings} from './settings.js';
+
+/**
+ * Open Spawn's own settings window, on the page called `page` (core/prefsPages.ts) when given. The window opens on
+ * `prefs-visible-page`, so the page is chosen by writing that key first; a window that is already open follows the key
+ * (prefs.ts listens for it) and switches page.
+ */
+export function openSpawnPrefs(settings: SpawnSettings, uuid: string, page?: PrefsPageName): void {
+    try {
+        const index = page === undefined ? -1 : prefsPageIndex(page);
+        if (index >= 0 && settings.get('prefs-visible-page') !== index)
+            settings.set('prefs-visible-page', index);
+    } catch (e) {
+        error('could not choose the preferences page', e);
+    }
+    openExtensionPrefs(uuid);
+}
 
 export function openExtensionPrefs(uuid: string): void {
     try {
