@@ -129,9 +129,12 @@ if [ "$SPAWN_LOAD_ARC" = 1 ]; then
     dconf load /org/gnome/shell/extensions/arcmenu/ <"$root/docs/research/user-arcmenu-settings.ini"
 fi
 case "${SPAWN_SCHEME:-}" in
-    dark) dconf write /org/gnome/desktop/interface/color-scheme "'prefer-dark'" ;;
-    light) dconf write /org/gnome/desktop/interface/color-scheme "'prefer-light'" ;;
+    dark) dconf write /org/gnome/desktop/interface/color-scheme "'prefer-dark'"; export ADW_DEBUG_COLOR_SCHEME=prefer-dark ;;
+    light) dconf write /org/gnome/desktop/interface/color-scheme "'prefer-light'"; export ADW_DEBUG_COLOR_SCHEME=prefer-light ;;
 esac
+# No settings portal in the sandbox, so libadwaita would not see the dconf key: force it (the prefs service is
+# D-Bus activated, so the variable has to reach the session bus' activation environment too).
+[ -n "${ADW_DEBUG_COLOR_SCHEME:-}" ] && dbus-update-activation-environment ADW_DEBUG_COLOR_SCHEME
 if [ -n "${SPAWN_SEED:-}" ]; then
     dconf load /org/gnome/shell/extensions/spawn/ <"$SPAWN_SEED"
 fi
