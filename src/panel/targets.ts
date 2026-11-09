@@ -14,6 +14,8 @@
 //                                        global.azTaskbar
 //   createIntellihideHold(scope)         IntellihideHold (panel/intellihide.ts) wired to the live
 //                                        Dash to Panel panels and the pointer
+//   createFullscreenReveal(scope)        FullscreenReveal (panel/fullscreenReveal.ts) wired to the shell's
+//                                        own panel box and the live Dash to Panel panel boxes
 //   dtpWrapperOfPanel(panel)             the current Dash to Panel wrapper of an inner panel, or null
 //
 // Triggers for 'changed': extension-state-changed of Dash to Panel / App Icons Taskbar,
@@ -27,12 +29,14 @@ import {debounce, type Debounced} from '../core/debounce.js';
 import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import {type ConnectableEmitter, EmitterBindings} from './emitterBinding.js';
+import {FullscreenReveal, type PanelBoxInfo} from './fullscreenReveal.js';
 import {type DtpWrapper, IntellihideHold, wrapperOfPanel} from './intellihide.js';
 import {
     type ExtensionSnapshot,
     type PanelEmitterLike,
     type PanelLike,
     type Resolution,
+    isActorAlive,
     resolveTargets,
 } from './validate.js';
 
@@ -58,10 +62,32 @@ function dtpPanels(): unknown {
 export function createIntellihideHold(scope: Scope): IntellihideHold {
     return new IntellihideHold(scope, {
         panels: dtpPanels,
-        pointer: () => {
-            const [x, y] = global.get_pointer();
-            return [x, y];
-        },
+        pointer,
+    });
+}
+
+function pointer(): [number, number] {
+    const [x, y] = global.get_pointer();
+    return [x, y];
+}
+
+/** The shell's top bar box (on the primary monitor) and every Dash to Panel panel box with its monitor. */
+function panelBoxes(): PanelBoxInfo[] {
+    const out: PanelBoxInfo[] = [];
+    const panels = dtpPanels();
+    if (Array.isArray(panels)) {
+        for (const w of panels as DtpWrapper[])
+            out.push({box: w?.panelBox as PanelBoxInfo['box'], monitor: w?.monitor});
+    }
+    out.push({box: Main.layoutManager.panelBox as unknown as PanelBoxInfo['box'], monitor: Main.layoutManager.primaryMonitor});
+    return out;
+}
+
+export function createFullscreenReveal(scope: Scope): FullscreenReveal {
+    return new FullscreenReveal(scope, {
+        panels: panelBoxes,
+        overviewVisible: () => Main.overview.visible,
+        alive: box => isActorAlive(box as Parameters<typeof isActorAlive>[0]),
     });
 }
 
