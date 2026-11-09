@@ -1,7 +1,9 @@
 // FolderView: the contents of one pinned folder, shown as a popup card over the menu (like app
 // folders on GNOME, Android or iOS) instead of replacing the pinned view. The whole layout is dimmed by
 // a scrim; the card opens next to the folder it came from and grows out of it: below a grid tile (or
-// above when there is no room below), beside a list row like a submenu, always inside the menu. It has the folder name (click to rename inline),
+// above when there is no room below), beside a list row like a submenu, always inside the menu. That
+// folder stays lit above the scrim (a Clutter.Clone of it, in its "open" style) so the card visibly
+// belongs to it, the way a menu keeps the item of an open submenu highlighted. It has the folder name (click to rename inline),
 // a close button and the apps as a tile grid. Without a folder to anchor to it is centred. The card is
 // always opaque (see raisedSurface in theme/css.ts). The grid is always tiles, also when the pinned view
 // is a list: compact, fixed-size tiles (FOLDER_TILE_WIDTH, a 40 px icon, 48 px from the Large tier up)
@@ -161,6 +163,9 @@ export class FolderView {
     private _destroyed = false;
     /** The folder the card opened from (null: centred). */
     private _anchor: Clutter.Actor | null = null;
+    /** The folder drawn above the scrim (a clone of `_anchor`) while its card is open. */
+    private _spotlight: Clutter.Clone | null = null;
+    private _anchorDestroyId = 0;
     /** The scroll view's max-height from refresh() (whole menu), and the one in effect now (_place may lower it). */
     private _maxScroll = -1;
     private _scrollCap = -1;
@@ -308,7 +313,7 @@ export class FolderView {
 
     show(uuid: string, animate = false, anchor: Clutter.Actor | null = null): boolean {
         this._uuid = uuid;
-        this._anchor = anchor;
+        this._setAnchor(anchor);
         this._pointerMoved = false;
         this._hovered = null;
         this._cancelRename();
@@ -342,7 +347,7 @@ export class FolderView {
             return;
         this._finish?.(true, false);
         this._uuid = null;
-        this._anchor = null;
+        this._setAnchor(null);
         this._host.tooltips?.hide();
         // No second close and no launches from the fading card.
         this.actor.reactive = false;
@@ -464,6 +469,8 @@ export class FolderView {
         const maxY = H - ch - POPUP_MARGIN;
 
         const anchor = this._anchor;
+        if (this._spotlight)
+            this._spotlight.visible = Boolean(anchor?.mapped);
         if (!anchor || !anchor.mapped) {
             this._card.set_translation(clamp((W - cw) / 2, POPUP_MARGIN, maxX), clamp((H - ch) / 2, POPUP_MARGIN, maxY), 0);
             this._card.set_pivot_point(0.5, 0.5);
@@ -476,6 +483,10 @@ export class FolderView {
         if (![sx, sy, ax, ay, aw, ah].every(Number.isFinite))
             return;
         const left = ax - sx, top = ay - sy, bottom = top + ah;
+        if (this._spotlight) {
+            this._spotlight.set_size(aw, ah);
+            this._spotlight.set_translation(Math.round(left), Math.round(top), 0);
+        }
         if (aw > cw) {
             this._placeBesideRow(left, top, aw, ah, cw, ch, W, maxX, maxY);
             return;
@@ -533,6 +544,41 @@ export class FolderView {
         const towardRow = x + cw / 2 < left + aw / 2 ? 1 : 0;
         const py = ch > 0 ? Math.max(0, Math.min(1, (top + ah / 2 - y) / ch)) : 0.5;
         this._card.set_pivot_point(towardRow, py);
+    }
+
+    /**
+     * The folder the card belongs to: marked open (.spawn-folder-open) and drawn above the scrim by a clone
+     * (not reactive: a click there lands on the scrim and closes the card, like clicking an open submenu's
+     * item). null drops both.
+     */
+    private _setAnchor(anchor: Clutter.Actor | null): void {
+        const old = this._anchor;
+        if (old === anchor)
+            return;
+        if (old) {
+            if (this._anchorDestroyId)
+                old.disconnect(this._anchorDestroyId);
+            if (old instanceof St.Widget)
+                old.remove_style_class_name('spawn-folder-open');
+        }
+        this._anchorDestroyId = 0;
+        this._spotlight?.destroy();
+        this._spotlight = null;
+        this._anchor = anchor;
+        if (!anchor)
+            return;
+        if (anchor instanceof St.Widget)
+            anchor.add_style_class_name('spawn-folder-open');
+        // The pinned view rebuilt its folders: the card stays, centred, without a spotlight.
+        this._anchorDestroyId = (anchor as Clutter.Actor).connect('destroy', () => {
+            this._anchorDestroyId = 0;
+            this._anchor = null;
+            this._spotlight?.destroy();
+            this._spotlight = null;
+            this._place();
+        });
+        this._spotlight = new Clutter.Clone({source: anchor, reactive: false});
+        this.actor.insert_child_below(this._spotlight, this._card);
     }
 
     private _setScrollCap(cap: number): void {
@@ -689,6 +735,7 @@ export class FolderView {
     destroy(): void {
         if (this._destroyed)
             return;
+        this._setAnchor(null);
         this._destroyed = true;
         this._cancelFocusOut?.();
         this._cancelFocusOut = null;

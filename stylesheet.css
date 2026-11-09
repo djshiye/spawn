@@ -541,6 +541,18 @@
  * CARD_CHROME_H / CARD_PAD_W / GRID_GUTTER there. The card holds the keyboard focus while no app is
  * picked: it has no :focus style on purpose. */
 
+/* the folder whose card is open: drawn above the scrim (a clone, folderView.ts) with the pressed tint, like
+ * the item of an open submenu */
+.spawn-folder-tile.spawn-folder-open .spawn-tile-surface,
+.spawn-folder-row.spawn-folder-open .spawn-row-surface {
+    background-color: rgba(255, 255, 255, 0.14);
+}
+
+.spawn-light .spawn-folder-tile.spawn-folder-open .spawn-tile-surface,
+.spawn-light .spawn-folder-row.spawn-folder-open .spawn-row-surface {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
 .spawn-folder-scrim {
     background-color: rgba(0, 0, 0, 0.5);
     border-radius: 12px;

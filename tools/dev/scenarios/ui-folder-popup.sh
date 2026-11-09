@@ -46,6 +46,7 @@ set_display List
 close_menu; open_menu 1.5
 ui_call OpenFolder 0 >/dev/null; sleep 0.9
 beside 0 "list, first folder"
+expect "list: the open folder is marked open (lit above the scrim)" "$(count spawn-folder-open)" 1
 screenshot folder-popup/list-dark
 key Escape 0.6
 ui_call OpenFolder 2 >/dev/null; sleep 0.9
@@ -61,6 +62,7 @@ screenshot folder-popup/grid-dark
 key Escape 0.6
 ui_call OpenFolder 1 >/dev/null; sleep 0.9
 near spawn-folder-tile 1 "grid, Games (5 apps)"
+expect "grid: the open folder is marked open (lit above the scrim)" "$(count spawn-folder-open)" 1
 screenshot folder-popup/grid-dark-games
 key Escape 0.6
 
@@ -106,4 +108,5 @@ beside 0 "theme colours"
 screenshot folder-popup/list-theme
 key Escape 0.6
 expect_state "Escape closes the folder" layout.view pinned
+expect "the folder is no longer marked open" "$(count spawn-folder-open)" 0
 close_menu
