@@ -171,10 +171,12 @@
       <description>Button icon: bundled file name (data/icons), absolute path, or icon name</description>
     </key>
     <key name="menu-button-icon-size" type="i">
+      <range min="8" max="64"/>
       <default>20</default>
       <summary>Button icon size in px</summary>
     </key>
     <key name="menu-button-padding" type="i">
+      <range min="-1" max="64"/>
       <default>-1</default>
       <summary>Button horizontal padding</summary>
       <description>Button horizontal padding in px (-1 = theme default)</description>
@@ -276,22 +278,27 @@
       <summary>Avatar shape</summary>
     </key>
     <key name="icon-size-apps" type="i">
+      <range min="-1" max="128"/>
       <default>-1</default>
       <summary>Icon size of application items (-1 = default)</summary>
     </key>
     <key name="icon-size-shortcuts" type="i">
+      <range min="-1" max="128"/>
       <default>-1</default>
       <summary>Icon size of shortcut items (-1 = default, 0 = hidden)</summary>
     </key>
     <key name="icon-size-categories" type="i">
+      <range min="-1" max="128"/>
       <default>-1</default>
       <summary>Icon size of category items (-1 = default, 0 = hidden)</summary>
     </key>
     <key name="icon-size-buttons" type="i">
+      <range min="-1" max="128"/>
       <default>-1</default>
       <summary>Icon size of button items (-1 = default)</summary>
     </key>
     <key name="icon-size-misc" type="i">
+      <range min="-1" max="128"/>
       <default>-1</default>
       <summary>Icon size of the search box icons and the Back / All Apps buttons (-1 = default)</summary>
     </key>

@@ -58,13 +58,15 @@ cp -a build/. %{buildroot}%{extdir}/
 # The schema lives in the system schema directory (compiled by glib2's file trigger), not in the extension
 # directory: extension.js falls back to the default schema source when there is no schemas/ directory.
 # (The ArcMenu schema in data/migration/arcmenu stays; the migration reads it from there.)
+# The schema installed is the one tools/build.sh --release packed into build/schemas (the same file without the
+# `dev-mode` test key), not the one in schemas/.
+install -Dpm 0644 %{buildroot}%{extdir}/schemas/org.gnome.shell.extensions.spawn.gschema.xml \
+    %{buildroot}%{_datadir}/glib-2.0/schemas/org.gnome.shell.extensions.spawn.gschema.xml
 rm -rf %{buildroot}%{extdir}/schemas %{buildroot}%{extdir}/.built
 find %{buildroot}%{extdir} -name '*.d.ts' -delete
 find %{buildroot}%{extdir} -type d -exec chmod 0755 {} +
 find %{buildroot}%{extdir} -type f -exec chmod 0644 {} +
 install -Dpm 0755 build-aux/spawn-enable %{buildroot}%{_bindir}/spawn-enable
-install -Dpm 0644 schemas/org.gnome.shell.extensions.spawn.gschema.xml \
-    %{buildroot}%{_datadir}/glib-2.0/schemas/org.gnome.shell.extensions.spawn.gschema.xml
 
 %check
 cd %{buildroot}%{extdir}
@@ -74,6 +76,10 @@ grep -q '"version-name": "%{version}"' metadata.json
 # no compiled schema for the extension itself, only ArcMenu's (data/migration/arcmenu) for the import
 test "$(find . -name gschemas.compiled)" = "./data/migration/arcmenu/gschemas.compiled"
 glib-compile-schemas --strict --dry-run %{buildroot}%{_datadir}/glib-2.0/schemas
+# a release build carries no test hooks: no dev-mode key and none of the dev files' real code
+if grep -q 'dev-mode' %{buildroot}%{_datadir}/glib-2.0/schemas/org.gnome.shell.extensions.spawn.gschema.xml; then exit 1; fi
+if grep -rqE 'io\.github\.djshiye\.Spawn\.(Dev|Ui)' --include='*.js' .; then exit 1; fi
+test ! -e dev/benchmark.js
 
 %files
 %license LICENSE

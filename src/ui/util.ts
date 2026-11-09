@@ -25,6 +25,7 @@ import St from 'gi://St';
 import {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
 import type {SpawnSettings} from '../core/settings.js';
+import {iconSize as clampIconSize} from '../core/limits.js';
 import {appInfoOf} from '../model/appInfo.js';
 
 export function lookupApp(services: Services, id: string): Shell.App | null {
@@ -72,8 +73,7 @@ export function showDescriptions(settings: SpawnSettings): boolean {
 }
 
 export function iconSizeFor(settings: SpawnSettings, key: 'icon-size-apps' | 'icon-size-shortcuts' | 'icon-size-categories' | 'icon-size-buttons' | 'icon-size-misc', fallback: number): number {
-    const v = settings.get(key);
-    return v > 0 ? v : fallback;
+    return clampIconSize(settings.get(key), fallback);
 }
 
 /**
