@@ -103,7 +103,7 @@ trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/out"
 
 # ---- 2. export the tree, compile it once on the host, make the source tarball ----
-step "Exporting the tree and compiling the extension (npm ci + tools/build.sh)"
+step "Exporting the tree and compiling the extension (npm ci + tools/build.sh --release)"
 mkdir -p "$work/tree/$name"
 if [ "$allow_dirty" -eq 0 ]; then
     git archive --format=tar HEAD | tar -x -C "$work/tree/$name"
@@ -117,7 +117,7 @@ fi
     cd "$work/tree/$name"
     npm ci --prefer-offline --no-audit --no-fund --ignore-scripts >"$work/npm.log" 2>&1 \
         || { tail -n 30 "$work/npm.log" >&2; exit 1; }
-    tools/build.sh >"$work/build.log" 2>&1 || { tail -n 30 "$work/build.log" >&2; exit 1; }
+    tools/build.sh --release >"$work/build.log" 2>&1 || { tail -n 30 "$work/build.log" >&2; exit 1; }
     # the tarball is the git archive plus build/; not the tools' scratch output
     rm -rf node_modules dist build/.built
 )

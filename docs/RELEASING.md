@@ -93,7 +93,7 @@ What it does, in order:
 
 1. Refuses a dirty tree (unless `--allow-dirty`), refuses `--push` off `main`, checks the versions agree.
 2. Exports the tree (`git archive HEAD`) to a temp dir, runs `npm ci` (from `package-lock.json`, `--prefer-offline`) and
-   `tools/build.sh` there, and packs the export plus its `build/` into `spawn-<version>.tar.gz`
+   `tools/build.sh --release` there, and packs the export plus its `build/` into `spawn-<version>.tar.gz`
    (sorted, uid 0, mtime = commit time, `gzip -n`).
 3. Creates or updates the `.gh-pages/` git worktree (orphan `gh-pages` branch on first use; fast-forwards from `origin/gh-pages` when it exists).
 4. For each of Fedora 43, 44, 45:
@@ -261,5 +261,7 @@ machine or a YubiKey, both outside GitHub and not in an Actions secret, so that 
 
 ## Open items
 
-1. The RPM ships the developer test code (`ui/devHooks.js`, `dev/benchmark.js`, the `Dev` D-Bus interface); all of it is inert unless the
-   `dev-mode` setting (default `false`) is turned on.
+1. (Closed in 1.2.0.) Releases are built with `tools/build.sh --release`: the developer test code (`ui/devHooks`, `dev/benchmark`, the `Dev`
+   and `Ui` D-Bus interfaces) is replaced by empty stubs from `build-aux/release-stubs/` before compiling, and the `dev-mode` key is dropped from the
+   packaged schema, so neither the zip nor the RPM contains the hooks and no setting can switch them on. `tools/check-release.sh` (run by
+   `npm test` and CI) fails when a release artefact contains them; run `tools/check-release.sh <zip|extension dir>` on a finished package to check it.

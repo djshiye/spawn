@@ -33,6 +33,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {PowerType} from '../../core/constants.js';
+import {isDevMode} from '../../core/flavour.js';
 import {error} from '../../core/log.js';
 import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
@@ -264,7 +265,7 @@ export class PowerBar {
         wireItem(button, {activate: () => {
             menu.removeAll();
             for (const type of this._enabledTypes()) {
-                if (!this._settings.get('dev-mode') && !isPowerAvailable(type, this._logind))
+                if (!isDevMode(this._settings) && !isPowerAvailable(type, this._logind))
                     continue;
                 const info = POWER_INFO[type];
                 if (!info)
@@ -281,8 +282,8 @@ export class PowerBar {
     private _refresh(): void {
         if (this._destroyed)
             return;
-        // dev-mode (headless test shell) has no session manager: show every configured button.
-        const available = (t: number) => this._settings.get('dev-mode') || isPowerAvailable(t, this._logind);
+        // The headless test shell (dev builds) has no session manager: show every configured button.
+        const available = (t: number) => isDevMode(this._settings) || isPowerAvailable(t, this._logind);
         if (this._menuButton) {
             this._menuButton.visible = this._enabledTypes().some(available);
             this._markEnds();

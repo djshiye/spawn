@@ -8,3 +8,4 @@ dist
 spawn-signing-*.asc
 *.key
 .dev-*.log
+.stage.*

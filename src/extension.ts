@@ -9,7 +9,6 @@
 // Lifetime of shared objects: see core/services.ts (lazy AppIndex/PinnedStore/SearchEngine) and
 // ui/menu.ts (lazy popup + layout). Nothing here keeps module-level mutable state.
 
-import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
@@ -23,7 +22,7 @@ import {type ExtensionInfo, Services} from './core/services.js';
 import {SCHEMA_ID, SpawnSettings} from './core/settings.js';
 import GLib from 'gi://GLib';
 
-import {runBenchmark} from './dev/benchmark.js';
+import {installDevController, installDevHotkeyHooks} from './dev/devController.js';
 import {Accelerator} from './input/accelerator.js';
 import {DBusService, type MenuController} from './input/dbus.js';
 import {Hotkeys} from './input/hotkeys.js';
@@ -194,35 +193,20 @@ export default class SpawnExtension extends Extension {
             },
             close: () => popup?.close(),
             toggleRunner: () => runner?.toggle(),
-            openRunner: () => runner?.open(),
-            closeRunner: () => runner?.close(),
-            runnerState: () => JSON.stringify({
-                ...(runner?.debugState() ?? {open: false, built: false}),
-                accelBound: (runnerAccel as Accelerator | null)?.bound ?? false,
-                popupOpen: popup?.isOpen ?? false,
-            }),
             search: query => popup?.search(query),
-            benchmark: sections => {
-                if (!popup)
-                    return Promise.reject(new Error('popup unavailable'));
-                const bench = root.child('benchmark');
-                const result = runBenchmark({
-                    scope: bench,
-                    services,
-                    popup,
-                    anchor: () => attacher?.buttons()[0] ?? null,
-                    enable: {totalMs: this._enableMs, subsystems: this._startMs},
-                }, sections);
-                return result.then(r => JSON.stringify(r)).finally(() => bench.dispose());
-            },
-            activateWorkspace: index => {
-                const ws = global.workspace_manager.get_workspace_by_index(index);
-                if (!ws)
-                    throw new Error(`no workspace ${index}`);
-                ws.activate(global.get_current_time());
-            },
             attachmentStatus: () => JSON.stringify(attacher?.status() ?? {attachments: [], pending: false, pendingForMs: 0}),
         };
+
+        installDevController(controller, {
+            root,
+            services,
+            popup,
+            runner,
+            runnerAccelBound: () => (runnerAccel as Accelerator | null)?.bound ?? false,
+            firstButton: () => attacher?.buttons()[0] ?? null,
+            enableMs: () => this._enableMs,
+            startMs: () => this._startMs,
+        });
 
         this._start(root, 'dbus', scope => {
             new DBusService(scope, settings, controller).start();
@@ -231,37 +215,11 @@ export default class SpawnExtension extends Extension {
         this._start(root, 'hotkeys', scope => {
             const hotkeys = new Hotkeys(scope, settings, source => controller.toggle(source));
             hotkeys.start();
-            controller.hotkeyStatus = () => JSON.stringify({
-                ...hotkeys.status(),
-                popupOpen: popup?.isOpen ?? false,
-                overviewVisible: Main.overview.visible,
+            installDevHotkeyHooks(scope, controller, {
+                hotkeys,
+                popupOpen: () => popup?.isOpen ?? false,
+                anchorButton,
             });
-            controller.emitOverlayKey = () => global.display.emit('overlay-key');
-            controller.focusButton = () => {
-                const button = anchorButton();
-                if (!button)
-                    throw new Error('no attached button');
-                button.grab_key_focus();
-            };
-            let keyboard: Clutter.VirtualInputDevice | null = null;
-            controller.sendKeys = spec => {
-                keyboard ??= global.stage.get_context().get_backend().get_default_seat()
-                    .create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
-                let t = GLib.get_monotonic_time();
-                for (const step of spec.split(/\s+/).filter(x => x !== '')) {
-                    const keyval = (Clutter as unknown as Record<string, unknown>)[`KEY_${step.slice(1)}`];
-                    if ((step[0] !== '+' && step[0] !== '-') || typeof keyval !== 'number')
-                        throw new Error(`bad key step '${step}'`);
-                    keyboard.notify_keyval(t++, keyval, step[0] === '+' ? Clutter.KeyState.PRESSED : Clutter.KeyState.RELEASED);
-                }
-            };
-            scope.add(() => {
-                keyboard = null;
-                delete controller.sendKeys;
-                delete controller.hotkeyStatus;
-                delete controller.emitOverlayKey;
-                delete controller.focusButton;
-            }, 'hotkey dev hooks');
         });
 
         if (popup) {
