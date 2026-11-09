@@ -12,6 +12,9 @@
 #                shortcut capture, rename prompt, preset manager) as dialog-<name>.png
 #   --picker-test drive the icon picker like a user (System source, search, pick) and check the dconf value
 #                (tools/dev-prefs-picker.js); fails the run on any failed check
+#   --scheme light|dark   set the sandbox's colour scheme (Adwaita light / dark) before opening the windows
+#   --seed FILE  dconf-load FILE (keyfile relative to /org/gnome/shell/extensions/spawn/) into the sandbox, so the
+#                pages show non-default values (e.g. to see the per-group revert buttons)
 #   --no-arcmenu do not load docs/research/user-arcmenu-settings.ini into the sandbox dconf
 #
 # It builds privately into .dev/prefs/build (so it never clobbers or depends on build/), loads
@@ -31,8 +34,14 @@ if [ "${1:-}" != "--inner" ]; then
     dialogs=0
     picker_test=0
     pages=()
-    for arg in "$@"; do
+    scheme=""
+    seed=""
+    while [ $# -gt 0 ]; do
+        arg="$1"
+        shift
         case "$arg" in
+            --scheme) scheme="${1:?--scheme needs light or dark}"; shift ;;
+            --seed) seed="$(realpath "${1:?--seed needs a file}")"; shift ;;
             --no-arcmenu) load_arc=0 ;;
             --tall) tall=1 ;;
             --dialogs) dialogs=1 ;;
@@ -71,7 +80,7 @@ if [ "${1:-}" != "--inner" ]; then
     export XDG_CACHE_HOME="$dev/cache"
     export XDG_RUNTIME_DIR="$dev/runtime"
     unset WAYLAND_DISPLAY DISPLAY DBUS_SESSION_BUS_ADDRESS
-    export SPAWN_DEV="$dev" SPAWN_ROOT="$root" SPAWN_LOAD_ARC="$load_arc" SPAWN_TALL="$tall" SPAWN_APPLY_IMPORT="$apply_import" SPAWN_DIALOGS="$dialogs" SPAWN_PICKER_TEST="$picker_test" SPAWN_PAGES="${pages[*]}"
+    export SPAWN_DEV="$dev" SPAWN_ROOT="$root" SPAWN_LOAD_ARC="$load_arc" SPAWN_TALL="$tall" SPAWN_APPLY_IMPORT="$apply_import" SPAWN_DIALOGS="$dialogs" SPAWN_PICKER_TEST="$picker_test" SPAWN_PAGES="${pages[*]}" SPAWN_SCHEME="$scheme" SPAWN_SEED="$seed"
     rc=0
     dbus-run-session -- "$root/tools/dev-prefs.sh" --inner 2>&1 | tee "$dev/run.log" || rc=$?
     # The prefs process logs to the session bus' stderr, which lands in run.log.
@@ -118,6 +127,13 @@ dconf write /org/gnome/shell/welcome-dialog-last-shown-version "'999'"
 dconf write /org/gnome/shell/extensions/spawn/dev-mode true
 if [ "$SPAWN_LOAD_ARC" = 1 ]; then
     dconf load /org/gnome/shell/extensions/arcmenu/ <"$root/docs/research/user-arcmenu-settings.ini"
+fi
+case "${SPAWN_SCHEME:-}" in
+    dark) dconf write /org/gnome/desktop/interface/color-scheme "'prefer-dark'" ;;
+    light) dconf write /org/gnome/desktop/interface/color-scheme "'prefer-light'" ;;
+esac
+if [ -n "${SPAWN_SEED:-}" ]; then
+    dconf load /org/gnome/shell/extensions/spawn/ <"$SPAWN_SEED"
 fi
 if [ ! -f "$dev/config/dconf/user" ]; then
     echo "dconf did not write into the sandbox; aborting" >&2
