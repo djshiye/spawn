@@ -289,4 +289,20 @@ test('external changes to a folder or to pinned-apps notify listeners', () => {
     scope.dispose();
 });
 
+test('a damaged entry (no id) is skipped: the rest of the list still shows and still updates', () => {
+    const {store, settings, scope} = fixture([app('a'), {name: 'No id'}, app('b')]);
+    assertEquals(store.items().map(i => i.id), ['a.desktop', 'b.desktop']);
+    store.pin('c.desktop');
+    assertEquals(store.items().map(i => i.id), ['a.desktop', 'b.desktop', 'c.desktop']);
+    store.unpin('a.desktop');
+    assertEquals(store.items().map(i => i.id), ['b.desktop', 'c.desktop']);
+    // the same for a folder's list and for the shortcut lists
+    const uuid = store.createFolder('F', ['b.desktop']);
+    settings.folder(uuid).pinnedApps = [{icon: 'x'}, app('b')];
+    assertEquals(store.folderApps(uuid).map(e => e.id), ['b.desktop']);
+    settings.set('directory-shortcuts', [{id: 'ArcMenu_Home'}, {name: 'broken'}, {id: 'ArcMenu_Documents'}]);
+    assertEquals(settings.get('directory-shortcuts').map(e => e.id), ['ArcMenu_Home', 'ArcMenu_Documents']);
+    scope.dispose();
+});
+
 run();

@@ -40,6 +40,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 
 import {resolveButtonIcon} from '../core/icons.js';
+import {buttonIconSize, buttonPadding} from '../core/limits.js';
 import {error} from '../core/log.js';
 import {Scope} from '../core/scope.js';
 import type {MenuButtonClickAction, SpawnSettings} from '../core/settings.js';
@@ -240,8 +241,8 @@ export class MenuButton extends PanelMenu.Button {
         try {
             const s = this._deps.settings;
             const appearance = s.get('menu-button-appearance');
-            const iconSize = s.get('menu-button-icon-size');
-            const padding = s.get('menu-button-padding');
+            const iconSize = buttonIconSize(s.get('menu-button-icon-size'));
+            const padding = buttonPadding(s.get('menu-button-padding'));
 
             const resolved = resolveButtonIcon(s.get('menu-button-icon'), this._deps.iconDir);
             if (resolved.kind === 'file' && isLoadableImage(resolved.path, this._deps.iconDir)) {

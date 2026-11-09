@@ -48,6 +48,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {CategoryLink, ShortcutId} from '../core/constants.js';
 import {debounce} from '../core/debounce.js';
+import {gridIconSize} from '../core/limits.js';
 import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
@@ -646,8 +647,7 @@ export class SpawnLayout implements ShortcutHost {
         this._cols = Math.max(MIN_COLUMNS, Math.floor(avail / metrics.tileTargetWidth));
         this._tileWidth = Math.floor(avail / this._cols);
         const grid = s.get('icon-size-grid');
-        const size = grid?.size ?? -1;
-        this._tileIconSize = size > 0 ? size : metrics.tileIcon;
+        this._tileIconSize = gridIconSize(grid?.size, metrics.tileIcon);
 
         const sig = `${this._cols}|${this._tileWidth}|${this._tileIconSize}`;
         const changed = this._metricsSig !== '' && sig !== this._metricsSig;
@@ -929,29 +929,34 @@ export class SpawnLayout implements ShortcutHost {
 
         let lastWasSeparator = true;
         for (const item of list) {
-            if (!('id' in item)) {
-                const row = new PlaceRow(item, host, {iconSize});
-                lastWasSeparator = false;
+            // One damaged shortcut must not take the others down with it.
+            try {
+                if (!('id' in item)) {
+                    const row = new PlaceRow(item, host, {iconSize});
+                    lastWasSeparator = false;
+                    this._shortcutRows.push(row);
+                    box.add_child(row.actor);
+                    continue;
+                }
+                const row = new ShortcutRow(item, host, {iconSize, symbolic, scope});
+                if (row.isSeparator) {
+                    if (lastWasSeparator) {
+                        row.destroy();
+                        continue;
+                    }
+                    lastWasSeparator = true;
+                } else {
+                    if (!ShortcutRow.resolve(item)) {
+                        row.destroy();
+                        continue;
+                    }
+                    lastWasSeparator = false;
+                }
                 this._shortcutRows.push(row);
                 box.add_child(row.actor);
-                continue;
+            } catch (e) {
+                error(`shortcut ${JSON.stringify(item)} skipped`, e);
             }
-            const row = new ShortcutRow(item, host, {iconSize, symbolic, scope});
-            if (row.isSeparator) {
-                if (lastWasSeparator) {
-                    row.destroy();
-                    continue;
-                }
-                lastWasSeparator = true;
-            } else {
-                if (!ShortcutRow.resolve(item)) {
-                    row.destroy();
-                    continue;
-                }
-                lastWasSeparator = false;
-            }
-            this._shortcutRows.push(row);
-            box.add_child(row.actor);
         }
         const last = this._shortcutRows[this._shortcutRows.length - 1];
         if (last?.isSeparator) {

@@ -26,6 +26,7 @@ import St from 'gi://St';
 
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
+import {iconSize} from '../../core/limits.js';
 import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
 
@@ -52,9 +53,9 @@ export class SearchBox {
         clearIcon.hide();
         // icon-size-misc: the size of both icons (<= 0 = the stylesheet's 16 px; -1 hands the size back to the CSS)
         const sizeIcons = (): void => {
-            const size = settings.get('icon-size-misc');
-            findIcon.icon_size = size > 0 ? size : -1;
-            clearIcon.icon_size = size > 0 ? size : -1;
+            const size = iconSize(settings.get('icon-size-misc'), -1);
+            findIcon.icon_size = size;
+            clearIcon.icon_size = size;
         };
         sizeIcons();
         settings.onChanged(scope, ['icon-size-misc'], sizeIcons);
