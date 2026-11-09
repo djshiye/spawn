@@ -12,6 +12,8 @@
 //                                      their defaults (live); `extra` adds an own "modified" test and its keys
 //   isModified(ctx, keys)              true when any key holds a user value different from its default
 //   LIST_ICON_SIZE                     the one icon size of every row in the settings lists
+//   listIcon(icon, fallback?)          LIST_ICON_SIZE image that never comes out blank: a name the theme lacks falls
+//                                      back to its non-symbolic form, then to application-x-executable(-symbolic)
 //   resetKeys(ctx, keys)               resets keys (one SpawnSettings.batch(); ctx.settings.raw is never delayed)
 //   resetWithUndo(ctx, keys, message)  resetKeys + a toast whose Undo button restores the old values
 //   toast(ctx, message, undo?)         plain-text toast; with `undo` it shows an Undo button (8 s)
@@ -26,6 +28,34 @@ import type {PrefsContext} from './context.js';
 
 /** Pixel size of the icon at the start of every list row (pinned apps, shortcuts, hidden apps, add dialog...). */
 export const LIST_ICON_SIZE = 24;
+
+/** True when the icon theme can draw `name`. */
+function themeHas(name: string): boolean {
+    const display = Gdk.Display.get_default();
+    return display ? Gtk.IconTheme.get_for_display(display).has_icon(name) : true;
+}
+
+/** The first of the themed `names` (then their non-symbolic forms, then the fallbacks) that the theme has. */
+export function resolveIconName(names: readonly string[], fallback = 'application-x-executable-symbolic'): string {
+    const candidates = [
+        ...names,
+        ...names.map(n => n.replace(/-symbolic$/, '')),
+        fallback,
+        fallback.replace(/-symbolic$/, ''),
+        'application-x-executable-symbolic',
+        'application-x-executable',
+    ];
+    return candidates.find(n => n !== '' && themeHas(n)) ?? fallback;
+}
+
+/** The row icon of every settings list: LIST_ICON_SIZE, and a fallback icon instead of a blank image. */
+export function listIcon(icon: Gio.Icon | string, fallback?: string): Gtk.Image {
+    if (typeof icon === 'string')
+        return new Gtk.Image({icon_name: resolveIconName([icon], fallback), pixel_size: LIST_ICON_SIZE});
+    if (icon instanceof Gio.ThemedIcon)
+        return new Gtk.Image({icon_name: resolveIconName(icon.get_names(), fallback), pixel_size: LIST_ICON_SIZE});
+    return new Gtk.Image({gicon: icon, pixel_size: LIST_ICON_SIZE});
+}
 
 export type Option = readonly [nick: string, label: string];
 

@@ -22,7 +22,7 @@ import {isValidFolderId} from '../core/folderId.js';
 import {resolveButtonIcon} from '../core/icons.js';
 import type {Entry, FolderSettings, SettingKey} from '../core/settings.js';
 import type {PrefsContext} from './context.js';
-import {connectDisposable, label, LIST_ICON_SIZE, onWindowClose, resetButton, resetWithUndo, toast} from './widgets.js';
+import {connectDisposable, label, listIcon, onWindowClose, resetButton, resetWithUndo, toast} from './widgets.js';
 
 export type ListKind = 'pinned' | 'folder' | 'directory' | 'application' | 'context';
 
@@ -143,10 +143,6 @@ function clearGroup(group: Adw.PreferencesGroup, rows: Gtk.Widget[]): void {
         group.remove(row);
 }
 
-function iconWidget(icon: Gio.Icon | string): Gtk.Image {
-    return typeof icon === 'string' ? new Gtk.Image({icon_name: icon}) : new Gtk.Image({gicon: icon});
-}
-
 function flatButton(icon: string, tooltip: string, name = tooltip): Gtk.Button {
     const button = new Gtk.Button({icon_name: icon, tooltip_text: tooltip, valign: Gtk.Align.CENTER, css_classes: ['flat']});
     label(button, name);
@@ -207,7 +203,7 @@ export function chooseApplication(ctx: PrefsContext, exclude: ReadonlySet<string
             row.set_subtitle(GLib.markup_escape_text(desc, -1));
         row.set_subtitle_lines(1);
         const icon = app.get_icon();
-        row.add_prefix(icon ? new Gtk.Image({gicon: icon, pixel_size: LIST_ICON_SIZE}) : new Gtk.Image({icon_name: 'application-x-executable', pixel_size: LIST_ICON_SIZE}));
+        row.add_prefix(listIcon(icon ?? 'application-x-executable'));
         row.connect('activated', () => {
             dialog.close();
             cb(app.get_id() as string);
@@ -219,12 +215,26 @@ export function chooseApplication(ctx: PrefsContext, exclude: ReadonlySet<string
         const q = search.text.trim().toLowerCase();
         return q === '' || (rows.get(row) ?? '').includes(q);
     });
-    search.connect('search-changed', () => list.invalidate_filter());
+    // A bottom bar with the count gives the list a clear end: rows scroll under a divider, never off a bare edge.
+    const count = new Gtk.Label({css_classes: ['dim-label', 'caption'], margin_top: 6, margin_bottom: 6});
+    const showCount = (): void => {
+        const q = search.text.trim().toLowerCase();
+        const shown = [...rows.values()].filter(text => q === '' || text.includes(q)).length;
+        count.set_label(shown === 1 ? '1 application' : `${shown} applications`);
+    };
+    showCount();
+    search.connect('search-changed', () => {
+        list.invalidate_filter();
+        showCount();
+    });
     const scroller = new Gtk.ScrolledWindow({vexpand: true, hscrollbar_policy: Gtk.PolicyType.NEVER, child: list});
     const searchBar = new Gtk.Box({css_classes: ['toolbar']});
     searchBar.append(search);
     toolbar.add_top_bar(searchBar);
     toolbar.set_content(scroller);
+    toolbar.add_bottom_bar(count);
+    toolbar.set_top_bar_style(Adw.ToolbarStyle.RAISED);
+    toolbar.set_bottom_bar_style(Adw.ToolbarStyle.RAISED);
     dialog.set_child(toolbar);
     dialog.set_focus(search);
     dialog.present(ctx.window);
@@ -391,9 +401,7 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
                 row.set_subtitle(GLib.markup_escape_text(d.subtitle, -1));
             if ('tooltip' in d && d.tooltip)
                 row.set_tooltip_text(d.tooltip);
-            const icon = iconWidget(d.icon);
-            icon.set_pixel_size(LIST_ICON_SIZE);
-            row.add_prefix(icon);
+            row.add_prefix(listIcon(d.icon));
 
             if (entry.isFolder === 'true' && !damaged) {
                 const contents = flatButton('view-list-symbolic', 'Edit apps in this folder', `Edit apps in ${entry.name || 'this folder'}`);
