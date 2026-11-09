@@ -21,6 +21,9 @@ check "the built rows carry their names" "$(state_get layout.appRows | grep -q '
 echo "-- Down past the built rows: the keyboard stays in the list and the rows follow"
 ui_call Move 5 5 >/dev/null; sleep 0.3 # the pointer off the list: a row scrolled under it would take the focus
 focus_class spawn-list-row 0
+# a late AppIndex rebuild (the 120 installs above) can replace the rows just after: focus the first row again
+[ "$(state_get layout.focusIndex)" = 0 ] || { sleep 1; focus_class spawn-list-row 0; }
+expect "the keyboard starts on the first app row" "$(state_get layout.focusIndex)" "0"
 steps=$((built + 6))
 trace=""
 for i in $(seq 1 "$steps"); do key Down 0.15; trace="$trace $(state_get layout.focusIndex)"; done
