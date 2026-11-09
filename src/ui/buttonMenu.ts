@@ -56,7 +56,7 @@ import {
     isPowerAvailable, type LogindInfo, POWER_INFO, POWER_RANK, POWER_SHORTCUTS, probeLogind, runPowerAction, systemActions,
 } from './widgets/powerActions.js';
 import {resolveShortcut, type ShortcutHost} from './widgets/shortcutRow.js';
-import {closeMenu, openMenu} from './menuParams.js';
+import {closeMenu, openMenu, silenceSourceKeys} from './menuParams.js';
 
 export interface PopupControl {
     readonly isOpen: boolean;
@@ -145,6 +145,8 @@ export class ButtonMenu {
 
             const menu = new PopupMenu.PopupMenu(button, 0.5, button.arrowSide);
             this._menu = menu;
+            // Rebuilt on every open: its key handling must not stay behind on the panel button (button.ts owns those keys).
+            silenceSourceKeys(menu);
             const manager = new PopupMenu.PopupMenuManager(button);
             Main.uiGroup.add_child(menu.actor);
             menu.actor.hide();

@@ -33,7 +33,7 @@ import type {Services} from '../core/services.js';
 import {uniqueFolderName} from './dnd.js';
 import type {LayoutHost} from './layout.js';
 import {applyTone, ownedScope} from './util.js';
-import {closeMenu, openMenu} from './menuParams.js';
+import {closeMenu, openMenu, silenceSourceKeys} from './menuParams.js';
 
 export type ContextTarget =
     | {kind: 'app'; app: Shell.App; folderUuid?: string}
@@ -71,6 +71,8 @@ export class AppContextMenu {
                 ? this._buildAppMenu(source, target, scope)
                 : this._buildSimpleMenu(source, target, scope);
             this._menu = menu;
+            // The row's own keys (Return / Space / arrows) stay Spawn's, also after this menu is destroyed.
+            silenceSourceKeys(menu);
 
             const manager = new PopupMenu.PopupMenuManager(source);
             Main.uiGroup.add_child(menu.actor);

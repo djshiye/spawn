@@ -36,7 +36,7 @@ import {PowerType} from '../../core/constants.js';
 import {error} from '../../core/log.js';
 import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
-import {closeMenu, openMenu} from '../menuParams.js';
+import {closeMenu, openMenu, silenceSourceKeys} from '../menuParams.js';
 import {iconSizeFor} from '../util.js';
 import {markToolbar, nameItem} from './a11y.js';
 import {fitPowerRow, type PowerFit} from './powerFit.js';
@@ -216,6 +216,8 @@ export class PowerBar {
         this._more = {type: -1, actor: button, surface};
 
         const menu = new PopupMenu.PopupMenu(button, 0.5, St.Side.BOTTOM);
+        // The button's keys are wireItem's (Return / Space open it; Up must move the focus, not open the menu).
+        silenceSourceKeys(menu);
         menu.actor.add_style_class_name('spawn-popup spawn-power-popup');
         const manager = new PopupMenu.PopupMenuManager(button);
         manager.addMenu(menu);
@@ -253,6 +255,8 @@ export class PowerBar {
         this._menuButton = button;
 
         const menu = new PopupMenu.PopupMenu(button, 0.5, St.Side.BOTTOM);
+        // The button's keys are wireItem's (Return / Space open it; Up must move the focus, not open the menu).
+        silenceSourceKeys(menu);
         menu.actor.add_style_class_name('spawn-popup spawn-power-popup');
         const manager = new PopupMenu.PopupMenuManager(button);
         manager.addMenu(menu);
