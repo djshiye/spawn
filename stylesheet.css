@@ -455,9 +455,11 @@
 }
 
 /* The outer tile button: 4 px of the 8 px gap above and below (transparent, clickable). The first /
+/* 3 px of the button's width are padding too: the visible tile is inset 3 px each side, so the 2 px between two
+ * buttons look like the 8 px between rows (4 + 4). The button, which is the hit area, keeps its size. */
  * last column also get the 8 px gutter at the grid edge as inline padding (ui/widgets/tileGrid.ts). */
 .spawn-tile {
-    padding: 4px 0;
+    padding: 4px 3px;
 }
 
 /* The visible tile: 8 + 48 + 8 + label + 8 = 87 px at Compact; Large has 12 px of padding. */
