@@ -138,23 +138,45 @@ export function parseColor(color: string): [number, number, number, number] | nu
     return [ch(m[1]), ch(m[2]), ch(m[3]), m[4] === undefined ? 1 : Math.max(0, Math.min(1, Number(m[4])))];
 }
 
-/**
- * The folder popup's card: an opaque, slightly raised copy of the menu background. A see-through menu
- * colour (custom colours with alpha < 1) would let the rows under the card show through it, so the colour
- * is flattened onto black (dark menus) or white (light menus) and then lifted 7 % towards the text colour.
- * Null when the colour is not one we can parse (the stylesheet's card colour then stays).
- */
-export function raisedSurface(background: string, foreground: string | null): string | null {
+function flatten(background: string): {flat: [number, number, number]; base: number} | null {
     const bg = parseColor(background);
     if (!bg)
         return null;
     const [r, g, b, a] = bg;
     const lum = 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
     const base = lum > 0.4 ? 255 : 0;
-    const flat = [r, g, b].map(v => v * a + base * (1 - a)) as [number, number, number];
+    return {flat: [r, g, b].map(v => v * a + base * (1 - a)) as [number, number, number], base};
+}
+
+/**
+ * The folder popup's card, dark menus: an opaque, slightly raised copy of the menu background. A see-through
+ * menu colour (custom colours with alpha < 1) would let the rows under the card show through it, so the colour
+ * is flattened onto black (dark menus) or white (light menus) and then lifted 7 % towards the text colour.
+ * Null when the colour is not one we can parse (the stylesheet's card colour then stays).
+ */
+export function raisedSurface(background: string, foreground: string | null): string | null {
+    const f = flatten(background);
+    if (!f)
+        return null;
+    const {flat, base} = f;
     const fg = (foreground ? parseColor(foreground) : null) ?? (base ? [0, 0, 0, 1] : [255, 255, 255, 1]);
     const lift = 0.07;
     const out = flat.map((v, i) => Math.round(v + ((fg[i] as number) - v) * lift));
+    return `rgb(${out[0]}, ${out[1]}, ${out[2]})`;
+}
+
+/**
+ * The card's colour for any menu background: dark menus use raisedSurface (a little lighter than the menu);
+ * light menus get the menu colour opened 60 % towards white, so the card stays the brightest thing on the
+ * dimmed menu instead of turning grey. Always opaque; null when the colour cannot be parsed.
+ */
+export function cardSurface(background: string, foreground: string | null): string | null {
+    const f = flatten(background);
+    if (!f)
+        return null;
+    if (f.base === 0)
+        return raisedSurface(background, foreground);
+    const out = f.flat.map(v => Math.round(v + (255 - v) * 0.6));
     return `rgb(${out[0]}, ${out[1]}, ${out[2]})`;
 }
 
@@ -284,10 +306,10 @@ function overrideRules(c: ThemeColors): string[] {
             ['border-radius', radius],
         ]),
         // The folder popup card is a raised copy of the menu background (opaque-ish over the scrim).
-        // Always opaque (see raisedSurface), with a hairline in the text colour: a custom border colour is
+        // Always opaque (see cardSurface), with a hairline in the text colour: a custom border colour is
         // often the menu colour itself, which would leave the card without an edge.
         rule(`${popup} .spawn-folder-popup`, [
-            ['background-color', bg === null ? null : raisedSurface(bg, fg) ?? bg],
+            ['background-color', bg === null ? null : cardSurface(bg, fg) ?? bg],
             ['color', fg],
             ['border-color', fg === null ? border : withAlpha(fg, 0.12)],
         ]),
@@ -304,7 +326,7 @@ function overrideRules(c: ThemeColors): string[] {
             ['color', activeFg],
         ]),
         rule(`${popup} StEntry`, [['color', fg], ['caret-color', fg], ['border-color', sep]]),
-        rule(`${popup} .hint-text`, [['color', fg === null ? null : withAlpha(fg, 0.55)]]),
+        rule(`${popup} .hint-text`, [['color', fg === null ? null : withAlpha(fg, 0.6)]]),
         rule([`${popup} .spawn-separator`, `${popup} .popup-separator-menu-item-separator`], [
             ['background-color', sep],
             ['color', sep],

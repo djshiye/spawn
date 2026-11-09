@@ -1,4 +1,4 @@
-import {ACCENT_COLORS, accentColor, accentForeground, buildCss, parseColor, raisedSurface, sanitizeColor, withAlpha} from '../build/theme/css.js';
+import {ACCENT_COLORS, accentColor, accentForeground, buildCss, cardSurface, parseColor, raisedSurface, sanitizeColor, withAlpha} from '../build/theme/css.js';
 import {assert, assertEquals, run, test} from './harness.js';
 
 const off = v => [false, v];
@@ -22,6 +22,18 @@ test('accent palette maps every GNOME accent name, unknown -> blue', () => {
         assert(/^#[0-9a-f]{6}$/.test(accentColor(name)), name);
     assertEquals(accentColor('blue'), '#3584e4');
     assertEquals(accentColor('nonsense'), ACCENT_COLORS.blue);
+});
+
+test('the folder card is derived from the menu background: lifted on dark, brighter than the menu on light', () => {
+    // dark: neutral stays neutral (no bluish cast), and the card is lighter than the menu
+    assertEquals(cardSurface('rgb(36,36,36)', 'rgb(255,255,255)'), raisedSurface('rgb(36,36,36)', 'rgb(255,255,255)'));
+    const dark = parseColor(cardSurface('rgb(36,36,36)', 'rgb(255,255,255)'));
+    assert(dark[0] === dark[1] && dark[1] === dark[2] && dark[0] > 36, 'neutral dark menu, neutral lighter card');
+    // light: opened towards white, never darker than the menu, opaque
+    const light = parseColor(cardSurface('rgb(240,240,240)', 'rgb(0,0,0)'));
+    assertEquals(light.slice(0, 3), [249, 249, 249]);
+    assertEquals(light[3], 1);
+    assertEquals(cardSurface('hsl(0,0%,0%)', null), null);
 });
 
 test('folder popup card is opaque even when the custom menu colour is see-through', () => {

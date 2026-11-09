@@ -481,7 +481,7 @@ export class ResultList {
         button.set_child(makeFace('spawn-row-surface', box));
 
         nameItem(button, newAccessibleName(result.title, isNew), {label: title, description: shownDescription, listItem: true});
-        this._host.tooltips?.attach(button, title, result.description ? () => `${result.title}\n${result.description}` : undefined);
+        this._host.tooltips?.attach(button, title);
         wireItem(button, {
             activate: ctrl => this._activate(result, ctrl),
             context: this._host.openResultContext ? () => {
