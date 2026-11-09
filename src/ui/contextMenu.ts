@@ -79,6 +79,18 @@ export class AppContextMenu {
                 : this._buildSimpleMenu(source, target, scope);
             this._menu = menu;
 
+            // The row the menu belongs to stays lit while it is open (the pointer is on the menu, so it would not be).
+            source.add_style_class_name('spawn-context-source');
+            let gone = false; // an unpin / pin rebuilds the row under the menu: touching a destroyed actor logs a CRITICAL
+            const destroyId = source.connect('destroy', () => {
+                gone = true;
+            });
+            scope.add(() => {
+                if (gone)
+                    return;
+                source.disconnect(destroyId);
+                source.remove_style_class_name('spawn-context-source');
+            }, 'context source highlight');
             const manager = new PopupMenu.PopupMenuManager(source);
             Main.uiGroup.add_child(menu.actor);
             menu.actor.hide();

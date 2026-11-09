@@ -48,7 +48,7 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {CategoryLink, ShortcutId} from '../core/constants.js';
-import {openSpawnPrefs, PREFS_PAGE_PINNED} from '../core/openPrefs.js';
+import {openSpawnPrefs} from '../core/openPrefs.js';
 import {debounce} from '../core/debounce.js';
 import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
@@ -323,7 +323,7 @@ export class SpawnLayout implements ShortcutHost {
             removeShortcut: (entry, name) => this._removeShortcut(entry, name),
             openSettings: shortcuts => {
                 host.close();
-                this._scope.idle(() => openSpawnPrefs(this._services.settings, this._services.info.uuid, shortcuts ? PREFS_PAGE_PINNED : undefined));
+                this._scope.idle(() => openSpawnPrefs(this._services.settings, this._services.info.uuid, shortcuts ? 'pinned' : undefined));
             },
             renameFolder: uuid => {
                 this._scope.idle(() => {

@@ -12,6 +12,7 @@ import GLib from 'gi://GLib';
 
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
+import {PREFS_PAGE_NAMES, type PrefsPageName} from './core/prefsPages.js';
 import {SpawnSettings} from './core/settings.js';
 import type {PrefsContext} from './prefs/context.js';
 import {createAboutPage} from './prefs/pages/about.js';
@@ -22,15 +23,19 @@ import {createImportPage} from './prefs/pages/import.js';
 import {createMenuPage} from './prefs/pages/menu.js';
 import {createPinnedPage} from './prefs/pages/pinned.js';
 
-const PAGES: ReadonlyArray<readonly [name: string, title: string, create: (ctx: PrefsContext) => Adw.PreferencesPage]> = [
-    ['general', 'General', createGeneralPage],
-    ['button', 'Button', createButtonPage],
-    ['menu', 'Menu', createMenuPage],
-    ['pinned', 'Pinned', createPinnedPage],
-    ['appearance', 'Appearance', createAppearancePage],
-    ['import', 'Import', createImportPage],
-    ['about', 'About', createAboutPage],
-];
+const PAGE_BUILDERS: Record<PrefsPageName, readonly [title: string, create: (ctx: PrefsContext) => Adw.PreferencesPage]> = {
+    general: ['General', createGeneralPage],
+    button: ['Button', createButtonPage],
+    menu: ['Menu', createMenuPage],
+    pinned: ['Pinned', createPinnedPage],
+    appearance: ['Appearance', createAppearancePage],
+    import: ['Import', createImportPage],
+    about: ['About', createAboutPage],
+};
+
+// Order and names come from core/prefsPages.ts, which the shell side also uses to open a page by name.
+const PAGES: ReadonlyArray<readonly [name: string, title: string, create: (ctx: PrefsContext) => Adw.PreferencesPage]> =
+    PREFS_PAGE_NAMES.map(name => [name, ...PAGE_BUILDERS[name]] as const);
 
 function buildPage(ctx: PrefsContext, [name, title, create]: (typeof PAGES)[number]): Adw.PreferencesPage {
     try {
@@ -73,6 +78,16 @@ export default class SpawnPreferences extends ExtensionPreferences {
         const initial = pages[Math.min(Math.max(ctx.settings.get('prefs-visible-page'), 0), pages.length - 1)];
         if (initial)
             window.set_visible_page(initial);
+        // The key changed from outside (the menu's "Edit Shortcuts…" while this window is open): follow it.
+        const follow = ctx.settings.raw.connect('changed::prefs-visible-page', () => {
+            const page = pages[ctx.settings.get('prefs-visible-page')];
+            if (page && page !== window.get_visible_page())
+                window.set_visible_page(page);
+        });
+        window.connect('close-request', () => {
+            ctx.settings.raw.disconnect(follow);
+            return false;
+        });
         window.connect('notify::visible-page', () => {
             const index = pages.findIndex(page => page === window.get_visible_page());
             if (index >= 0 && index !== ctx.settings.get('prefs-visible-page'))

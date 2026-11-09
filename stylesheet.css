@@ -1218,3 +1218,25 @@
 .spawn-reduce-motion .spawn-row {
     transition-duration: 0ms;
 }
+
+/* ---- the row a context menu belongs to (ui/contextMenu.ts) ----
+ * Stays lit while its menu is open: the pointer is on the menu then, so :hover would not hold it. Same tint as :hover. */
+.spawn-context-source .spawn-row-surface,
+.spawn-context-source .spawn-tile-surface,
+.spawn-context-source .spawn-card-surface {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.spawn-context-source .spawn-folder-plate {
+    background-color: rgba(255, 255, 255, 0.16);
+}
+
+.spawn-light .spawn-context-source .spawn-row-surface,
+.spawn-light .spawn-context-source .spawn-tile-surface,
+.spawn-light .spawn-context-source .spawn-card-surface {
+    background-color: rgba(0, 0, 0, 0.08);
+}
+
+.spawn-light .spawn-context-source .spawn-folder-plate {
+    background-color: rgba(0, 0, 0, 0.16);
+}

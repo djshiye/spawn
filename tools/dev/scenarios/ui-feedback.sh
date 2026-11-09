@@ -127,8 +127,10 @@ fresh
 dump_settings >"$tmp/seed"
 click_class spawn-shortcut-row 0 3; sleep 0.5
 echo "   items: $(items)"
+expect "the row stays lit while its menu is open" "$(count spawn-context-source)" 1
 check "Home has Open, Remove from Menu, Edit Shortcuts" "$(items | grep -q 'Open | Remove from Menu | Edit Shortcuts' && echo 0 || echo 1)"
 key Escape 0.5
+expect "the highlight goes with the menu" "$(count spawn-context-source)" 0
 echo "   keyboard: Menu key"
 focus_class spawn-shortcut-row 0
 key Menu 0.6

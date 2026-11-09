@@ -8,19 +8,19 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
 import {error} from './log.js';
+import {type PrefsPageName, prefsPageIndex} from './prefsPages.js';
 import type {SpawnSettings} from './settings.js';
 
-/** Index of the Pinned page in prefs.ts PAGES (general, button, menu, pinned, ...): where the shortcut lists are edited. */
-export const PREFS_PAGE_PINNED = 3;
-
 /**
- * Open Spawn's own settings window, on `page` (an index into prefs.ts PAGES) when given. The window opens on
- * `prefs-visible-page`, so the page is chosen by writing that key first; a window that is already open stays where it is.
+ * Open Spawn's own settings window, on the page called `page` (core/prefsPages.ts) when given. The window opens on
+ * `prefs-visible-page`, so the page is chosen by writing that key first; a window that is already open follows the key
+ * (prefs.ts listens for it) and switches page.
  */
-export function openSpawnPrefs(settings: SpawnSettings, uuid: string, page?: number): void {
+export function openSpawnPrefs(settings: SpawnSettings, uuid: string, page?: PrefsPageName): void {
     try {
-        if (page !== undefined && settings.get('prefs-visible-page') !== page)
-            settings.set('prefs-visible-page', page);
+        const index = page === undefined ? -1 : prefsPageIndex(page);
+        if (index >= 0 && settings.get('prefs-visible-page') !== index)
+            settings.set('prefs-visible-page', index);
     } catch (e) {
         error('could not choose the preferences page', e);
     }
