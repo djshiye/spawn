@@ -17,8 +17,8 @@ n="$(state_get layout.results)"
 check "'setting' has results ($n)" "$([ "$n" -ge 1 ] && echo 0 || echo 1)"
 key Escape 0.6
 expect_state "Escape clears the query" layout.search ""
-echo "-- Down from the search entry moves focus into the result list"
+echo "-- Down in the search entry moves the highlight; the typing focus stays (ui-search-keys covers the details)"
 ui_call Search "setting" >/dev/null; sleep 1.2
 key Down 0.4
-expect_state "focus is in the layout, off the entry" layout.focusInLayout true
-echo "focus: $(state_get layout.focus)"
+expect_state "focus is in the layout" layout.focusInLayout true
+expect "... still in the entry" "$(state_get layout.focus | cut -c1-12)" "Clutter_Text"

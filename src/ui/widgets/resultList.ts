@@ -1,8 +1,12 @@
 // ResultList: streaming search results. One section per SearchBatch (provider title + rows),
 // ordered by SearchBatch.order (the engine's provider registration order: apps > windows >
-// recent files > GNOME shell providers in their sort-order) regardless of arrival order. The
-// first row carries the :selected pseudo class (Return in the search entry activates it) until
-// a row takes keyboard focus. Optional term highlighting (highlight-search-result-terms) and
+// recent files > GNOME shell providers in their sort-order) regardless of arrival order.
+// The highlight: one row carries the :selected pseudo class (and the accessible SELECTED state) and is
+// what Return in the search entry activates: the first (best) row of a new query, moved with
+// moveSelection() / select() (the typing focus stays in the entry), hidden while a row has keyboard focus.
+// Reversed (search entry below the list): the order is mirrored, best match at the bottom next to the entry,
+// sections in reverse with their title still above their rows, and the rows pushed to the bottom of the view;
+// rows() stays best-first, visualRows() is the order on screen. Optional term highlighting (highlight-search-result-terms) and
 // descriptions (show-search-result-details; results with alwaysShowDescription, e.g. the
 // folder of a recent file, always show theirs). Row icons come from result.createIcon(size)
 // when present (GNOME remote providers: Characters glyphs, Files icons), else result.icon.
@@ -21,13 +25,23 @@
 //   list.beginQuery(): void             a new query starts: keep old rows dimmed, see above
 //   list.reset(): void                  hard clear (menu closed / view left): rows gone now
 //   list.addBatch(batch: SearchBatch): void   empty batches are ignored
-//   list.rows(): St.Widget[]            rows of the CURRENT query in display order (keyboard
-//                                       nav); [] while stale. Stale rows are also made
-//                                       non-reactive / non-focusable, so neither the keyboard
-//                                       nor the mouse can activate a result of an old query
-//   list.first(): St.Widget | null      first row of the CURRENT query; null while stale
-//   list.activateFirst(): boolean       activate the selected (first) result
-//   list.setSelectionVisible(v)          show/hide the :selected marker on the first row
+//   list.rows(): St.Widget[]            rows of the CURRENT query, best first; [] while stale.
+//                                       Stale rows are also made non-reactive / non-focusable,
+//                                       so neither the keyboard nor the mouse can activate a
+//                                       result of an old query
+//   list.visualRows(): St.Widget[]      rows() in screen order (reversed: best last)
+//   list.first(): St.Widget | null      first (best) row of the CURRENT query; null while stale
+//   list.activateFirst(): boolean       activate the first (best) result
+//   list.selected(): St.Widget | null   the highlighted row (the first until moved); null while stale
+//   list.select(row, announce?): void   move the highlight to `row` (announce: the screen reader is told
+//                                       "Name, 2 of 5")
+//   list.moveSelection(delta): St.Widget | null   one row towards worse (1) / better (-1) matches,
+//                                       wrapping; announced
+//   list.activateSelected(ctrl?): boolean   activate the highlighted result (`ctrl`: as a Ctrl+click on
+//                                       an app elsewhere: a new window, and with keep-open-on-ctrl-click
+//                                       the menu stays open)
+//   list.setReversed(on): void          mirrored order (see above)
+//   list.setSelectionVisible(v)          show/hide the :selected marker (hidden while a row has focus)
 //   list.hasResults: boolean            current (non-stale) rows exist
 //   list.hasPending: boolean            beginQuery() was called and no batch with rows has
 //                                       arrived yet (stays true for a query without matches;
@@ -36,6 +50,7 @@
 //   highlightMarkup(text, query)        re-export of search/highlight.ts
 //   ResultHost: ShortcutHost & {openResultContext?(row: St.Widget, result: SearchResult): void}
 
+import Atk from 'gi://Atk';
 import Clutter from 'gi://Clutter';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
@@ -48,6 +63,7 @@ import type {SearchBatch, SearchResult} from '../../search/engine.js';
 import {error} from '../../core/log.js';
 import {highlightMarkup} from '../../search/highlight.js';
 import {iconSizeFor, showDescriptions} from '../util.js';
+import {stepIndex} from '../../model/listNav.js';
 import {markList, nameItem, ResultAnnouncer} from './a11y.js';
 import {makeFace, makeItemButton, wireItem} from './interact.js';
 import {makeNewBadge, newAccessibleName} from './newBadge.js';
@@ -88,9 +104,15 @@ export class ResultList {
     private _cancelStale: (() => void) | null = null;
     private _stale = false;
     private _pending = false;
-    private _selected: St.Button | null = null;
+    /** The row carrying :selected now (null while hidden). */
+    private _marked: St.Button | null = null;
+    /** The highlighted row once moved off the first one (null: the first). */
+    private _pick: St.Button | null = null;
     private readonly _announcer: ResultAnnouncer;
     private _selectionVisible = true;
+    private _reversed = false;
+    /** Pushes the rows to the bottom of the view while reversed. */
+    private readonly _spacer: St.Widget;
 
     constructor(scope: Scope, settings: SpawnSettings, host: ResultHost) {
         this._scope = scope;
@@ -103,6 +125,8 @@ export class ResultList {
             y_expand: true,
         });
         markList(this.actor, _('Search results'));
+        this._spacer = new St.Widget({y_expand: true, visible: false});
+        this.actor.add_child(this._spacer);
         this._announcer = new ResultAnnouncer(scope);
         // Empty state: a soft icon, "No results for “query”" and a hint. The runner sizes itself to its
         // content, so it gets the compact one-line version (no icon, no hint).
@@ -141,6 +165,7 @@ export class ResultList {
 
     beginQuery(query = ''): void {
         this._query = query.trim();
+        this._pick = null;
         this._host.tooltips?.hide();
         this._pending = true;
         this._announcer.hold();
@@ -198,18 +223,18 @@ export class ResultList {
         const section: Section = {providerId: batch.providerId, order: batch.order, box, rows: []};
         for (const result of results) {
             const row = this._makeRow(result, batch.query);
-            box.add_child(row);
             section.rows.push(row);
             this._results.set(row, result);
         }
+        this._fillSection(section);
 
         // Insert keeping provider order (the label for "No results" stays last).
         let at = 0;
         while (at < this._sections.length && this._sections[at].order <= section.order)
             at++;
         this._sections.splice(at, 0, section);
-        this.actor.insert_child_at_index(box, at);
-        this._trimTail();
+        this.actor.add_child(box);
+        this._placeSections();
         this._updateSelection();
         this._announcer.found(this._sections.reduce((n, s) => n + s.rows.length, 0));
     }
@@ -223,6 +248,53 @@ export class ResultList {
         if (this._stale)
             return [];
         return this._sections.flatMap(s => s.rows);
+    }
+
+    visualRows(): St.Widget[] {
+        const rows = this.rows();
+        return this._reversed ? rows.reverse() : rows;
+    }
+
+    selected(): St.Widget | null {
+        if (this._stale)
+            return null;
+        if (this._pick && this._results.has(this._pick))
+            return this._pick;
+        return this.first();
+    }
+
+    select(row: Clutter.Actor | null, announce = false): void {
+        if (!row || this._stale || !this._results.has(row as St.Button))
+            return;
+        this._pick = row as St.Button;
+        this._updateSelection();
+        if (announce)
+            this._announceSelection();
+    }
+
+    moveSelection(delta: number, announce = true): St.Widget | null {
+        const rows = this.rows();
+        const next = rows[stepIndex(rows.indexOf(this.selected() as St.Widget), delta, rows.length)] ?? null;
+        this.select(next, announce);
+        return next;
+    }
+
+    activateSelected(ctrl = false): boolean {
+        const row = this.selected() as St.Button | null;
+        const result = row ? this._results.get(row) : null;
+        if (!result)
+            return false;
+        this._activate(result, ctrl);
+        return true;
+    }
+
+    setReversed(on: boolean): void {
+        if (this._reversed === on)
+            return;
+        this._reversed = on;
+        for (const s of this._sections)
+            this._fillSection(s);
+        this._placeSections();
     }
 
     first(): St.Widget | null {
@@ -240,7 +312,7 @@ export class ResultList {
         return true;
     }
 
-    /** Re-evaluate which row shows as selected: the first, unless a row has keyboard focus. */
+    /** Re-evaluate which row shows as selected (none while a row has keyboard focus). */
     updateSelection(): void {
         this._updateSelection();
     }
@@ -249,7 +321,7 @@ export class ResultList {
         this.actor.destroy();
     }
 
-    /** Show or hide the :selected marker on the first row (hidden while a row has focus). */
+    /** Show or hide the :selected marker (hidden while a row has focus). */
     setSelectionVisible(visible: boolean): void {
         this._selectionVisible = visible;
         this._updateSelection();
@@ -261,6 +333,8 @@ export class ResultList {
      */
     private _trimTail(): void {
         const rows = this._sections.flatMap(s => s.rows);
+        if (this._reversed)
+            rows.reverse();
         for (const row of rows)
             row.set_style(null);
         rows[rows.length - 1]?.set_style('padding-bottom: 0;');
@@ -274,7 +348,39 @@ export class ResultList {
             s.box.destroy();
         this._sections.length = 0;
         this._results.clear();
-        this._selected = null;
+        this._marked = null;
+        this._pick = null;
+        this._spacer.visible = false;
+    }
+
+    /** A section's rows below its title, best first (reversed: best last, next to the entry). */
+    private _fillSection(section: Section): void {
+        const rows = this._reversed ? [...section.rows].reverse() : section.rows;
+        rows.forEach((row, i) => {
+            if (row.get_parent() === section.box)
+                section.box.set_child_at_index(row, i + 1);
+            else
+                section.box.insert_child_at_index(row, i + 1);
+        });
+    }
+
+    /** Sections in provider order after the spacer (reversed: the last provider first); the empty state stays last. */
+    private _placeSections(): void {
+        const n = this._sections.length;
+        this._sections.forEach((s, i) => this.actor.set_child_at_index(s.box, 1 + (this._reversed ? n - 1 - i : i)));
+        this.actor.set_child_above_sibling(this._empty, null);
+        this._spacer.visible = this._reversed && n > 0;
+        this._trimTail();
+    }
+
+    /** "Firefox, 2 of 5": the highlighted row, for a screen reader (the focus stays in the entry). */
+    private _announceSelection(): void {
+        const row = this.selected() as St.Button | null;
+        const result = row ? this._results.get(row) : null;
+        if (!row || !result)
+            return;
+        const rows = this.rows();
+        this._announcer.say(_('%s, %d of %d').format(row.accessible_name || result.title, rows.indexOf(row) + 1, rows.length));
     }
 
     private _armEmpty(): void {
@@ -314,23 +420,28 @@ export class ResultList {
     }
 
     private _updateSelection(): void {
-        const first = this.first() as St.Button | null;
-        if (this._selected && (this._selected !== first || !this._selectionVisible)) {
-            this._selected.remove_style_pseudo_class('selected');
-            this._selected = null;
+        const want = this._selectionVisible ? this.selected() as St.Button | null : null;
+        if (this._marked && this._marked !== want) {
+            this._marked.remove_style_pseudo_class('selected');
+            this._marked.remove_accessible_state(Atk.StateType.SELECTED);
+            this._marked = null;
         }
-        if (!this._selected && first && this._selectionVisible) {
-            this._selected = first;
-            first.add_style_pseudo_class('selected');
+        if (!this._marked && want) {
+            this._marked = want;
+            want.add_style_pseudo_class('selected');
+            want.add_accessible_state(Atk.StateType.SELECTED);
         }
     }
 
-    private _activate(result: SearchResult): void {
+    /** `ctrl` (Ctrl+Return, Ctrl+click, middle click): an app as with a Ctrl+click anywhere else in the menu. */
+    private _activate(result: SearchResult, ctrl = false): void {
         if (this._stale)
             return; // a row of the previous query (cannot normally be reached: see beginQuery)
-        this._host.close();
+        const app = ctrl && result.providerId === 'apps';
+        if (!(app && this._settings.get('keep-open-on-ctrl-click')))
+            this._host.close();
         try {
-            result.activate();
+            result.activate(app);
         } catch (e) {
             error('search result activation failed', e);
         }
@@ -372,7 +483,7 @@ export class ResultList {
         nameItem(button, newAccessibleName(result.title, isNew), {label: title, description: shownDescription, listItem: true});
         this._host.tooltips?.attach(button, title, result.description ? () => `${result.title}\n${result.description}` : undefined);
         wireItem(button, {
-            activate: () => this._activate(result),
+            activate: ctrl => this._activate(result, ctrl),
             context: this._host.openResultContext ? () => {
                 if (!this._stale)
                     this._host.openResultContext?.(button, result);

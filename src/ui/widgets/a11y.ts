@@ -16,7 +16,7 @@
 //   new LiveRegion(scope)               invisible ALERT label a screen reader speaks when its text changes
 //   region.say(text) / region.text
 //   new ResultAnnouncer(scope)          LiveRegion + CountAnnouncer: "5 results" / "No results", debounced
-//   announcer.found(count, delay?) / .hold() / .reset() / .lastMessage
+//   announcer.found(count, delay?) / .hold() / .reset() / .lastMessage / .say(text)
 //   resultCountText(count)              the sentence announced for `count` results
 
 import Atk from 'gi://Atk';
@@ -175,6 +175,11 @@ export class ResultAnnouncer {
 
     get lastMessage(): string {
         return this._region.text;
+    }
+
+    /** Say `text` now through the same region (the highlighted result: "Firefox, 2 of 5"). */
+    say(text: string): void {
+        this._region.say(text);
     }
 
     /** The current search has `count` results (call after every batch; `delay` overrides the debounce). */
