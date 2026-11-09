@@ -356,6 +356,21 @@
     font-size: 0.9em;
 }
 
+/* nothing pinned: the "Browse All Apps" button sits a step below the hint */
+.spawn-pinned-empty .spawn-pinned-empty-button {
+    margin-top: 12px;
+}
+
+/* ... and reads as a button: a quiet tint like the undo banner's */
+.spawn-pinned-empty-button .spawn-nav-surface {
+    padding: 0 16px;
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.spawn-light .spawn-pinned-empty-button .spawn-nav-surface {
+    background-color: rgba(0, 0, 0, 0.06);
+}
+
 /* ---- pinned grid ---- */
 
 .spawn-pinned-box {

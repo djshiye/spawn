@@ -3,7 +3,8 @@
 // App menu = the shell's own AppMenu (open windows, New Window, desktop actions, discrete GPU,
 // App Details in Software, Quit) plus Spawn items: Pin to / Unpin from Menu, Add to Folder
 // (existing folders + New Folder), Remove from Folder, Hide from Menu (LayoutHost.hideApp; the layout shows the
-// Undo banner). Folder menu: Open, Rename, Delete Folder
+// Undo banner). Pin, Unpin and Remove from Folder go through the layout too (it shows the Undo banner); New Folder opens the
+// new folder with its name ready to type. Folder menu: Open, Rename, Delete Folder
 // (the folder is dissolved: its apps move to the top level at the folder's slot, none is unpinned).
 // It owns its PopupMenuManager so the grab stacks on top of the main popup's; a fresh menu is
 // built for every open and destroyed on close. Mutations go through Services.pinned.
@@ -17,6 +18,9 @@
 //                | {kind: 'folder', uuid: string}
 //                | {kind: 'custom', id: string}           (pinned command entry or a pinned app whose
 //                                                          .desktop file is gone: Unpin only)
+//                | {kind: 'shortcut', entry, name, app?, open()}   (a right-pane shortcut: Open, New Window, Remove from Menu,
+//                                                          Edit Shortcuts…)
+//                | {kind: 'usercard'}                     (Menu Settings)
 
 import Pango from 'gi://Pango';
 import St from 'gi://St';
@@ -30,15 +34,18 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
+import type {Entry} from '../core/settings.js';
 import {uniqueFolderName} from './dnd.js';
 import type {LayoutHost} from './layout.js';
 import {applyTone, ownedScope} from './util.js';
-import {closeMenu, openMenu} from './menuParams.js';
+import {closeMenu, openMenu, silenceSourceKeys} from './menuParams.js';
 
 export type ContextTarget =
     | {kind: 'app'; app: Shell.App; folderUuid?: string}
     | {kind: 'folder'; uuid: string}
-    | {kind: 'custom'; id: string};
+    | {kind: 'custom'; id: string}
+    | {kind: 'shortcut'; entry: Entry; name: string; app: Shell.App | null; open(): void}
+    | {kind: 'usercard'};
 
 type MenuItems = PopupMenu.PopupMenu & {_getMenuItems(): PopupMenu.PopupBaseMenuItem[]};
 
@@ -96,6 +103,9 @@ export class AppContextMenu {
                 if (!item._spawnKeepOpen)
                     this._scope.idle(() => this._host.close());
             });
+            // The shell's PopupMenu leaves its key controller on the source row after it is destroyed, which would
+            // eat Down / Return on that row (GNOME 51).
+            silenceSourceKeys(menu);
             openMenu(menu);
         } catch (e) {
             error('context menu failed', e);
@@ -141,14 +151,17 @@ export class AppContextMenu {
             return item;
         };
 
+        const appName = target.app.get_name() || id;
         if (store.isPinned(id))
-            action(_('Unpin from Menu'), () => store.unpin(id));
+            action(_('Unpin from Menu'), () => (this._host.unpin ? this._host.unpin(id, appName) : store.unpin(id)));
         else
-            action(_('Pin to Menu'), () => store.pin(id));
+            action(_('Pin to Menu'), () => (this._host.pin ? this._host.pin(id, appName) : store.pin(id)));
 
         if (target.folderUuid) {
             const folderUuid = target.folderUuid;
-            action(_('Remove from Folder'), () => store.removeFromFolder(folderUuid, id));
+            action(_('Remove from Folder'), () => (this._host.removeFromFolder
+                ? this._host.removeFromFolder(folderUuid, id, appName)
+                : store.removeFromFolder(folderUuid, id)));
         }
 
         const folders = store.items().filter(i => i.kind === 'folder' && i.uuid !== target.folderUuid);
@@ -172,7 +185,9 @@ export class AppContextMenu {
         create.connect('activate', () => {
             if (target.folderUuid)
                 store.removeFromFolder(target.folderUuid, id);
-            store.createFolder(uniqueFolderName(store), [id]);
+            const uuid = store.createFolder(uniqueFolderName(store), [id]);
+            // Open the new folder with its name selected for typing (Escape keeps the default name).
+            this._host.renameFolder?.(uuid);
         });
         sub.menu.addMenuItem(create);
 
@@ -206,9 +221,25 @@ export class AppContextMenu {
             add(_('Open'), () => this._host.openFolder?.(uuid));
             add(_('Rename'), () => this._host.renameFolder?.(uuid));
             add(_('Delete Folder'), () => (this._host.deleteFolder ? this._host.deleteFolder(uuid) : store.dissolveFolder(uuid)));
-        } else {
+        } else if (target.kind === 'custom') {
             const id = target.id;
-            add(_('Unpin from Menu'), () => store.unpin(id));
+            const entry = store.items(true).find(i => i.kind === 'custom' && i.entry.id === id);
+            const name = (entry?.kind === 'custom' && entry.entry.name) || id.replace(/\.desktop$/, '');
+            add(_('Unpin from Menu'), () => (this._host.unpin ? this._host.unpin(id, name) : store.unpin(id)));
+        } else if (target.kind === 'shortcut') {
+            const {entry, name, app} = target;
+            // Open closes the menu itself where it should (All Apps keeps it open), so no automatic close here.
+            add(_('Open'), () => this._scope.idle(() => target.open()));
+            if (app?.can_open_new_window())
+                add(_('New Window'), () => this._scope.idle(() => {
+                    this._host.close();
+                    app.open_new_window(-1);
+                }));
+            add(_('Remove from Menu'), () => (this._host.removeShortcut ? this._host.removeShortcut(entry, name) : undefined));
+            menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+            add(_('Edit Shortcuts…'), () => this._scope.idle(() => this._host.openSettings?.(true)));
+        } else {
+            add(_('Menu Settings'), () => this._scope.idle(() => this._host.openSettings?.(false)));
         }
         return menu;
     }

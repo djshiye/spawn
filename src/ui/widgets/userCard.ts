@@ -2,7 +2,7 @@
 // GNOME Settings. Hidden when show-user-avatar is false.
 //
 // Public API:
-//   new UserCard(scope: Scope, settings: SpawnSettings, host: ShortcutHost)
+//   new UserCard(scope: Scope, settings: SpawnSettings, host: ShortcutHost, onContext?: (card: St.Button) => void)
 //   card.actor: St.Widget
 //   card.destroy()
 
@@ -37,7 +37,7 @@ export class UserCard {
     private _user: AccountsService.User | null = null;
     private _destroyed = false;
 
-    constructor(scope: Scope, settings: SpawnSettings, host: ShortcutHost) {
+    constructor(scope: Scope, settings: SpawnSettings, host: ShortcutHost, onContext?: (card: St.Button) => void) {
         this._settings = settings;
         const button = makeItemButton('spawn-user-card');
         this.actor = button;
@@ -66,6 +66,7 @@ export class UserCard {
                     error('could not open the Users settings', e);
                 }
             },
+            context: onContext ? () => onContext(button) : undefined,
         });
 
         try {
