@@ -580,6 +580,8 @@ export class SpawnLayout implements ShortcutHost {
             ghosts: [...this._tileEntries.keys()].filter(k => k.startsWith('m:')).length,
             // accessible names of the app rows of the visible category list ("Firefox", "Firefox, new")
             appRows: (this._categories?.appRows() ?? []).map(r => r.accessible_name ?? ''),
+            // rows of that list not built yet (All Apps builds them as they scroll into view)
+            appRowsPending: this._categories?.pendingRows ?? 0,
             undo: this._undoBanner.visible,
         };
     }
@@ -1080,11 +1082,13 @@ export class SpawnLayout implements ShortcutHost {
         }
         case 'categories':
         case 'all': {
+            // On the stage before the rows are built: the first one measures how many fill the view.
             const list = this._ensureCategories();
+            add(list.actor);
             list.setColumnVisible(view === 'categories');
             list.showCategory('all');
             list.ensureBuilt();
-            return [add(list.actor)];
+            return [list.actor];
         }
         case 'folder':
             // Never a stack child: _setView shows the popup on top of the panes instead.
