@@ -1096,7 +1096,16 @@ export class SpawnLayout implements ShortcutHost {
         case 'favorites':
         case 'recent': {
             if (!this._extraList || !this._extraScroll) {
-                this._extraList = new ExtraList(this._services, {...this._tileHostWithTips(), close: () => this.close()});
+                this._extraList = new ExtraList(this._services, {
+                    ...this._tileHostWithTips(),
+                    close: () => this.close(),
+                    // recent files that arrived late: the focus moves to them as the view would have done
+                    rowsChanged: () => {
+                        const focus = global.stage.key_focus as Clutter.Actor | null;
+                        if (this._isOpen && this._view === 'recent' && (!focus || this._navGroup()?.items.includes(focus)))
+                            this._focusMain();
+                    },
+                });
                 this._extraScroll = this._makeScroll(this._extraList.actor, 'spawn-frequent');
             }
             this._extraList.show(view);
