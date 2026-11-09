@@ -639,6 +639,8 @@ export class SpawnLayout implements ShortcutHost {
             ghosts: [...this._tileEntries.keys()].filter(k => k.startsWith('m:')).length,
             // accessible names of the app rows of the visible category list ("Firefox", "Firefox, new")
             appRows: (this._categories?.appRows() ?? []).map(r => r.accessible_name ?? ''),
+            // rows of that list not built yet (All Apps builds them as they scroll into view)
+            appRowsPending: this._categories?.pendingRows ?? 0,
             undo: this._undoBanner.visible,
             // the search highlight (Return target) and what the screen reader was told last
             selected: this._results?.selected()?.accessible_name ?? null,
@@ -1168,11 +1170,13 @@ export class SpawnLayout implements ShortcutHost {
         }
         case 'categories':
         case 'all': {
+            // On the stage before the rows are built: the first one measures how many fill the view.
             const list = this._ensureCategories();
+            add(list.actor);
             list.setColumnVisible(view === 'categories');
             list.showCategory('all');
             list.ensureBuilt();
-            return [add(list.actor)];
+            return [list.actor];
         }
         case 'folder':
             // Never a stack child: _setView shows the popup on top of the panes instead.
@@ -1180,7 +1184,16 @@ export class SpawnLayout implements ShortcutHost {
         case 'favorites':
         case 'recent': {
             if (!this._extraList || !this._extraScroll) {
-                this._extraList = new ExtraList(this._services, {...this._tileHostWithTips(), close: () => this.close()});
+                this._extraList = new ExtraList(this._services, {
+                    ...this._tileHostWithTips(),
+                    close: () => this.close(),
+                    // recent files that arrived late: the focus moves to them as the view would have done
+                    rowsChanged: () => {
+                        const focus = global.stage.key_focus as Clutter.Actor | null;
+                        if (this._isOpen && this._view === 'recent' && (!focus || this._navGroup()?.items.includes(focus)))
+                            this._focusMain();
+                    },
+                });
                 this._extraScroll = this._makeScroll(this._extraList.actor, 'spawn-frequent');
             }
             this._extraList.show(view);

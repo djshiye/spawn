@@ -1,17 +1,20 @@
 // RecentFilesProvider: searches ~/.local/share/recently-used.xbel (Gtk.RecentManager is not
 // available inside the shell, so the file is read with GLib.BookmarkFile).
 //
-// The parsed list is cached. A Gio.FileMonitor on the file only sets a dirty flag; the next
-// search reparses lazily, so a search costs no I/O at all while the file is unchanged. The
-// monitor and the first parse happen on the first enabled search, never at construction;
-// clear() (menu closed) drops the list and the monitor again.
+// The parsed list is cached for the session (also between menu opens). A Gio.FileMonitor on the
+// file only sets a dirty flag; the next search reparses lazily, so a search costs no parsing at
+// all while the file is unchanged. The monitor and the first parse happen on the first enabled
+// search, never at construction; clear() (menu closed) only cancels the existence checks in flight.
 //
 // Entries whose file no longer exists are skipped lazily: all matches are ranked, then walked
-// best first, stat-ing until `max` live files are found (at most STAT_BUDGET stats per query;
-// many xbel entries are typically dead). An existence result is remembered per uri for
-// EXISTS_TTL_US, so typing costs no I/O, but a deleted / re-mounted file is noticed within a
-// few seconds. A transient parse error is retried (at most every RETRY_US); a file larger
-// than MAX_XBEL_BYTES is not parsed at all.
+// best first until `max` live files are found. Existence is checked asynchronously (FileProbe:
+// Gio's async queries with a deadline, so a hung network share can never freeze the shell; a
+// file whose check overran is left out of that query), at most STAT_BUDGET checks per query (many
+// xbel entries are typically dead). An existence result is remembered per uri for EXISTS_TTL_US:
+// while typing, the results come straight from that cache, synchronously; a query that needs
+// fresh checks returns a promise (its rows arrive a moment later, the old ones stay meanwhile).
+// A deleted / re-mounted file is noticed within a few seconds. A transient parse error is retried
+// (at most every RETRY_US); a file larger than MAX_XBEL_BYTES is not parsed at all.
 //
 // Ranking: the file name at full weight, its folder at FOLDER_WEIGHT (so "invoices" also finds the
 // files inside ~/Documents/Invoices, below any file NAMED like that), and a multi-word query may mix
@@ -21,18 +24,20 @@
 // id 'recentFiles'; enabled by search-provider-recent-files; honours show-hidden-recent-files
 // (any dot-component below $HOME hides a file) and max-search-results. Results always show
 // the folder as description (alwaysShowDescription) so equal names stay distinguishable.
-// activate() re-checks the file, then opens it with its default application using a proper
-// launch context (focus / startup notification) and reports failures with a notification.
+// activate() re-checks the file (asynchronously), then opens it with its default application
+// using a proper launch context (focus / startup notification) and reports failures with a
+// notification.
 //
 // The same cache feeds the menu's Recent Files view (the "Recent files" category quick link):
-// list(max) returns the newest live entries, honouring show-hidden-recent-files and GNOME's
+// list(max) returns the newest live entries (a promise when existence checks are needed), honouring
+// show-hidden-recent-files and GNOME's
 // org.gnome.desktop.privacy remember-recent-files (off = nothing is listed), and open(entry)
 // opens one with its default application. Neither depends on search-provider-recent-files.
 //
 // Public API:
 //   new RecentFilesProvider(scope: Scope, settings: SpawnSettings)  implements SearchProvider
-//   clear(): drop the parsed list, caches and the file monitor
-//   list(max): RecentList                 the newest `max` live files {entries, more, remembering}
+//   clear(): cancel the existence checks in flight (the parsed list and the monitor stay)
+//   list(max): RecentList | Promise<RecentList>   the newest `max` live files {entries, more, remembering}
 //   open(entry: RecentItem): void         open with the default application (notifies on failure)
 //   RecentItem                            {uri, name, folder (~-shortened parent), path, mime, hidden, modified}
 //   RecentList                            {entries, more (older live files exist), remembering (privacy switch)}
@@ -43,6 +48,7 @@ import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {error, warn} from '../../core/log.js';
+import {FileProbe} from '../../core/fileProbe.js';
 import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
 import type {CancelToken, SearchProvider, SearchResult} from '../engine.js';
@@ -54,6 +60,8 @@ const MAX_XBEL_BYTES = 2 * 1024 * 1024;
 const STAT_BUDGET = 100;
 const EXISTS_TTL_US = 5_000_000;
 const RETRY_US = 3_000_000;
+/** An existence check slower than this leaves the file out of that query (a hung share must not hold the results). */
+const PROBE_TIMEOUT_MS = 400;
 /** A folder match counts at half a name match. */
 const FOLDER_WEIGHT = 0.5;
 
@@ -90,6 +98,7 @@ export class RecentFilesProvider implements SearchProvider {
 
     private readonly _monitorScope: Scope;
     private readonly _settings: SpawnSettings;
+    private readonly _probe: FileProbe;
     private _items: RecentItem[] = [];
     private _dirty = true;
     private _retryAt = 0;
@@ -103,20 +112,16 @@ export class RecentFilesProvider implements SearchProvider {
     constructor(scope: Scope, settings: SpawnSettings) {
         this._monitorScope = scope.child('recent files monitor');
         this._settings = settings;
+        this._probe = new FileProbe(scope.child('recent files probe'), {timeoutMs: PROBE_TIMEOUT_MS});
     }
 
     isEnabled(): boolean {
         return this._settings.get('search-provider-recent-files');
     }
 
+    /** Menu closed: stop waiting for existence checks. The list stays parsed (the monitor keeps it current). */
     clear(): void {
-        this._monitorScope.dispose();
-        this._monitorStarted = false;
-        this._monitored = false;
-        this._dirty = true;
-        this._retryAt = 0;
-        this._items = [];
-        this._exists.clear();
+        this._probe.cancel();
     }
 
     /** GNOME's "File History" switch (org.gnome.desktop.privacy remember-recent-files); true when it cannot be read. */
@@ -128,38 +133,22 @@ export class RecentFilesProvider implements SearchProvider {
         return tryGet(() => this._privacy?.get_boolean('remember-recent-files') ?? true, true);
     }
 
-    list(max: number): RecentList {
+    list(max: number): RecentList | Promise<RecentList> {
         const remembering = this._remembering();
         if (!remembering)
             return {entries: [], more: false, remembering};
         this._ensureLoaded();
         const items = this._settings.get('show-hidden-recent-files') ? this._items : this._items.filter(i => !i.hidden);
-        const entries: RecentItem[] = [];
-        let more = false;
-        const now = GLib.get_monotonic_time();
-        let budget = STAT_BUDGET;
-        for (const item of items) {
-            const present = this._isPresent(item, now, budget > 0);
-            if (present === null)
-                break;
-            if (present === 'stat' || present === 'dead')
-                budget--;
-            if (present === false || present === 'dead')
-                continue;
-            if (entries.length >= max) {
-                more = true;
-                break;
-            }
-            entries.push(item);
-        }
-        return {entries, more, remembering};
+        const make = (live: RecentItem[]): RecentList => ({entries: live.slice(0, max), more: live.length > max, remembering});
+        const live = this._live(items, max + 1, null);
+        return Array.isArray(live) ? make(live) : live.then(make);
     }
 
     open(item: RecentItem): void {
         this._open(item);
     }
 
-    search(query: string, token: CancelToken): SearchResult[] {
+    search(query: string, token: CancelToken): SearchResult[] | Promise<SearchResult[]> {
         if (!query.trim() || !hasAlnum(query) || !this._remembering())
             return []; // File History off: nothing is read or shown, as in list()
         this._ensureLoaded();
@@ -170,32 +159,77 @@ export class RecentFilesProvider implements SearchProvider {
         const max = maxSearchResults(this._settings);
         const items = showHidden ? this._items : this._items.filter(i => !i.hidden);
         const ranked = rankFields(query, items, item => this._fieldsOf(item));
+        const scores = new Map(ranked.map(r => [r.item, r.score]));
+        const make = (live: RecentItem[]): SearchResult[] => live.map(item => ({
+            id: item.uri,
+            providerId: this.id,
+            title: item.name,
+            description: item.folder,
+            alwaysShowDescription: true,
+            icon: item.mime ? tryGet(() => Gio.content_type_get_icon(item.mime), null) : null,
+            score: scores.get(item) ?? 0,
+            activate: () => this._open(item),
+        }));
+        const live = this._live(ranked.map(r => r.item), max, token);
+        return Array.isArray(live) ? make(live) : live.then(make);
+    }
 
-        const results: SearchResult[] = [];
+    /**
+     * The first `want` live items of `items` (in order). From the existence cache alone when it knows
+     * every item in the way (synchronous), else a promise that checks the unknown ones (STAT_BUDGET
+     * checks at most; an item whose check timed out is left out this time).
+     */
+    private _live(items: RecentItem[], want: number, token: CancelToken | null): RecentItem[] | Promise<RecentItem[]> {
+        const skip = new Set<RecentItem>();
+        const first = this._scan(items, want, skip, STAT_BUDGET);
+        if (first.unknown.length === 0)
+            return first.live;
+        return (async () => {
+            let budget = STAT_BUDGET;
+            let scan = first;
+            while (scan.unknown.length > 0 && !token?.cancelled) {
+                budget -= scan.unknown.length;
+                const unknown = scan.unknown;
+                const states = await Promise.all(unknown.map(i => this._probe.exists(i.path as string)));
+                const at = GLib.get_monotonic_time();
+                unknown.forEach((item, k) => {
+                    if (states[k] === 'timeout')
+                        skip.add(item);
+                    else
+                        this._exists.set(item.uri, {present: states[k] === 'ok', at});
+                });
+                scan = this._scan(items, want, skip, budget);
+            }
+            return token?.cancelled ? [] : scan.live;
+        })();
+    }
+
+    /**
+     * Walk `items` best first through the first `want` candidates (known live, or not known): `live` = the
+     * known-live ones, `unknown` = the ones to check. Stops at an unknown item past `budget` checks (it and
+     * everything after it stay out, as an exhausted stat budget always did).
+     */
+    private _scan(items: RecentItem[], want: number, skip: Set<RecentItem>, budget: number): {live: RecentItem[]; unknown: RecentItem[]} {
         const now = GLib.get_monotonic_time();
-        let budget = STAT_BUDGET;
-        for (const {item, score} of ranked) {
-            if (results.length >= max)
+        const live: RecentItem[] = [];
+        const unknown: RecentItem[] = [];
+        for (const item of items) {
+            if (live.length + unknown.length >= want)
                 break;
-            const present = this._isPresent(item, now, budget > 0);
-            if (present === null)
-                break; // out of stat budget
-            if (present === 'stat' || present === 'dead')
-                budget--; // every fresh stat is charged, dead files too (a slow mount blocks the same)
-            if (present === false || present === 'dead')
+            if (skip.has(item))
                 continue;
-            results.push({
-                id: item.uri,
-                providerId: this.id,
-                title: item.name,
-                description: item.folder,
-                alwaysShowDescription: true,
-                icon: item.mime ? tryGet(() => Gio.content_type_get_icon(item.mime), null) : null,
-                score,
-                activate: () => this._open(item),
-            });
+            const known = this._known(item, now);
+            if (known === false)
+                continue;
+            if (known === true) {
+                live.push(item);
+                continue;
+            }
+            if (unknown.length >= budget)
+                break;
+            unknown.push(item);
         }
-        return results;
+        return {live, unknown};
     }
 
     private _fieldsOf(item: RecentItem): readonly Field[] {
@@ -207,31 +241,33 @@ export class RecentFilesProvider implements SearchProvider {
         return fields;
     }
 
-    /**
-     * true / false from the cache or a non-local uri; 'stat' / 'dead' when it had to stat and the
-     * file exists / is missing (both cost budget); null: no budget left.
-     */
-    private _isPresent(item: RecentItem, now: number, canStat: boolean): boolean | 'stat' | 'dead' | null {
+    /** true / false from the cache (or a non-local uri, which cannot be checked cheaply: kept); null = check it. */
+    private _known(item: RecentItem, now: number): boolean | null {
         if (!item.path || item.path.includes('/gvfs/'))
-            return true; // non-local uri: cannot check cheaply (a stat could block), keep it
+            return true;
         const known = this._exists.get(item.uri);
-        if (known && now - known.at < EXISTS_TTL_US)
-            return known.present;
-        if (!canStat)
-            return null;
-        const present = GLib.file_test(item.path, GLib.FileTest.EXISTS);
-        this._exists.set(item.uri, {present, at: now});
-        return present ? 'stat' : 'dead';
+        return known && now - known.at < EXISTS_TTL_US ? known.present : null;
     }
 
     private _open(item: RecentItem): void {
         // Re-check: the cache can be a few seconds old, and an editor would happily create
-        // a brand-new empty file for a path that was deleted in the meantime.
-        if (item.path && !item.path.includes('/gvfs/') && !GLib.file_test(item.path, GLib.FileTest.EXISTS)) {
-            this._exists.set(item.uri, {present: false, at: GLib.get_monotonic_time()});
-            this._notify(`${item.name} no longer exists`, item.folder);
+        // a brand-new empty file for a path that was deleted in the meantime. A check that does
+        // not answer in time (a slow share) does not stop the launch.
+        if (!item.path || item.path.includes('/gvfs/')) {
+            this._launch(item);
             return;
         }
+        this._probe.exists(item.path).then(state => {
+            if (state === 'missing') {
+                this._exists.set(item.uri, {present: false, at: GLib.get_monotonic_time()});
+                this._notify(`${item.name} no longer exists`, item.folder);
+                return;
+            }
+            this._launch(item);
+        }).catch(e => error(`opening ${item.uri} failed`, e));
+    }
+
+    private _launch(item: RecentItem): void {
         try {
             const context = global.create_app_launch_context(0, -1);
             Gio.AppInfo.launch_default_for_uri_async(item.uri, context, null, (_source, res) => {
