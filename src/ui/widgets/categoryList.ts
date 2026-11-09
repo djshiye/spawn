@@ -430,7 +430,13 @@ export class CategoryList {
     /** The visible height of the list as last allocated (page_size: reading the actor's height could force a layout). */
     private _viewHeight(): number {
         const page = this._appsScroll.vadjustment.page_size;
-        return page > 0 ? page : FALLBACK_VIEW_HEIGHT * this._scale();
+        if (page > 0)
+            return page;
+        // Never shown yet: the view stack it sits in (its allocation property: no layout is forced) bounds it.
+        const parent = this.actor.get_parent();
+        const box = parent?.allocation;
+        const height = box ? box.get_height() : 0;
+        return height > 0 ? height : FALLBACK_VIEW_HEIGHT * this._scale();
     }
 
     /** Rows that fill the visible part of the list, plus BUFFER_ROWS. */
