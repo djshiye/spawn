@@ -13,7 +13,7 @@ import GLib from 'gi://GLib';
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 import {SpawnSettings} from './core/settings.js';
-import {versionOf} from './core/updateNotice.js';
+import {parseMetadataVersion, versionOf} from './core/updateNotice.js';
 import type {PrefsContext} from './prefs/context.js';
 import {createAboutPage} from './prefs/pages/about.js';
 import {createAppearancePage} from './prefs/pages/appearance.js';
@@ -51,6 +51,16 @@ function buildPage(ctx: PrefsContext, [name, title, create]: (typeof PAGES)[numb
     }
 }
 
+/** The version in the installed metadata.json (null when it cannot be read). */
+function installedVersion(dir: string): string | null {
+    try {
+        const [ok, bytes] = GLib.file_get_contents(GLib.build_filenamev([dir, 'metadata.json']));
+        return ok ? parseMetadataVersion(new TextDecoder().decode(bytes)) : null;
+    } catch {
+        return null;
+    }
+}
+
 export default class SpawnPreferences extends ExtensionPreferences {
     override async fillPreferencesWindow(window: Parameters<ExtensionPreferences['fillPreferencesWindow']>[0]): Promise<void> {
         // Zip install: <extension dir>/schemas. RPM install: the system schema directory (no schemas/ here).
@@ -76,7 +86,8 @@ export default class SpawnPreferences extends ExtensionPreferences {
         if (initial)
             window.set_visible_page(initial);
         // A package update leaves the shell on the old code: say so (prefs/updateToast.ts).
-        showUpdateNoticeIfNeeded(window, versionOf(this.metadata));
+        // `this.metadata` is what the running shell loaded (the OLD version); the file on disk is the installed one.
+        showUpdateNoticeIfNeeded(window, installedVersion(this.path) ?? versionOf(this.metadata));
         window.connect('notify::visible-page', () => {
             const index = pages.findIndex(page => page === window.get_visible_page());
             if (index >= 0 && index !== ctx.settings.get('prefs-visible-page'))
