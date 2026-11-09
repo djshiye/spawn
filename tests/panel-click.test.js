@@ -51,12 +51,25 @@ test('right clicks, keyboard closes and clicks on the Spawn button itself are no
     assert(panelClickTarget({x: 1, y: 1, button: PRIMARY}, w.anchor, w.deps) === null);
 });
 
-test('no button under the click, a click off the panel, or another panel: nothing', () => {
+test('a button in ANOTHER panel (a second monitor\'s Dash to Panel) is clicked too, not only the anchor\'s panel', () => {
+    const w = world();
+    w.at['60,5'] = w.other.children[0];
+    assert(panelClickTarget({x: 60, y: 5, button: PRIMARY}, w.anchor, w.deps) === w.other.children[0]);
+});
+
+test('the clock and quick settings (panel menu buttons, not St.Buttons) are targets when isButton accepts them', () => {
+    const w = world();
+    const clock = node('clock-button', [node('clock-label2')], true);
+    w.panel.children.push(clock);
+    clock.parent = w.panel;
+    w.at['70,5'] = clock.children[0];
+    assert(panelClickTarget({x: 70, y: 5, button: PRIMARY}, w.anchor, w.deps) === clock);
+});
+
+test('no button under the click, or a click off every panel: nothing', () => {
     const w = world();
     w.at['50,5'] = w.label;                  // a plain label in the panel, no button around it
-    w.at['60,5'] = w.other.children[0];      // a button in another panel
     assert(panelClickTarget({x: 50, y: 5, button: PRIMARY}, w.anchor, w.deps) === null);
-    assert(panelClickTarget({x: 60, y: 5, button: PRIMARY}, w.anchor, w.deps) === null);
     assert(panelClickTarget({x: 500, y: 500, button: PRIMARY}, w.anchor, w.deps) === null);
     assert(panelClickTarget({x: 10, y: 5, button: PRIMARY}, null, w.deps) === null);
 });
