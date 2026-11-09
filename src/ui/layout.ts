@@ -274,7 +274,7 @@ export class SpawnLayout implements ShortcutHost {
             tooltips: this._tooltips,
         };
         this._folderHost = {
-            open: uuid => this._showFolder(uuid),
+            open: (uuid, pointer) => this._showFolder(uuid, pointer),
             openContext: (tile, uuid) => this._context.open(tile, {kind: 'folder', uuid}),
             tooltips: this._tooltips,
         };
@@ -1409,7 +1409,8 @@ export class SpawnLayout implements ShortcutHost {
 
     // ---- folders ----
 
-    private _showFolder(uuid: string): void {
+    /** `pointer`: opened with a click, so no app is highlighted until the pointer or an arrow key picks one. */
+    private _showFolder(uuid: string, pointer = false): void {
         const fv = this._ensureFolderView();
         // The card opens next to the folder it came from when that folder is on screen (pinned view).
         const tile = this._view === 'pinned' ? this._tileEntries.get(`f:${uuid}`)?.widget ?? null : null;
@@ -1418,9 +1419,13 @@ export class SpawnLayout implements ShortcutHost {
         if (!fv.show(uuid, this._isOpen, tile?.mapped ? tile : null))
             return;
         this._setView('folder');
-        const first = fv.tiles()[0];
-        if (this._isOpen)
-            (first ?? fv.headerButtons()[0]).grab_key_focus();
+        if (!this._isOpen)
+            return;
+        if (pointer) {
+            fv.focusCard();
+            return;
+        }
+        (fv.tiles()[0] ?? fv.headerButtons()[0]).grab_key_focus();
     }
 
     // ---- delete folder + undo ----

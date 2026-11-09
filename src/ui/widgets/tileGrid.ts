@@ -9,7 +9,8 @@
 // Public API:
 //   new TileGrid()
 //   grid.actor: St.BoxLayout
-//   grid.setTiles(tiles: St.Widget[], columns: number, tileWidth: number, size?: PinnedItemSize): void
+//   grid.setTiles(tiles: St.Widget[], columns: number, tileWidth: number, size?: PinnedItemSize, gutter?: number): void
+//                                     gutter: the transparent padding at each row end (default 16; the folder card uses 8)
 //                               tileWidth <= 0 leaves the widths alone (list mode: one column of
 //                               full-width rows; the grid then carries `spawn-pinned-list`)
 //                               size: the pinned-item-size tier, carried as a `spawn-size-*` class
@@ -34,6 +35,7 @@ export class TileGrid {
     private _tiles: St.Widget[] = [];
     private _columns = 1;
     private _width = -1;
+    private _gutter = GUTTER;
 
     constructor() {
         this.actor = new St.BoxLayout({
@@ -52,7 +54,7 @@ export class TileGrid {
         return this._tiles;
     }
 
-    setTiles(tiles: St.Widget[], columns: number, tileWidth: number, size: PinnedItemSize = 'Compact'): void {
+    setTiles(tiles: St.Widget[], columns: number, tileWidth: number, size: PinnedItemSize = 'Compact', gutter = GUTTER): void {
         const sizeClass = sizeMetrics(size).styleClass;
         for (const c of SIZE_CLASSES) {
             if (c !== sizeClass)
@@ -60,7 +62,7 @@ export class TileGrid {
         }
         this.actor.add_style_class_name(sizeClass);
 
-        const same = this._columns === Math.max(1, columns) && this._width === tileWidth && tiles.length > 0 &&
+        const same = this._columns === Math.max(1, columns) && this._width === tileWidth && this._gutter === gutter && tiles.length > 0 &&
             tiles.length === this._tiles.length && tiles.every((t, i) => t === this._tiles[i] && t.get_parent()?.get_parent() === this.actor);
         // Nothing moved (a model refresh that changed nothing visible): leave the rows alone, so the
         // keyboard focus on a tile survives it.
@@ -68,6 +70,7 @@ export class TileGrid {
             return;
         this._columns = Math.max(1, columns);
         this._width = tileWidth;
+        this._gutter = gutter;
         this._tiles = tiles;
         // Detach tiles first so destroying the old rows does not destroy them.
         for (const row of this.actor.get_children()) {
@@ -86,9 +89,9 @@ export class TileGrid {
             const left = tileWidth > 0 && col === 0;
             const right = tileWidth > 0 && col === this._columns - 1;
             // the gutter is the button's own transparent padding (inline: its class list stays stable)
-            tile.set_style(`${left ? `padding-left: ${GUTTER}px;` : ''}${right ? `padding-right: ${GUTTER}px;` : ''}` || null);
+            tile.set_style(`${left ? `padding-left: ${gutter}px;` : ''}${right ? `padding-right: ${gutter}px;` : ''}` || null);
             // The tile is `tileWidth` wide where it draws; the gutter is extra, transparent, clickable.
-            tile.set_width(tileWidth > 0 ? tileWidth + (left ? GUTTER : 0) + (right ? GUTTER : 0) : -1);
+            tile.set_width(tileWidth > 0 ? tileWidth + (left ? gutter : 0) + (right ? gutter : 0) : -1);
             row?.add_child(tile);
         });
         if (this._columns === 1 && tileWidth <= 0)

@@ -6,7 +6,7 @@
 # The one source of truth for the version is package.json; this line, metadata.json "version-name" and the
 # Changelog are kept equal by tools/bump-version.sh (publish.sh and %%check refuse a mismatch).
 Name:           spawn
-Version:        1.1.1
+Version:        1.1.2
 # tools/publish.sh appends .<commit count> so every build from main is a newer release.
 Release:        1%{?release_suffix}%{?dist}
 Summary:        Fast, resilient application menu for GNOME Shell (ArcMenu replacement)
@@ -83,6 +83,9 @@ glib-compile-schemas --strict --dry-run %{buildroot}%{_datadir}/glib-2.0/schemas
 %{_datadir}/glib-2.0/schemas/org.gnome.shell.extensions.spawn.gschema.xml
 
 %changelog
+* Mon Nov 09 2026 Dino Klisura <115914552+djshiye@users.noreply.github.com> - 1.1.2-1
+- Folder popup: one highlight at a time, compact card; package renamed to spawn
+
 * Sun Nov 08 2026 Dino Klisura <115914552+djshiye@users.noreply.github.com> - 1.1.1-1
 - Folder popup opens next to its folder, solid and roomier; long app names wrap onto two lines
 

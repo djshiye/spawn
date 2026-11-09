@@ -1,12 +1,19 @@
 // FolderView: the contents of one pinned folder, shown as a popup card over the menu (like app
 // folders on GNOME, Android or iOS) instead of replacing the pinned view. The whole layout is dimmed by
-// a scrim; the card opens next to the folder it came from (below it, or above when there is no room
-// below, always inside the menu) and grows out of it. It has the folder name (click to rename inline),
+// a scrim; the card opens next to the folder it came from and grows out of it: below a grid tile (or
+// above when there is no room below), beside a list row like a submenu, always inside the menu. It has the folder name (click to rename inline),
 // a close button and the apps as a tile grid. Without a folder to anchor to it is centred. The card is
 // always opaque (see raisedSurface in theme/css.ts). The grid is always tiles, also when the pinned view
-// is a list, at least MIN_TILE_WIDTH wide and sized to the folder: 2 columns up to 4 apps, 3 up to 9,
-// then 4 (fewer when the menu is too narrow); it scrolls when the folder is taller than the menu.
+// is a list: compact, fixed-size tiles (FOLDER_TILE_WIDTH, a 40 px icon, 48 px from the Large tier up)
+// whatever the pinned grid's size, like GNOME's own app folder popovers, and sized to the folder:
+// 2 columns up to 4 apps, 3 up to 9, then 4 (fewer when the menu is too narrow); it scrolls when the
+// folder is taller than the menu.
 // Clicking the scrim, the close button or Escape (the layout) closes it.
+// One highlight at a time: pointing at an app shows its hover tint and takes the focus ring off any other
+// item (the card itself then holds the keyboard focus, without a ring); an arrow key moves on from the
+// pointed-at app and clears the tint under a resting pointer. Opened with the pointer, the card holds the
+// focus (nothing highlighted) until the pointer or an arrow key picks an app; opened with the keyboard,
+// the first app has it (as GNOME 51's own popup menus do).
 // Tiles are draggable (reorder inside the folder via ui/dnd.ts); dropping one outside the card (on
 // the scrim) or on the header takes it out of the folder. Rebuilt from PinnedStore whenever it changes.
 //
@@ -15,6 +22,7 @@
 //   view.actor: St.Widget             the scrim (full size of its parent, hidden while closed); the
 //                                     host adds it on top of the menu content
 //   view.show(uuid: string, animate?, anchor?: Clutter.Actor | null): boolean  false when the folder is gone (nothing is shown, the host went back)
+//   view.focusCard(): void            keyboard focus on the card itself: nothing highlighted (pointer open)
 //   view.hide(animate?): void         close the popup (fades out when `animate`)
 //   view.refresh(): void              re-sync with the store (also called on store changes)
 //   view.uuid: string | null
@@ -74,26 +82,34 @@ const MAX_NAME_LENGTH = 40;
 
 /**
  * Space the card keeps from the edges of the menu content, and the chrome inside the card that the
- * grid cannot use: header (40) + its spacing (8) + the card's vertical padding (2 x 16). Keep in step
- * with .spawn-folder-popup / .spawn-folder-header in stylesheet.css (an 8 px spacing scale).
+ * grid cannot use: header (32) + its spacing (4) + the card's vertical padding (2 x 12). Keep in step
+ * with .spawn-folder-popup / .spawn-folder-header in stylesheet.css.
  */
 const POPUP_MARGIN = 16;
-const CARD_CHROME_H = 40 + 8 + 2 * 16;
-/** The card's horizontal padding (2 x 8) around the grid. */
-const CARD_PAD_W = 16;
-/** TileGrid's transparent gutter at the left and right end of each row (2 x 16 px). */
-const GRID_GUTTER_W = 32;
+const HEADER_H = 32;
+const CARD_PAD_TOP = 12;
+const CARD_CHROME_H = HEADER_H + 4 + 2 * CARD_PAD_TOP;
+/** The card's horizontal padding (2 x 4) around the grid. */
+const CARD_PAD_W = 8;
+/** Transparent gutter at the left and right end of each grid row: with the card's 4 px, a 12 px inset. */
+const GRID_GUTTER = 8;
+const GRID_GUTTER_W = 2 * GRID_GUTTER;
 /** Narrowest card: room for the title, its pencil and the close button. */
-const MIN_CARD_WIDTH = 296;
+const MIN_CARD_WIDTH = 240;
 /**
- * Folder tiles are at least this wide, so two-word names ("Zoom Workplace") fit on one line and longer
- * ones wrap once, evenly; the pinned grid's tiles can be narrower than that.
+ * Width of a folder tile: two-word names ("Zoom Workplace") fit on one line, longer ones wrap once
+ * (multi-lined-labels) or end in an ellipsis. Narrower only when the menu is too.
  */
-const MIN_TILE_WIDTH = 136;
+const FOLDER_TILE_WIDTH = 112;
+/** App icons in the card: 40 px, or 48 px when the pinned grid's icons are 64 px or more (Large). */
+const FOLDER_ICON = 40;
+const FOLDER_ICON_LARGE = 48;
 /** Least grid height worth keeping the card off its folder for (about one row of tiles). */
 const MIN_SCROLL_H = 96;
 /** Gap between the folder and the card that opens from it. */
 const ANCHOR_GAP = 6;
+
+const ARROWS = new Set([Clutter.KEY_Up, Clutter.KEY_Down, Clutter.KEY_Left, Clutter.KEY_Right]);
 
 const OPEN_MS = 180;
 const CLOSE_MS = 120;
@@ -148,6 +164,14 @@ export class FolderView {
     /** The scroll view's max-height from refresh() (whole menu), and the one in effect now (_place may lower it). */
     private _maxScroll = -1;
     private _scrollCap = -1;
+    /**
+     * Has the pointer moved over the card since it opened? Until then a hover is only the card appearing
+     * under a resting pointer (Clutter sends a crossing for that too), which must not take the focus from
+     * the keyboard or highlight an app nobody pointed at.
+     */
+    private _pointerMoved = false;
+    /** The app or header button under the pointer (where the arrow keys start while the card has the focus). */
+    private _hovered: St.Widget | null = null;
 
     constructor(scope: Scope, services: Services, host: FolderViewHost) {
         this._services = services;
@@ -180,8 +204,22 @@ export class FolderView {
             orientation: Clutter.Orientation.VERTICAL,
             // A translation needs no relayout, so _place() can follow every allocation without a layout loop.
             reactive: true,
+            // Holds the keyboard while nothing is picked (no style for :focus): arrows start from the first app.
+            can_focus: true,
         });
         this._card.set_pivot_point(0.5, 0.5);
+        this._card.connect('motion-event', () => {
+            this._pointerMoved = true;
+            return Clutter.EVENT_PROPAGATE;
+        });
+        // The card holds the focus while an app is only pointed at: the first arrow key moves on from that
+        // app (the layout's key handler, further up, then sees it focused), not from the first one.
+        this._card.connect('key-press-event', (_a: Clutter.Actor, event: Clutter.Event) => {
+            const hovered = this._hovered;
+            if (global.stage.key_focus === this._card && hovered?.hover && hovered.mapped && ARROWS.has(event.get_key_symbol()))
+                hovered.grab_key_focus();
+            return Clutter.EVENT_PROPAGATE;
+        });
         this.actor.add_child(this._card);
         // Keep the card next to its folder when either changes size (rename, store change, menu resize).
         this._card.connect('notify::height', () => this._place());
@@ -199,7 +237,7 @@ export class FolderView {
         this._nameLabel = new St.Label({style_class: 'spawn-folder-title', y_align: Clutter.ActorAlign.CENTER});
         this._nameLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         nameBox.add_child(this._nameLabel);
-        nameBox.add_child(new St.Icon({icon_name: 'document-edit-symbolic', icon_size: 14, style_class: 'spawn-folder-edit-icon', y_align: Clutter.ActorAlign.CENTER}));
+        nameBox.add_child(new St.Icon({icon_name: 'document-edit-symbolic', icon_size: 12, style_class: 'spawn-folder-edit-icon', y_align: Clutter.ActorAlign.CENTER}));
         this._nameButton.set_child(nameBox);
         this._nameButton.accessible_name = _('Rename folder');
         wireItem(this._nameButton, {activate: () => this.startRename()});
@@ -208,7 +246,7 @@ export class FolderView {
         this._closeButton = makeItemButton('spawn-row spawn-folder-close');
         this._closeButton.x_expand = false;
         this._closeButton.y_align = Clutter.ActorAlign.CENTER;
-        this._closeButton.set_child(new St.Icon({icon_name: 'window-close-symbolic', icon_size: 16}));
+        this._closeButton.set_child(new St.Icon({icon_name: 'window-close-symbolic', icon_size: 14}));
         this._closeButton.accessible_name = _('Close');
         wireItem(this._closeButton, {activate: () => host.back()});
         host.tooltips?.attach(this._closeButton, null, () => _('Close'));
@@ -223,6 +261,9 @@ export class FolderView {
             visible: false,
         });
         this._hint.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+
+        this._followHover(this._nameButton);
+        this._followHover(this._closeButton);
 
         this._header.add_child(balance);
         this._header.add_child(this._nameButton);
@@ -268,6 +309,8 @@ export class FolderView {
     show(uuid: string, animate = false, anchor: Clutter.Actor | null = null): boolean {
         this._uuid = uuid;
         this._anchor = anchor;
+        this._pointerMoved = false;
+        this._hovered = null;
         this._cancelRename();
         this.refresh();
         if (this._uuid !== uuid)
@@ -350,17 +393,18 @@ export class FolderView {
         for (const t of this._tiles)
             t.destroy();
         const metrics: FolderMetrics = this._host.metrics?.() ?? {columns: 4, tileWidth: 96, iconSize: 48};
+        const iconSize = metrics.iconSize >= 64 ? FOLDER_ICON_LARGE : FOLDER_ICON;
         const tiles: St.Widget[] = [];
         const settings = this._services.settings;
         for (const entry of store.folderApps(uuid, true)) {
             const app = lookupApp(this._services, entry.id);
             if (!app) {
-                tiles.push(this._ghostTile(entry.id, metrics));
+                tiles.push(this._ghostTile(entry.id, iconSize, metrics.multiLine));
                 continue;
             }
             const name = displayName(app, settings);
             const actor = new AppTile(app, this._host, {
-                folderUuid: uuid, iconSize: metrics.iconSize, multiLine: metrics.multiLine, name,
+                folderUuid: uuid, iconSize, multiLine: metrics.multiLine, name,
             }).actor;
             enableDrag(this._tileScope, actor, {
                 id: entry.id,
@@ -369,17 +413,19 @@ export class FolderView {
                 onDragEnd: () => this._setDragging(false),
             });
             acceptDrops(this._tileScope, actor, store, {kind: 'app', id: entry.id, folderUuid: uuid});
+            this._followHover(actor);
             tiles.push(actor);
         }
         this._tiles = tiles;
 
         const room = metrics.width && metrics.width > 0 ? metrics.width - 2 * POPUP_MARGIN - CARD_PAD_W - GRID_GUTTER_W : Infinity;
-        const tileWidth = Math.floor(Math.min(Math.max(metrics.tileWidth, MIN_TILE_WIDTH), Math.max(metrics.tileWidth, room)));
+        const tileWidth = Math.floor(Math.min(FOLDER_TILE_WIDTH, Math.max(metrics.tileWidth, room)));
         let columns = folderColumns(tiles.length);
         if (Number.isFinite(room))
             columns = Math.max(1, Math.min(columns, Math.floor(room / tileWidth)));
         this._columns = columns;
-        this._grid.setTiles(tiles, columns, tileWidth, metrics.size);
+        // Always the Compact tier's tile padding: the card has its own fixed, compact metrics.
+        this._grid.setTiles(tiles, columns, tileWidth, 'Compact', GRID_GUTTER);
         acceptDrops(this._tileScope, this._grid.actor, store, {kind: 'grid', index: () => -1, folderUuid: uuid});
 
         // The card hugs the grid; the scroll view takes over when the folder is taller than the menu.
@@ -395,8 +441,8 @@ export class FolderView {
     }
 
     /**
-     * Put the card next to the folder it opened from: below it, or above when it does not fit below,
-     * else as close as the menu allows; centred on a tile, aligned with the start of a full-width row.
+     * Put the card next to the folder it opened from. A tile: centred below it, or above when it does not
+     * fit below, else as close as the menu allows. A full-width list row: beside it (_placeBesideRow).
      * The open animation grows out of the side that faces the folder.
      */
     private _place(): void {
@@ -430,8 +476,12 @@ export class FolderView {
         if (![sx, sy, ax, ay, aw, ah].every(Number.isFinite))
             return;
         const left = ax - sx, top = ay - sy, bottom = top + ah;
-        // A tile: centred under it. A full-width list row: lined up with the row's icon.
-        const x = aw <= cw ? clamp(left + aw / 2 - cw / 2, POPUP_MARGIN, maxX) : clamp(left, POPUP_MARGIN, maxX);
+        if (aw > cw) {
+            this._placeBesideRow(left, top, aw, ah, cw, ch, W, maxX, maxY);
+            return;
+        }
+        // A tile: centred under it.
+        const x = clamp(left + aw / 2 - cw / 2, POPUP_MARGIN, maxX);
         let y: number;
         let below = true;
         if (bottom + ANCHOR_GAP + ch <= H - POPUP_MARGIN) {
@@ -454,8 +504,35 @@ export class FolderView {
         }
         y = clamp(y, POPUP_MARGIN, maxY);
         this._card.set_translation(x, y, 0);
-        const px = cw > 0 ? Math.max(0, Math.min(1, (left + Math.min(aw, cw) / 2 - x) / cw)) : 0.5;
+        const px = cw > 0 ? Math.max(0, Math.min(1, (left + aw / 2 - x) / cw)) : 0.5;
         this._card.set_pivot_point(px, below ? 0 : 1);
+    }
+
+    /**
+     * A list row (its chevron says "submenu"): the card opens beside the row like a cascading menu, on the
+     * chevron's side when there is room (else the other side, else as far that way as the menu allows),
+     * with its header level with the row; it moves up when it would run past the bottom of the menu.
+     */
+    private _placeBesideRow(left: number, top: number, aw: number, ah: number, cw: number, ch: number, W: number, maxX: number, maxY: number): void {
+        const clamp = (v: number, lo: number, hi: number) => Math.round(Math.max(lo, Math.min(hi, v)));
+        const rtl = this.actor.get_text_direction() === Clutter.TextDirection.RTL;
+        const after = rtl ? left - ANCHOR_GAP - cw : left + aw + ANCHOR_GAP;
+        const before = rtl ? left + aw + ANCHOR_GAP : left - ANCHOR_GAP - cw;
+        const fits = (v: number) => v >= POPUP_MARGIN && v + cw <= W - POPUP_MARGIN;
+        let x: number;
+        if (fits(after))
+            x = after;
+        else if (fits(before))
+            x = before;
+        else
+            x = rtl ? POPUP_MARGIN : maxX;
+        x = clamp(x, POPUP_MARGIN, maxX);
+        // The header's centre (card padding + half the header) on the row's centre.
+        const y = clamp(top + ah / 2 - CARD_PAD_TOP - HEADER_H / 2, POPUP_MARGIN, maxY);
+        this._card.set_translation(x, y, 0);
+        const towardRow = x + cw / 2 < left + aw / 2 ? 1 : 0;
+        const py = ch > 0 ? Math.max(0, Math.min(1, (top + ah / 2 - y) / ch)) : 0.5;
+        this._card.set_pivot_point(towardRow, py);
     }
 
     private _setScrollCap(cap: number): void {
@@ -463,18 +540,68 @@ export class FolderView {
         this.scroll.set_style(cap > 0 ? `max-height: ${cap}px;` : null);
     }
 
-    private _ghostTile(id: string, metrics: FolderMetrics): St.Widget {
+    private _ghostTile(id: string, iconSize: number, multiLine?: boolean): St.Widget {
         const name = id.replace(/\.desktop$/, '');
         const open = () => this._host.openMissingContext?.(ghost, id);
         const view = new ActionTile(name, 'application-x-executable', open, undefined, {
-            iconSize: metrics.iconSize, multiLine: metrics.multiLine, context: open,
+            iconSize, multiLine, context: open,
         });
         const ghost = view.actor;
         ghost.add_style_class_name('spawn-tile-missing');
         ghost.opacity = 130;
         rejectDrops(this._tileScope, ghost);
+        this._followHover(ghost);
         this._host.tooltips?.attach(ghost, null, () => _('%s (not installed)').format(name));
         return ghost;
+    }
+
+    /** Keyboard focus on the card itself: nothing is highlighted, the arrow keys start from the first app. */
+    focusCard(): void {
+        if (!this._destroyed && this.actor.visible)
+            this._card.grab_key_focus();
+    }
+
+    /**
+     * One highlight at a time. Pointing at `item` shows its hover tint and takes the keyboard focus ring
+     * away from any other item (the card itself holds the focus, without a ring); an arrow key then starts
+     * from the pointed-at item. An arrow key that moves the focus clears the hover tint of the item under a
+     * resting pointer, so the ring is the only highlight. Nothing changes while renaming or dragging.
+     */
+    private _followHover(item: St.Widget): void {
+        item.connect('notify::hover', () => {
+            if (this._destroyed || !this._uuid)
+                return;
+            if (!item.hover) {
+                if (this._hovered === item)
+                    this._hovered = null;
+                return;
+            }
+            if (!this._pointerMoved) {
+                // The card opened under a resting pointer: no tint until the pointer really moves.
+                item.hover = false;
+                return;
+            }
+            this._hovered = item;
+            if (this._entry || this._hint.visible || !this.actor.reactive)
+                return;
+            const focus = global.stage.key_focus as Clutter.Actor | null;
+            if (focus && focus !== this._card && this._card.contains(focus))
+                this._card.grab_key_focus();
+        });
+        // St only sets `hover` on crossings: the next pointer motion over an item whose tint the keyboard
+        // cleared sets it again.
+        item.connect('motion-event', () => {
+            this._pointerMoved = true;
+            if (!item.hover)
+                item.hover = true;
+            return Clutter.EVENT_PROPAGATE;
+        });
+        item.connect('key-focus-in', () => {
+            for (const other of [...this._tiles, ...this.headerButtons()]) {
+                if (other !== item && other.hover)
+                    other.hover = false;
+            }
+        });
     }
 
     /** Was the press inside the card (then it belongs to the card's own items)? */

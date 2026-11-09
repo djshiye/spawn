@@ -1,6 +1,6 @@
-# Folder popup look and placement: the card opens next to the folder it came from (below it, or above it
-# when there is no room below), stays inside the menu, and stays opaque with see-through custom menu
-# colours. Screenshots for list and grid display, dark custom colours and the light preset.
+# Folder popup look and placement: the card opens next to the folder it came from (below a grid tile, or
+# above it when there is no room below; beside a list row, like a submenu), stays inside the menu, and
+# stays opaque with see-through custom menu colours. Screenshots for list and grid display, dark custom colours and the light preset.
 K=/org/gnome/shell/extensions/spawn
 leave_overview
 
@@ -22,6 +22,22 @@ near() {
     expect "$3: card inside the menu" "$inside" yes
 }
 
+# beside <index> <label>: a list row's card opens beside the row like a submenu: it leaves the row's icon and
+# name uncovered (starts right of the row's middle), its header is level with the row (within 8 px, unless
+# the menu edge pushed it), and it stays inside the menu
+beside() {
+    read -r xoff dy inside <<<"$(python3 -c '
+import json, sys
+c = json.loads(sys.argv[1]); f = json.loads(sys.argv[2]); s = json.loads(sys.argv[3]); h = json.loads(sys.argv[4])
+xoff = c[0] - (f[0] + f[2] / 2)
+dy = (h[1] + h[3] / 2) - (f[1] + f[3] / 2)
+inside = c[0] >= s[0] and c[1] >= s[1] and c[0] + c[2] <= s[0] + s[2] and c[1] + c[3] <= s[1] + s[3]
+print(round(xoff), round(dy), "yes" if inside else "no")' "$(rect spawn-folder-popup 0)" "$(rect spawn-folder-row "$1")" "$(rect spawn-folder-scrim 0)" "$(rect spawn-folder-header 0)")"
+    check "$2: card beside the row, clear of its icon and name (card starts $xoff px right of the row centre)" "$([ "$xoff" -ge 0 ] && echo 0 || echo 1)"
+    check "$2: header level with the row (off by $dy px)" "$([ "${dy#-}" -le 8 ] || [ "$dy" -gt 0 ] && echo 0 || echo 1)"
+    expect "$2: card inside the menu" "$inside" yes
+}
+
 echo "-- custom colours with a see-through dark background (the reported case)"
 dconf write $K/override-menu-theme true
 dconf write $K/menu-background-color "'rgba(14,14,17,0.55)'"
@@ -29,11 +45,11 @@ dconf write $K/menu-border-color "'rgba(14,14,17,0.55)'"
 set_display List
 close_menu; open_menu 1.5
 ui_call OpenFolder 0 >/dev/null; sleep 0.9
-near spawn-folder-row 0 "list, first folder"
+beside 0 "list, first folder"
 screenshot folder-popup/list-dark
 key Escape 0.6
 ui_call OpenFolder 2 >/dev/null; sleep 0.9
-near spawn-folder-row 2 "list, last folder"
+beside 2 "list, last folder"
 screenshot folder-popup/list-dark-last
 key Escape 0.6
 
@@ -86,7 +102,7 @@ echo "-- theme colours (no override)"
 dconf write $K/override-menu-theme false
 close_menu; open_menu 1.5
 ui_call OpenFolder 0 >/dev/null; sleep 0.9
-near spawn-folder-row 0 "theme colours"
+beside 0 "theme colours"
 screenshot folder-popup/list-theme
 key Escape 0.6
 expect_state "Escape closes the folder" layout.view pinned

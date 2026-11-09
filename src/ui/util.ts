@@ -138,6 +138,16 @@ export function isCtrlPressed(): boolean {
     return Boolean(ev && (ev.get_state() & Clutter.ModifierType.CONTROL_MASK));
 }
 
+/**
+ * Is the event being handled a pointer or touch one (a click, not Return / Space)? St.Button reports a
+ * keyboard activation as button 1 too, so the event type is the only way to tell.
+ */
+export function isPointerEvent(): boolean {
+    const type = Clutter.get_current_event()?.type();
+    return type === Clutter.EventType.BUTTON_PRESS || type === Clutter.EventType.BUTTON_RELEASE ||
+        type === Clutter.EventType.TOUCH_BEGIN || type === Clutter.EventType.TOUCH_END;
+}
+
 export function isTruncated(label: St.Label): boolean {
     try {
         return label.clutter_text.get_layout().is_ellipsized();
