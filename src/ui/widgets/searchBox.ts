@@ -12,7 +12,8 @@
 //   box.text: string (get/set)
 //   box.onTextChanged(scope, cb: (text: string) => void)
 //   box.onActivate(scope, cb: () => void)                        Return pressed
-//   box.onNavigate(scope, cb: (key: number, shift: boolean) => boolean)   Up/Down/Tab/Escape...;
+//   box.onNavigate(scope, cb: (key: number, shift: boolean, ctrl: boolean) => boolean)   Up/Down/Tab/Page Up/Down,
+//                                                                 Ctrl+Return...;
 //                                                                 return true when handled
 //   box.focus(): void
 //   box.hasFocus: boolean
@@ -26,6 +27,7 @@ import St from 'gi://St';
 
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
+import {iconSize} from '../../core/limits.js';
 import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
 
@@ -33,7 +35,7 @@ export class SearchBox {
     readonly actor: St.Entry;
     private readonly _textListeners = new Set<(text: string) => void>();
     private readonly _activateListeners = new Set<() => void>();
-    private readonly _navListeners = new Set<(key: number, shift: boolean) => boolean>();
+    private readonly _navListeners = new Set<(key: number, shift: boolean, ctrl: boolean) => boolean>();
     private _silent = false;
 
     constructor(scope: Scope, settings: SpawnSettings) {
@@ -52,9 +54,9 @@ export class SearchBox {
         clearIcon.hide();
         // icon-size-misc: the size of both icons (<= 0 = the stylesheet's 16 px; -1 hands the size back to the CSS)
         const sizeIcons = (): void => {
-            const size = settings.get('icon-size-misc');
-            findIcon.icon_size = size > 0 ? size : -1;
-            clearIcon.icon_size = size > 0 ? size : -1;
+            const size = iconSize(settings.get('icon-size-misc'), -1);
+            findIcon.icon_size = size;
+            clearIcon.icon_size = size;
         };
         sizeIcons();
         settings.onChanged(scope, ['icon-size-misc'], sizeIcons);
@@ -75,8 +77,9 @@ export class SearchBox {
         ct.connect('key-press-event', (_a: Clutter.Actor, event: Clutter.Event) => {
             const key = event.get_key_symbol();
             const shift = Boolean(event.get_state() & Clutter.ModifierType.SHIFT_MASK);
+            const ctrl = Boolean(event.get_state() & Clutter.ModifierType.CONTROL_MASK);
             for (const cb of [...this._navListeners]) {
-                if (cb(key, shift))
+                if (cb(key, shift, ctrl))
                     return Clutter.EVENT_STOP;
             }
             return Clutter.EVENT_PROPAGATE;
@@ -110,7 +113,7 @@ export class SearchBox {
         scope.add(() => this._activateListeners.delete(cb), 'SearchBox activate listener');
     }
 
-    onNavigate(scope: Scope, cb: (key: number, shift: boolean) => boolean): void {
+    onNavigate(scope: Scope, cb: (key: number, shift: boolean, ctrl: boolean) => boolean): void {
         this._navListeners.add(cb);
         scope.add(() => this._navListeners.delete(cb), 'SearchBox nav listener');
     }

@@ -70,16 +70,23 @@ export class AppRow {
             icon.gicon = gicon;
         box.add_child(icon);
 
-        const text = new St.BoxLayout({
-            orientation: Clutter.Orientation.VERTICAL,
-            y_align: Clutter.ActorAlign.CENTER,
-            x_expand: true,
-        });
         const name = opts.name ?? app.get_name() ?? '';
         const label = new St.Label({text: name, style_class: 'spawn-row-label'});
         label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         const isNew = Boolean(host.isNew?.(app));
-        if (isNew) {
+        const desc = opts.description ? app.get_description() : null;
+        // A plain row (no pill, no description) puts its label straight into the row box, centred like the
+        // text column would: one actor less per row (All Apps builds hundreds).
+        const text = isNew || desc ? new St.BoxLayout({
+            orientation: Clutter.Orientation.VERTICAL,
+            y_align: Clutter.ActorAlign.CENTER,
+            x_expand: true,
+        }) : null;
+        if (!text) {
+            label.x_expand = true;
+            label.y_align = Clutter.ActorAlign.CENTER;
+            box.add_child(label);
+        } else if (isNew) {
             // The pill sits after the name; the name shrinks (ellipsis) before the pill does.
             const line = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
             label.x_expand = true;
@@ -90,17 +97,17 @@ export class AppRow {
         } else {
             text.add_child(label);
         }
-        const desc = opts.description ? app.get_description() : null;
-        if (desc) {
+        if (text && desc) {
             const dl = new St.Label({text: desc.split('\n')[0], style_class: 'spawn-row-description'});
             dl.clutter_text.ellipsize = Pango.EllipsizeMode.END;
             text.add_child(dl);
         }
-        box.add_child(text);
+        if (text)
+            box.add_child(text);
         button.set_child(opts.pinned ? box : makeFace('spawn-row-surface', box));
 
         nameItem(button, newAccessibleName(name, isNew), {label, description: desc?.split('\n')[0], listItem: !opts.pinned});
-        host.tooltips?.attach(button, label, desc ? () => `${app.get_name()}\n${desc}` : undefined);
+        host.tooltips?.attach(button, label);
         wireItem(button, {
             activate: ctrl => host.launch(app, ctrl),
             context: () => host.openContext(button, app, opts.folderUuid),

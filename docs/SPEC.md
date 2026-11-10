@@ -114,7 +114,7 @@ your area before writing code.
 - Migration: reads ArcMenu settings via a bundled copy of ArcMenu's compiled schema
   (so it works even after ArcMenu is removed), maps every v1 key and copies pinned
   folders, shows a preview of what will be imported, and offers to disable ArcMenu.
-- Dev hook (only when `dev-mode` key is true): D-Bus
+- Dev hook (DEV BUILDS ONLY: `tools/build.sh --release` leaves it out of the zip and the RPM; and only when the `dev-mode` key is true): D-Bus
   `io.github.djshiye.Spawn.Dev` with `Open()`, `Close()`, `Search(s)`,
   `Screenshot(s path)` (uses Shell.Screenshot in-process), `Benchmark(s sections)` (in-shell timings, see README)
   for headless testing; plus a `.Ui` interface (src/ui/devHooks.ts) to drive the menu.

@@ -29,7 +29,9 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
+import {ENTRY_LIST_KEYS, sanitizeEntries} from './entries.js';
 import {isValidFolderId} from './folderId.js';
+import {warn} from './log.js';
 import type {Scope} from './scope.js';
 
 export const SCHEMA_ID = 'org.gnome.shell.extensions.spawn';
@@ -177,6 +179,19 @@ function unpack<T>(variant: GLib.Variant): T {
     return variant.recursiveUnpack() as T;
 }
 
+const warnedEntries = new Set<string>();
+
+/** An entry list without its damaged entries; each damaged one is logged once per session, not on every read. */
+function readEntries(what: string, raw: unknown): Entry[] {
+    return sanitizeEntries<Entry>(raw, (entry, why) => {
+        const note = `${what}: ${why} ${JSON.stringify(entry)}`;
+        if (warnedEntries.has(note))
+            return;
+        warnedEntries.add(note);
+        warn(`ignoring a damaged entry in ${note}`);
+    });
+}
+
 function pack(typeString: string, value: unknown): GLib.Variant {
     return new GLib.Variant(typeString, value as never);
 }
@@ -209,7 +224,7 @@ export class FolderSettings {
     }
 
     get pinnedApps(): Entry[] {
-        return unpack<Entry[]>(this.raw.get_value('pinned-apps'));
+        return readEntries(`folder ${this.uuid} pinned-apps`, unpack<unknown>(this.raw.get_value('pinned-apps')));
     }
 
     set pinnedApps(value: Entry[]) {
@@ -253,6 +268,8 @@ export class SpawnSettings {
     }
 
     get<K extends SettingKey>(key: K): SettingsMap[K] {
+        if (ENTRY_LIST_KEYS.includes(key))
+            return readEntries(key, unpack<unknown>(this.raw.get_value(key))) as SettingsMap[K];
         return unpack<SettingsMap[K]>(this.raw.get_value(key));
     }
 

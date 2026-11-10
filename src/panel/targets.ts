@@ -17,6 +17,10 @@
 //   createFullscreenReveal(scope)        FullscreenReveal (panel/fullscreenReveal.ts) wired to the shell's
 //                                        own panel box and the live Dash to Panel panel boxes
 //   panelClickDeps()                     PanelClickDeps (panel/panelClick.ts) for the live stage and panels
+//   activatePanelButton(actor, button)   click a panelClickDeps().isButton actor (St.Button: `clicked`; panel menu button:
+//                                        toggle its menu)
+//   closeOtherShellPopups(keep?)         close the calendar / quick settings / any other open shell menu
+//                                        (panel/shellPopups.ts) before Spawn opens
 //   dtpWrapperOfPanel(panel)             the current Dash to Panel wrapper of an inner panel, or null
 //
 // Triggers for 'changed': extension-state-changed of Dash to Panel / App Icons Taskbar,
@@ -27,14 +31,18 @@ import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
+import type * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {AZ_TASKBAR_UUID, DTP_UUID} from '../core/constants.js';
 import {debounce, type Debounced} from '../core/debounce.js';
 import {error} from '../core/log.js';
+import {closeMenu} from '../ui/menuParams.js';
 import type {Scope} from '../core/scope.js';
 import {type ConnectableEmitter, EmitterBindings} from './emitterBinding.js';
 import {FullscreenReveal, type PanelBoxInfo} from './fullscreenReveal.js';
-import type {PanelClickDeps} from './panelClick.js';
+import {PRIMARY, type PanelClickDeps} from './panelClick.js';
+import {closeShellPopups, menusOfStatusArea, type ShellPopupDeps} from './shellPopups.js';
 import {type DtpWrapper, IntellihideHold, wrapperOfPanel} from './intellihide.js';
 import {
     type ExtensionSnapshot,
@@ -100,8 +108,49 @@ export function panelClickDeps(): PanelClickDeps {
     return {
         panels: () => panelBoxes().map(p => p.box).filter(Boolean),
         actorAt: (x, y) => global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x, y),
-        isButton: actor => actor instanceof St.Button,
+        isButton: actor => actor instanceof St.Button || actor instanceof PanelMenu.Button,
     };
+}
+
+/** What a click on a panel button does, once the closing click has been passed on (panel/panelClick.ts). */
+export function activatePanelButton(actor: unknown, button: number): void {
+    if (actor instanceof St.Button) {
+        actor.emit('clicked', button);
+        return;
+    }
+    // Activities has a dummy menu (toggle() does nothing): it opens the Overview itself.
+    if (button === PRIMARY && actor === (Main.panel.statusArea as Record<string, unknown>)['activities']) {
+        Main.overview.toggle();
+        return;
+    }
+    // Date menu, quick settings, an indicator: PanelMenu.Button opens its menu on the primary button only.
+    const menu = (actor as PanelMenu.Button | null)?.menu as {toggle?: () => void} | null | undefined;
+    if (button === PRIMARY && typeof menu?.toggle === 'function')
+        menu.toggle();
+}
+
+function shellPopupDeps(): ShellPopupDeps {
+    return {
+        menus: () => {
+            const menus = menusOfStatusArea(Main.panel.statusArea);
+            // Every panel's menu manager knows the menu that holds its grab right now (also one that is not an
+            // indicator's: a Dash to Panel app's context menu).
+            const wrappers = dtpPanels();
+            const panels: unknown[] = [Main.panel, ...(Array.isArray(wrappers) ? (wrappers as DtpWrapper[]).map(w => w?.panel) : [])];
+            for (const panel of panels) {
+                const active = (panel as {menuManager?: {activeMenu?: unknown}} | null | undefined)?.menuManager?.activeMenu;
+                if (active)
+                    menus.push(active);
+            }
+            return menus;
+        },
+        close: menu => closeMenu(menu as PopupMenu.PopupMenu, false),
+    };
+}
+
+/** Closes every other open shell menu (not those in `keep`), without animation. Returns how many it closed. */
+export function closeOtherShellPopups(keep: readonly unknown[] = []): number {
+    return closeShellPopups(shellPopupDeps(), keep);
 }
 
 export function dtpWrapperOfPanel(panel: unknown): DtpWrapper | null {

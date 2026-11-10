@@ -5,7 +5,9 @@
 // 25 live files from the shared RecentFilesProvider cache (opened with their default application; "More
 // Recent Files..." opens recent:/// when older ones exist). When GNOME's File History switch is off
 // (org.gnome.desktop.privacy remember-recent-files) the list is empty and says why. Rows are rebuilt every
-// time the view is shown.
+// time the view is shown. Recent files whose existence has to be checked first (asynchronously, see
+// RecentFilesProvider) arrive a moment later: the previous recent rows stay until then, and the host's
+// rowsChanged() is called once they are in.
 //
 // Public API:
 //   new ExtraList(services: Services, host: ExtraListHost)
@@ -13,7 +15,8 @@
 //   list.show(kind: 'favorites' | 'recent'): void   rebuild the rows
 //   list.rows(): St.Widget[]                        the rows (keyboard group)
 //   list.destroy()
-//   ExtraListHost extends TileHost: {close(), keepOpen?}   close() closes the popup
+//   ExtraListHost extends TileHost: {close(), rowsChanged?()}   close() closes the popup; rowsChanged(): the
+//                                                   rows changed after show() returned (late recent files)
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
@@ -25,7 +28,7 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 
 import {error} from '../../core/log.js';
 import type {Services} from '../../core/services.js';
-import type {RecentItem} from '../../search/providers/recentFiles.js';
+import type {RecentItem, RecentList} from '../../search/providers/recentFiles.js';
 import {displayName, iconSizeFor, showDescriptions} from '../util.js';
 import {markList, nameItem} from './a11y.js';
 import {AppRow} from './appRow.js';
@@ -37,29 +40,65 @@ export const MAX_RECENT_FILES = 25;
 
 export interface ExtraListHost extends TileHost {
     close(): void;
+    /** The rows changed after show() returned (recent files checked asynchronously). */
+    rowsChanged?(): void;
 }
 
 export class ExtraList {
     readonly actor: St.BoxLayout;
     private readonly _services: Services;
     private readonly _host: ExtraListHost;
+    /** What the rows show now, and the show() call they belong to (a late recent list must be the latest). */
+    private _shown: 'favorites' | 'recent' | null = null;
+    private _seq = 0;
+    private _destroyed = false;
 
     constructor(services: Services, host: ExtraListHost) {
         this._services = services;
         this._host = host;
         this.actor = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-list'});
+        this.actor.connect('destroy', () => {
+            this._destroyed = true;
+        });
     }
 
     show(kind: 'favorites' | 'recent'): void {
+        const seq = ++this._seq;
+        if (kind === 'favorites') {
+            this._fill(kind, () => this._fillFavorites());
+            return;
+        }
+        let recent: RecentList | Promise<RecentList>;
+        try {
+            recent = this._services.recentFiles.list(MAX_RECENT_FILES);
+        } catch (e) {
+            error('could not read the recent files', e);
+            recent = {entries: [], more: false, remembering: true};
+        }
+        if (!(recent instanceof Promise)) {
+            const list = recent;
+            this._fill(kind, () => this._fillRecent(list));
+            return;
+        }
+        // Being checked: the recent rows of the last show stay meanwhile; anything else goes now.
+        if (this._shown !== 'recent')
+            this._fill(kind, () => {});
+        recent.then(list => {
+            if (seq !== this._seq || this._destroyed)
+                return;
+            this._fill(kind, () => this._fillRecent(list));
+            this._host.rowsChanged?.();
+        }).catch(e => error('could not list the recent files', e));
+    }
+
+    private _fill(kind: 'favorites' | 'recent', fill: () => void): void {
         markList(this.actor, kind === 'favorites' ? _('Favourite apps') : _('Recent files'));
+        this._shown = kind;
         this._host.tooltips?.hide();
         for (const c of this.actor.get_children())
             c.destroy();
         try {
-            if (kind === 'favorites')
-                this._fillFavorites();
-            else
-                this._fillRecent();
+            fill();
         } catch (e) {
             error(`could not build the ${kind} list`, e);
         }
@@ -95,8 +134,7 @@ export class ExtraList {
             this._empty(_('No favourites'));
     }
 
-    private _fillRecent(): void {
-        const recent = this._services.recentFiles.list(MAX_RECENT_FILES);
+    private _fillRecent(recent: RecentList): void {
         if (!recent.remembering) {
             this._empty(_('File history is turned off in the privacy settings'));
             return;
@@ -131,7 +169,7 @@ export class ExtraList {
         box.add_child(text);
         button.set_child(makeFace('spawn-row-surface', box));
         nameItem(button, title, {label, description, listItem: true});
-        this._host.tooltips?.attach(button, label, description ? () => `${title}\n${description}` : undefined);
+        this._host.tooltips?.attach(button, label);
         wireItem(button, {activate: ctrl => activate(ctrl)});
         return button;
     }

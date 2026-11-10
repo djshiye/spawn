@@ -31,6 +31,8 @@ export interface AppsProviderOptions {
 export class AppsProvider implements SearchProvider {
     readonly id = 'apps';
     readonly title = 'Applications';
+    /** In memory and synchronous: answers every keystroke, without the engine's debounce. */
+    readonly immediate = true;
 
     private readonly _index: AppIndex;
     private readonly _settings: SpawnSettings;
@@ -67,9 +69,9 @@ export class AppsProvider implements SearchProvider {
                 description: app.get_description() ?? undefined,
                 icon: app.get_icon(),
                 score,
-                activate: () => {
+                activate: (newWindow = false) => {
                     try {
-                        launchApp(app, this._settings, false);
+                        launchApp(app, this._settings, newWindow);
                     } catch (e) {
                         error(`launching ${app.get_id()} failed`, e);
                     }

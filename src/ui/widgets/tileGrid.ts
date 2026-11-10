@@ -29,6 +29,8 @@ import {SIZE_CLASSES, sizeMetrics} from './pinnedSize.js';
  * the left pane has no padding of its own, so its 8 px edge + the 8 px grid gutter both belong to the tiles.
  */
 const GUTTER = 16;
+/** The tile's side padding in stylesheet.css (.spawn-tile): the visible face is inset by it, the gutter comes on top. */
+const TILE_INSET = 3;
 
 export class TileGrid {
     readonly actor: St.BoxLayout;
@@ -89,7 +91,7 @@ export class TileGrid {
             const left = tileWidth > 0 && col === 0;
             const right = tileWidth > 0 && col === this._columns - 1;
             // the gutter is the button's own transparent padding (inline: its class list stays stable)
-            tile.set_style(`${left ? `padding-left: ${gutter}px;` : ''}${right ? `padding-right: ${gutter}px;` : ''}` || null);
+            tile.set_style(`${left ? `padding-left: ${gutter + TILE_INSET}px;` : ''}${right ? `padding-right: ${gutter + TILE_INSET}px;` : ''}` || null);
             // The tile is `tileWidth` wide where it draws; the gutter is extra, transparent, clickable.
             tile.set_width(tileWidth > 0 ? tileWidth + (left ? gutter : 0) + (right ? gutter : 0) : -1);
             row?.add_child(tile);

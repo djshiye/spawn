@@ -6,6 +6,11 @@
 // walk as GNOME's Places extension. Bookmarks are read from ~/.config/gtk-3.0/bookmarks (or
 // ~/.gtk-bookmarks) and re-read, debounced, when the file changes (a Gio.FileMonitor that also
 // notices the file being created or replaced). Nothing is watched while the matching setting is off.
+// All bookmark I/O is asynchronous (the file read, and each local bookmark's name / icon through a
+// FileProbe with a deadline), so a bookmark on a hung network share can never freeze the shell: a
+// bookmark whose check overran is listed with its label and a plain folder icon, one that is gone is
+// left out. The previous list stays until the new one is complete, and listeners hear only of a
+// list that changed.
 //
 // Public API:
 //   new Places(scope: Scope, settings: SpawnSettings)
@@ -24,6 +29,7 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {debounce} from '../core/debounce.js';
+import {FileProbe} from '../core/fileProbe.js';
 import {error, warn} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {SpawnSettings} from '../core/settings.js';
@@ -32,6 +38,7 @@ import {parseBookmarks} from './bookmarkFile.js';
 const BOOKMARK_COALESCE_MS = 100;
 const MOUNT_COALESCE_MS = 50;
 const MOUNT_OPERATION_MODULE = 'resource:///org/gnome/shell/ui/shellMountOperation.js';
+const BOOKMARK_ATTRIBUTES = 'standard::display-name,standard::symbolic-icon';
 
 export interface Place {
     kind: 'device' | 'network' | 'bookmark';
@@ -155,6 +162,12 @@ class BookmarkPlace implements Place {
 
     constructor(readonly name: string, readonly icon: Gio.Icon, private readonly _file: Gio.File) {}
 
+    /** Same name, location and icon (a re-read that changed nothing need not rebuild the pane). */
+    sameAs(other: Place): boolean {
+        return other instanceof BookmarkPlace && other.name === this.name && other._file.equal(this._file) &&
+            other.icon.equal(this.icon);
+    }
+
     open(): void {
         void launchUri(this._file.get_uri(), this._file, this.name, this.icon);
     }
@@ -190,6 +203,10 @@ export class Places {
     private readonly _settings: SpawnSettings;
     private readonly _devScope: Scope;
     private readonly _bookmarkScope: Scope;
+    private readonly _probe: FileProbe;
+    /** Bumped by every bookmark read: a read that finishes after a newer one started is dropped. */
+    private _bookmarkSeq = 0;
+    private _disposed = false;
     private readonly _listeners = new Set<() => void>();
     private _devices: Place[] = [];
     private _network: Place[] = [];
@@ -202,6 +219,10 @@ export class Places {
         this._settings = settings;
         this._devScope = scope.child('places devices');
         this._bookmarkScope = scope.child('places bookmarks');
+        this._probe = new FileProbe(scope.child('places probe'));
+        scope.add(() => {
+            this._disposed = true;
+        }, 'places disposed');
         settings.onChanged(scope, ['show-external-devices', 'show-bookmarks'], () => this._sync());
         scope.add(() => this._listeners.clear(), 'places listeners');
         this._sync();
@@ -343,14 +364,6 @@ export class Places {
 
     // ---- bookmarks ----
 
-    private _bookmarksPath(): string | null {
-        const candidates = [
-            GLib.build_filenamev([GLib.get_user_config_dir(), 'gtk-3.0', 'bookmarks']),
-            GLib.build_filenamev([GLib.get_home_dir(), '.gtk-bookmarks']),
-        ];
-        return candidates.find(p => GLib.file_test(p, GLib.FileTest.EXISTS)) ?? null;
-    }
-
     private _watchBookmarks(): void {
         const scope = this._bookmarkScope;
         scope.dispose();
@@ -372,47 +385,86 @@ export class Places {
         this._readBookmarks();
     }
 
+    private _bookmarkPaths(): string[] {
+        return [
+            GLib.build_filenamev([GLib.get_user_config_dir(), 'gtk-3.0', 'bookmarks']),
+            GLib.build_filenamev([GLib.get_home_dir(), '.gtk-bookmarks']),
+        ];
+    }
+
     private _readBookmarks(): void {
-        const path = this._bookmarksPath();
-        let entries: Array<{uri: string; label: string}> = [];
-        if (path) {
-            try {
-                const [ok, bytes] = GLib.file_get_contents(path);
-                if (ok)
-                    entries = parseBookmarks(new TextDecoder().decode(bytes));
-            } catch (e) {
-                warn(`cannot read ${path}: ${message(e)}`);
-            }
-        }
-        const out: Place[] = [];
+        const seq = ++this._bookmarkSeq;
+        this._loadBookmarks(seq).catch(e => warn(`cannot read the bookmarks: ${message(e)}`));
+    }
+
+    private _current(seq: number): boolean {
+        return !this._disposed && !this._fake && this._watchingBookmarks && seq === this._bookmarkSeq;
+    }
+
+    private async _loadBookmarks(seq: number): Promise<void> {
+        const text = await this._readBookmarkFile();
+        if (!this._current(seq))
+            return;
+        const entries = text === null ? [] : parseBookmarks(text);
         const seen = new Set<string>();
-        for (const {uri, label} of entries) {
-            if (seen.has(uri))
-                continue;
-            seen.add(uri);
-            try {
-                const file = Gio.File.new_for_uri(uri);
-                let name = label;
-                let icon: Gio.Icon;
-                if (file.is_native()) {
-                    let info: Gio.FileInfo;
-                    try {
-                        info = file.query_info('standard::display-name,standard::symbolic-icon', Gio.FileQueryInfoFlags.NONE, null);
-                    } catch {
-                        continue; // gone: skip it like the file manager's sidebar greys it out
-                    }
-                    name = name || info.get_display_name();
-                    icon = info.get_symbolic_icon() ?? Gio.ThemedIcon.new('folder-symbolic');
-                } else {
-                    name = name || file.get_basename() || uri;
-                    icon = Gio.ThemedIcon.new('folder-remote-symbolic');
-                }
-                out.push(new BookmarkPlace(name, icon, file));
-            } catch (e) {
-                warn(`skipping bookmark ${uri}: ${message(e)}`);
-            }
-        }
+        const unique = entries.filter(({uri}) => !seen.has(uri) && Boolean(seen.add(uri)));
+        const places = await Promise.all(unique.map(({uri, label}) => this._bookmark(uri, label)));
+        if (!this._current(seq))
+            return;
+        const out = places.filter((p): p is BookmarkPlace => p !== null);
+        const old = this._bookmarks;
+        if (out.length === old.length && out.every((p, i) => p.sameAs(old[i])))
+            return;
         this._bookmarks = out;
         this._emit();
     }
+
+    /** The first bookmarks file that exists, read asynchronously; null when there is none (or it cannot be read). */
+    private async _readBookmarkFile(): Promise<string | null> {
+        for (const path of this._bookmarkPaths()) {
+            const file = Gio.File.new_for_path(path);
+            const cancellable = new Gio.Cancellable();
+            const release = this._bookmarkScope.add(() => cancellable.cancel(), 'bookmarks read');
+            try {
+                const bytes = await new Promise<Uint8Array>((resolve, reject) => {
+                    file.load_contents_async(cancellable, (_f: Gio.File | null, res: Gio.AsyncResult) => {
+                        try {
+                            resolve(file.load_contents_finish(res)[1]);
+                        } catch (e) {
+                            reject(e);
+                        }
+                    });
+                });
+                return new TextDecoder().decode(bytes);
+            } catch (e) {
+                if (e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
+                    continue;
+                if (!(e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED)))
+                    warn(`cannot read ${path}: ${message(e)}`);
+                return null;
+            } finally {
+                release();
+            }
+        }
+        return null;
+    }
+
+    /** One bookmark: a local folder's own name and icon (checked asynchronously), null when it is gone. */
+    private async _bookmark(uri: string, label: string): Promise<BookmarkPlace | null> {
+        try {
+            const file = Gio.File.new_for_uri(uri);
+            if (!file.is_native())
+                return new BookmarkPlace(label || file.get_basename() || uri, Gio.ThemedIcon.new('folder-remote-symbolic'), file);
+            const {state, info} = await this._probe.query(file, BOOKMARK_ATTRIBUTES);
+            if (state === 'missing')
+                return null; // gone: skip it like the file manager's sidebar greys it out
+            if (state === 'timeout' || !info) // too slow to answer (a hung share): listed, with a plain icon
+                return new BookmarkPlace(label || file.get_basename() || uri, Gio.ThemedIcon.new('folder-symbolic'), file);
+            return new BookmarkPlace(label || info.get_display_name(), info.get_symbolic_icon() ?? Gio.ThemedIcon.new('folder-symbolic'), file);
+        } catch (e) {
+            warn(`skipping bookmark ${uri}: ${message(e)}`);
+            return null;
+        }
+    }
 }
+

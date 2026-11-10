@@ -48,12 +48,15 @@ n="$(rs results)"
 check "'zzqx' has a result ($n)" "$([ "$n" -ge 1 ] && echo 0 || echo 1)"
 screenshot runner-results
 
-echo "-- Down moves into the rows, Up back to the entry, typing from a row returns to the entry"
+echo "-- Down / Up move the highlight while the focus stays in the entry; Tab moves into the rows; typing from a row returns to the entry"
+expect "the first result is highlighted" "$(rs selectedIndex)" 0
 key Down 0.4
-expect "Down focuses a row" "$(rs focus)" row
+expect "Down keeps the typing focus in the entry" "$(rs focus)" entry
+expect "Down moves the highlight to the second result (wrapping)" "$(rs selectedIndex)" "$((1 % n))"
 key Up 0.4
-expect "Up returns to the entry" "$(rs focus)" entry
-key Down 0.4
+expect "Up moves it back to the first" "$(rs selectedIndex)" 0
+key Tab 0.4
+expect "Tab focuses the highlighted row" "$(rs focus)" row
 key q 0.4
 expect "typing from a row goes back to the entry" "$(rs focus)" entry
 expect "... and appends to the query" "$(rs query)" zzqxq

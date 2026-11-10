@@ -52,7 +52,7 @@ import type {Scope} from '../core/scope.js';
 import type {FullscreenReveal} from '../panel/fullscreenReveal.js';
 import type {IntellihideHold} from '../panel/intellihide.js';
 import {type ClickLike, panelClickTarget} from '../panel/panelClick.js';
-import {createFullscreenReveal, createIntellihideHold, panelClickDeps} from '../panel/targets.js';
+import {activatePanelButton, closeOtherShellPopups, createFullscreenReveal, createIntellihideHold, panelClickDeps} from '../panel/targets.js';
 import {isActorAlive} from '../panel/validate.js';
 import type {FakePlace} from '../model/places.js';
 import {installUiDevHooks} from './devHooks.js';
@@ -208,6 +208,8 @@ export class SpawnPopup {
             if (this._anchor !== anchor || this._side !== this._sideOf(anchor))
                 this._attach(anchor);
             if (this._menu) {
+                // Another shell menu (calendar, quick settings, a tray icon ...) holding the grab closes first.
+                closeOtherShellPopups([this._menu]);
                 // Reveal an intellihide panel BEFORE the menu positions itself against the button.
                 // Likewise show a panel a fullscreen window has hidden, so the menu opens attached to it.
                 this._intellihide.hold(anchor);
@@ -385,8 +387,9 @@ export class SpawnPopup {
     }
 
     /**
-     * The menu closed because of a click outside it: when that click landed on a launcher in the menu's own
-     * panel (a Dash to Panel pinned app), click that launcher too, once the grab is gone (panel/panelClick.ts).
+     * The menu closed because of a click outside it: when that click landed on a button in any panel (the clock,
+     * quick settings, a tray icon, a Dash to Panel pinned app, on any monitor), click that button too, once the
+     * grab is gone (panel/panelClick.ts).
      */
     private _passClickOn(anchor: St.Widget | null): void {
         try {
@@ -396,12 +399,12 @@ export class SpawnPopup {
                 return;
             const [x, y] = event.get_coords();
             const click: ClickLike = {x, y, button: event.get_button()};
-            const target = panelClickTarget(click, anchor, panelClickDeps()) as St.Button | null;
+            const target = panelClickTarget(click, anchor, panelClickDeps());
             if (!target)
                 return;
             this._scope.idle(() => {
-                if (isActorAlive(target))
-                    target.emit('clicked', click.button);
+                if (isActorAlive(target as St.Widget))
+                    activatePanelButton(target, click.button);
             });
         } catch (e) {
             error('panel click pass-through failed', e);

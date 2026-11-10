@@ -33,10 +33,11 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {PowerType} from '../../core/constants.js';
+import {isDevMode} from '../../core/flavour.js';
 import {error} from '../../core/log.js';
 import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
-import {closeMenu, openMenu} from '../menuParams.js';
+import {closeMenu, openMenu, silenceSourceKeys} from '../menuParams.js';
 import {iconSizeFor} from '../util.js';
 import {markToolbar, nameItem} from './a11y.js';
 import {fitPowerRow, type PowerFit} from './powerFit.js';
@@ -216,6 +217,8 @@ export class PowerBar {
         this._more = {type: -1, actor: button, surface};
 
         const menu = new PopupMenu.PopupMenu(button, 0.5, St.Side.BOTTOM);
+        // The button's keys are wireItem's (Return / Space open it; Up must move the focus, not open the menu).
+        silenceSourceKeys(menu);
         menu.actor.add_style_class_name('spawn-popup spawn-power-popup');
         const manager = new PopupMenu.PopupMenuManager(button);
         manager.addMenu(menu);
@@ -253,6 +256,8 @@ export class PowerBar {
         this._menuButton = button;
 
         const menu = new PopupMenu.PopupMenu(button, 0.5, St.Side.BOTTOM);
+        // The button's keys are wireItem's (Return / Space open it; Up must move the focus, not open the menu).
+        silenceSourceKeys(menu);
         menu.actor.add_style_class_name('spawn-popup spawn-power-popup');
         const manager = new PopupMenu.PopupMenuManager(button);
         manager.addMenu(menu);
@@ -264,7 +269,7 @@ export class PowerBar {
         wireItem(button, {activate: () => {
             menu.removeAll();
             for (const type of this._enabledTypes()) {
-                if (!this._settings.get('dev-mode') && !isPowerAvailable(type, this._logind))
+                if (!isDevMode(this._settings) && !isPowerAvailable(type, this._logind))
                     continue;
                 const info = POWER_INFO[type];
                 if (!info)
@@ -281,8 +286,8 @@ export class PowerBar {
     private _refresh(): void {
         if (this._destroyed)
             return;
-        // dev-mode (headless test shell) has no session manager: show every configured button.
-        const available = (t: number) => this._settings.get('dev-mode') || isPowerAvailable(t, this._logind);
+        // The headless test shell (dev builds) has no session manager: show every configured button.
+        const available = (t: number) => isDevMode(this._settings) || isPowerAvailable(t, this._logind);
         if (this._menuButton) {
             this._menuButton.visible = this._enabledTypes().some(available);
             this._markEnds();

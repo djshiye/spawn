@@ -32,7 +32,8 @@ focus_class $ITEM 0
 key Right 0.4
 echo "focus after Right: $(state_get layout.focus)"
 state_get layout.focus | grep -q 'spawn-power-button' && { echo "FAIL Right landed on the power bar"; status=1; } || echo "ok   Right does not skip to the power bar"
-state_get layout.focus | grep -q 'spawn-user-card' && echo "ok   Right lands on the user card" || { echo "FAIL Right did not land on the user card"; status=1; }
+# Since 1.2.0 Right goes to the right-pane item at the same height (ui-panes): the card or the first shortcuts.
+state_get layout.focus | grep -Eq 'spawn-user-card|spawn-shortcut-row' && echo "ok   Right lands at the top of the right pane" || { echo "FAIL Right did not land at the top of the right pane"; status=1; }
 dconf write $K/search-entry-location "'Bottom'"
 
 echo "-- ui2 #3: closing a folder with search-hidden focuses the list, not the invisible entry"
@@ -120,7 +121,8 @@ c1="$(state_get layout.columns)"; w1="$(state_get layout.tileWidth)"
 echo "columns/tile width: $c0/$w0 -> $c1/$w1"
 check "more columns or wider tiles with the wider pane" "$([ "$c1" -gt "$c0" ] || [ "$w1" -gt "$w0" ]; echo $?)"
 tw="$(rect spawn-tile-surface 0 | python3 -c 'import json,sys; print(round(json.load(sys.stdin)[2]))')"
-expect "the visible tiles use the new tile width" "$tw" "$w1"
+# the visible tile is inset 3 px each side inside its button (.spawn-tile padding)
+expect "the visible tiles use the new tile width" "$tw" "$((w1 - 6))"
 set_display List
 
 echo "-- ui2 #8: State before the popup was ever shown logged no St critical"

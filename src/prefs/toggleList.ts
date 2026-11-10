@@ -14,7 +14,7 @@ import Gtk from 'gi://Gtk?version=4.0';
 
 import type {SettingKey} from '../core/settings.js';
 import type {PrefsContext} from './context.js';
-import {label, resetWithUndo, watch} from './widgets.js';
+import {label, listIcon, resetButton, resetWithUndo, watch} from './widgets.js';
 
 export interface ToggleListSpec {
     key: 'power-options' | 'arcmenu-extra-categories-links';
@@ -49,7 +49,7 @@ export function toggleListGroup(ctx: PrefsContext, spec: ToggleListSpec): Adw.Pr
         list.forEach(([id, enabled], index) => {
             const info = spec.items.find(p => p[0] === id);
             const row = new Adw.ActionRow({title: info?.[1] ?? `Option ${id}`});
-            row.add_prefix(new Gtk.Image({icon_name: info?.[2] ?? spec.fallbackIcon}));
+            row.add_prefix(listIcon(info?.[2] ?? spec.fallbackIcon, spec.fallbackIcon));
             const toggle = new Gtk.Switch({valign: Gtk.Align.CENTER, active: enabled});
             label(toggle, `Show ${row.title}`);
             toggle.connect('notify::active', () => {
@@ -96,9 +96,7 @@ export function toggleListGroup(ctx: PrefsContext, spec: ToggleListSpec): Adw.Pr
     build();
     watch(ctx, g, [key], build);
 
-    const reset = new Gtk.Button({label: 'Reset', valign: Gtk.Align.CENTER, css_classes: ['flat'], tooltip_text: 'Restore the defaults of this section'});
-    label(reset, `Reset ${spec.title}`);
-    reset.connect('clicked', () => resetWithUndo(ctx, spec.resetKeys, spec.resetMessage));
+    const reset = resetButton(ctx, spec.title, spec.resetKeys, () => resetWithUndo(ctx, spec.resetKeys, spec.resetMessage));
     g.set_header_suffix(reset);
     return g;
 }

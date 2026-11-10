@@ -30,6 +30,8 @@ interface WindowInfo {
 export class WindowsProvider implements SearchProvider {
     readonly id = 'windows';
     readonly title = 'Open Windows';
+    /** In memory (the window list) and synchronous: answers every keystroke, without the debounce. */
+    readonly immediate = true;
 
     private readonly _settings: SpawnSettings;
 

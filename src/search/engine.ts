@@ -1,7 +1,8 @@
 // SearchEngine: runs the enabled providers for a query.
 //
-// Responsibility: debounce keystrokes (80 ms), cancel stale queries, stream results per
-// provider (a slow provider never blocks a fast one), never throw into the UI.
+// Responsibility: debounce keystrokes (80 ms) for the providers that do I/O, run the in-memory ones
+// (`immediate`) on every keystroke, cancel stale queries, stream results per provider (a slow
+// provider never blocks a fast one), never throw into the UI.
 //
 // Public API:
 //   new SearchEngine(scope, {debounceMs?: 80})     does no work at construction
@@ -13,7 +14,9 @@
 //        (a rejection is logged and skipped). enabledProviders()/clear() only see the
 //        synchronous results of sources.
 //   engine.search(query: string, onBatch: (b: SearchBatch) => void, options?): SearchHandle
-//        Debounced (trailing, restarted by every call). Every call cancels the previous
+//        Providers with `immediate: true` run synchronously inside this call (their batches are
+//        delivered before it returns); the others are debounced (trailing, restarted by every
+//        call). Every call cancels the previous
 //        handle. onBatch is called at most once per provider, as soon as that provider
 //        finishes (synchronous providers deliver in registration order, async ones whenever
 //        they resolve), never after cancel()/dispose. An empty / whitespace-only query
@@ -24,9 +27,10 @@
 //        (benchmarks / dev hooks).
 //        (addition) SearchBatch.order is the provider's position in registration order
 //        (providers, then sources, as registered); sort sections by it, not by arrival.
-//        (addition) SearchHandle.pending is true while the debounce timer has not fired yet;
-//        handle.flush() runs a still-debounced query NOW (synchronous providers deliver
-//        before flush() returns). Used by Return pressed within the debounce window.
+//        (addition) SearchHandle.pending is true while the debounce timer has not fired yet (false
+//        when every enabled provider is immediate); handle.flush() runs the still-debounced
+//        providers NOW (synchronous providers deliver before flush() returns). Used by Return
+//        pressed within the debounce window.
 //   engine.enabledProviders(): SearchProvider[]          (addition) providers a query would run now
 //   engine.cancel(): void
 //   engine.clear(): void                                 drop caches in providers (menu closed)
@@ -34,6 +38,9 @@
 // SearchProvider contract (search/providers/*.ts):
 //   id, title                      stable ids: 'apps' | 'windows' | 'recentFiles' | 'shell:<appId>'
 //   isEnabled(): boolean           reads settings; called per query
+//   immediate?: boolean            (addition) in memory, synchronous and cheap (apps, open windows):
+//                                  runs on every keystroke, without the debounce. Only for providers
+//                                  added with addProvider(); a provider source is always debounced
 //   search(query, token): SearchResult[] | Promise<SearchResult[]>
 //        `query` is raw user text; token.cancelled turns true when superseded, providers
 //        must check it between async steps. token.cancellable (addition) is a Gio.Cancellable
@@ -65,13 +72,15 @@ export interface SearchResult {
     alwaysShowDescription?: boolean;
     /** Higher is better; comparable across providers only after rank.ts normalisation. */
     score: number;
-    /** Perform the default action (launch app, focus window, open file). */
-    activate(): void;
+    /** Perform the default action (launch app, focus window, open file). `newWindow` (Ctrl+Return / Ctrl+click): an app opens a new window. */
+    activate(newWindow?: boolean): void;
 }
 
 export interface SearchProvider {
     readonly id: string;
     readonly title: string;
+    /** Runs on every keystroke, without the debounce (in memory, synchronous, cheap). */
+    readonly immediate?: boolean;
     isEnabled(): boolean;
     search(query: string, token: CancelToken): SearchResult[] | Promise<SearchResult[]>;
     clear?(): void;
@@ -194,15 +203,19 @@ export class SearchEngine {
                 start();
             },
         };
+        if (options.immediate) {
+            this._run(query, token, onBatch, 'all');
+            return handle;
+        }
+        // The in-memory providers answer this keystroke now; the rest wait for the typing to pause.
+        this._run(query, token, onBatch, 'immediate');
+        if (token.cancelled || !this._hasDeferred())
+            return handle;
         const start = () => {
             active.start = null;
             if (!token.cancelled)
-                this._run(query, token, onBatch);
+                this._run(query, token, onBatch, 'deferred');
         };
-        if (options.immediate) {
-            start();
-            return handle;
-        }
         active.start = start;
         active.cancelTimer = this._scope.timeout(this._debounceMs, () => {
             active.cancelTimer = null;
@@ -247,6 +260,19 @@ export class SearchEngine {
         active.token.cancel();
     }
 
+    /** A provider source, or an enabled provider that is not immediate: something for the debounced run. */
+    private _hasDeferred(): boolean {
+        if (this._sources.length > 0)
+            return true;
+        return this._providers.some(p => {
+            try {
+                return !p.immediate && p.isEnabled();
+            } catch {
+                return false;
+            }
+        });
+    }
+
     private _allProviders(): SearchProvider[] {
         const all = [...this._providers];
         for (const source of this._sources) {
@@ -261,7 +287,8 @@ export class SearchEngine {
         return all;
     }
 
-    private _run(query: string, token: QueryToken, onBatch: (batch: SearchBatch) => void): void {
+    /** `which`: 'immediate' = the immediate providers only, 'deferred' = everything else, 'all' = both. */
+    private _run(query: string, token: QueryToken, onBatch: (batch: SearchBatch) => void, which: 'immediate' | 'deferred' | 'all'): void {
         const runOne = (provider: SearchProvider, order: number) => {
             const deliver = (results: unknown) => {
                 if (token.cancelled || !Array.isArray(results))
@@ -293,8 +320,12 @@ export class SearchEngine {
         for (const provider of [...this._providers]) {
             if (token.cancelled)
                 return;
-            runOne(provider, slot++ * ORDER_SLOT);
+            const order = slot++ * ORDER_SLOT;
+            if (which === 'all' || (which === 'immediate') === Boolean(provider.immediate))
+                runOne(provider, order);
         }
+        if (which === 'immediate')
+            return;
         for (const source of [...this._sources]) {
             if (token.cancelled)
                 return;

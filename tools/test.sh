@@ -44,6 +44,12 @@ for t in tests/*.test.js; do
     fi
 done
 
+# A release package must not contain the test hooks (builds the release into a temp dir, leaves build/ alone).
+echo "== tools/check-release.sh"
+if ! tools/check-release.sh; then
+    fail=1
+fi
+
 if [ "$fail" -ne 0 ]; then
     echo "TESTS FAILED" >&2
     exit 1

@@ -31,7 +31,7 @@ Enum differences from ArcMenu: `menu-button-*-click-action` is `Menu|None|Contex
 
 | Key | Type | Default | Migrates from (ArcMenu) |
 |---|---|---|---|
-| `dev-mode` | b | `false` | new |
+| `dev-mode` | b | `false` | new (dev builds only; not in the released schema) |
 | `multi-monitor` | b | `false` | `multi-monitor` |
 | `hide-activities-button` | b | `false` | `show-activities-button`  (inverted) |
 | `activate-on-launch` | b | `false` | `activate-on-launch` |

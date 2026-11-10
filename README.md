@@ -130,7 +130,7 @@ sourced by `tools/dev-shell-inner.sh` and use its helpers (`open_menu`, `key`, `
 `ui_call`, `state_get`, `expect`, `expect_state`, `check`, `screenshot`, `reset_seed`). Any other
 `tools/dev/scenarios/<name>.sh` is runnable as `tools/dev-shell.sh <name>`.
 
-Dev-only D-Bus (exported only while the sandbox's `dev-mode` setting is true):
+Dev-only D-Bus (dev builds only, never in a release package; exported only while the sandbox's `dev-mode` setting is true):
 `io.github.djshiye.Spawn.Dev` (`Open`, `Close`, `Search`, `Screenshot`, `AttachmentStatus`,
 `HotkeyStatus`, `OpenRunner`, `CloseRunner`, `RunnerState`, `EmitOverlayKey`, `Benchmark`) and `io.github.djshiye.Spawn.Ui` at
 `/io/github/djshiye/Spawn/Ui` (`Search`, `ShowView`, `OpenFolder`, `Key`, `Click`, `Move`, `Drag`,

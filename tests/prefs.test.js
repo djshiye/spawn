@@ -21,7 +21,8 @@ GLib.spawn_command_line_sync(`rm -rf ${tmp}`); // the compiled schema is already
 
 const {SpawnSettings, SCHEMA_ID, FOLDER_SCHEMA_ID, FolderSettings} = await import('../build/core/settings.js');
 const {applyMigration} = await import('../build/migrate/arcmenu.js');
-const {resetKeys, resetWithUndo} = await import('../build/prefs/widgets.js');
+const {resetKeys, resetWithUndo, isModified} = await import('../build/prefs/widgets.js');
+const {friendlyIconName} = await import('../build/prefs/iconName.js');
 
 const PATH = '/org/gnome/shell/extensions/spawn/';
 
@@ -151,6 +152,27 @@ test('SpawnSettings.batch: reverts everything when the callback throws, and repo
     });
     assertEquals(shell.get_int('menu-height'), 900);
     assertEquals(shell.get_int('left-panel-width'), 420);
+});
+
+test('isModified follows the settings live: only a value that differs from the default counts', () => {
+    const {prefs} = fixture();
+    const ctx = {settings: prefs};
+    assertEquals(isModified(ctx, ['menu-height', 'left-panel-width']), false);
+    prefs.set('menu-height', 700);
+    assertEquals(isModified(ctx, ['menu-height', 'left-panel-width']), true);
+    assertEquals(isModified(ctx, ['left-panel-width']), false);
+    prefs.set('menu-height', 600); // written, but equal to the default
+    assertEquals(isModified(ctx, ['menu-height']), false);
+    prefs.set('menu-height', 700);
+    resetKeys(ctx, ['menu-height']);
+    assertEquals(isModified(ctx, ['menu-height']), false);
+});
+
+test('friendlyIconName shows a tidy label, never a raw file name', () => {
+    assertEquals(friendlyIconName('icon-apps-symbolic'), 'Icon apps');
+    assertEquals(friendlyIconName('distro-fedora.svg'), 'Fedora');
+    assertEquals(friendlyIconName('start-here-symbolic.svg'), 'Start here');
+    assertEquals(friendlyIconName('/home/me/Pictures/logo.png'), 'logo.png');
 });
 
 run();
