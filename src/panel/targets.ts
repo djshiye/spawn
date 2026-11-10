@@ -17,8 +17,12 @@
 //   createFullscreenReveal(scope)        FullscreenReveal (panel/fullscreenReveal.ts) wired to the shell's
 //                                        own panel box and the live Dash to Panel panel boxes
 //   panelClickDeps()                     PanelClickDeps (panel/panelClick.ts) for the live stage and panels
-//   activatePanelButton(actor, button)   click a panelClickDeps().isButton actor (St.Button: `clicked`; panel menu button:
-//                                        toggle its menu)
+//   activatePanelButton(actor, button, press?)  pass the closing click on to a panelClickDeps().isButton actor
+//                                        (panelClickAction: St.Button `clicked`, toggle a panel menu, or replay
+//                                        `press` to a tray icon that handles presses itself); true: it acted
+//   forwardNextRelease(scope, actor, button)  a tray icon that got the closing press replayed also gets the
+//                                        matching release (legacy tray icons click on release), unless the
+//                                        shell delivers it there itself
 //   closeOtherShellPopups(keep?)         close the calendar / quick settings / any other open shell menu
 //                                        (panel/shellPopups.ts) before Spawn opens
 //   dtpWrapperOfPanel(panel)             the current Dash to Panel wrapper of an inner panel, or null
@@ -41,7 +45,7 @@ import {closeMenu} from '../ui/menuParams.js';
 import type {Scope} from '../core/scope.js';
 import {type ConnectableEmitter, EmitterBindings} from './emitterBinding.js';
 import {FullscreenReveal, type PanelBoxInfo} from './fullscreenReveal.js';
-import {PRIMARY, type PanelClickDeps} from './panelClick.js';
+import {type PanelButtonKind, type PanelClickDeps, panelClickAction} from './panelClick.js';
 import {closeShellPopups, menusOfStatusArea, type ShellPopupDeps} from './shellPopups.js';
 import {type DtpWrapper, IntellihideHold, wrapperOfPanel} from './intellihide.js';
 import {
@@ -112,21 +116,96 @@ export function panelClickDeps(): PanelClickDeps {
     };
 }
 
-/** What a click on a panel button does, once the closing click has been passed on (panel/panelClick.ts). */
-export function activatePanelButton(actor: unknown, button: number): void {
-    if (actor instanceof St.Button) {
-        actor.emit('clicked', button);
-        return;
-    }
-    // Activities has a dummy menu (toggle() does nothing): it opens the Overview itself.
-    if (button === PRIMARY && actor === (Main.panel.statusArea as Record<string, unknown>)['activities']) {
+/** The kind of a panelClickDeps().isButton actor (panel/panelClick.ts PanelButtonKind). */
+export function panelButtonKind(actor: unknown): PanelButtonKind {
+    if (actor instanceof St.Button)
+        return {kind: 'launcher'};
+    if (!(actor instanceof PanelMenu.Button))
+        return null;
+    if (actor === (Main.panel.statusArea as Record<string, unknown>)['activities'])
+        return {kind: 'activities'};
+    // GNOME 49+: a panel menu button opens its menu from a Clutter.ClickGesture. The AppIndicator extension's
+    // tray icons (and legacy tray icons, and dummy-menu buttons) turn that gesture off and read raw presses.
+    const gesture = (actor as unknown as {_clickGesture?: {enabled?: boolean; required_button?: number}})._clickGesture;
+    if (gesture && gesture.enabled === false)
+        return {kind: 'raw'};
+    const required = Number(gesture?.required_button ?? 0);
+    return {kind: 'gesture', gestureButton: Number.isFinite(required) ? required : 0};
+}
+
+/**
+ * Pass the click that closed the menu on to a panel button (panel/panelClick.ts). `press`: a copy of the
+ * closing button-press event, replayed to a tray icon that handles presses itself. True when it acted.
+ */
+export function activatePanelButton(actor: unknown, button: number, press: Clutter.Event | null = null): boolean {
+    const action = panelClickAction(panelButtonKind(actor), button, press !== null);
+    switch (action) {
+    case 'clicked':
+        (actor as St.Button).emit('clicked', button);
+        return true;
+    case 'overview':
+        // Activities has a dummy menu (toggle() does nothing): it opens the Overview itself.
         Main.overview.toggle();
-        return;
-    }
-    // Date menu, quick settings, an indicator: PanelMenu.Button opens its menu on the primary button only.
-    const menu = (actor as PanelMenu.Button | null)?.menu as {toggle?: () => void} | null | undefined;
-    if (button === PRIMARY && typeof menu?.toggle === 'function')
+        return true;
+    case 'toggle': {
+        const menu = (actor as PanelMenu.Button | null)?.menu as {toggle?: () => void} | null | undefined;
+        if (typeof menu?.toggle !== 'function')
+            return false;
         menu.toggle();
+        return true;
+    }
+    case 'replay':
+        // Delivered like the real press (the `event` signal, then `button-press-event`), so the tray icon's own
+        // handler decides: open its menu, activate the app, secondary-activate on a middle click.
+        (actor as Clutter.Actor).event(press as Clutter.Event, false);
+        return true;
+    default:
+        return false;
+    }
+}
+
+/** How long after the closing press its release is still forwarded (a long press is not a click anymore). */
+export const RELEASE_FORWARD_MS = 2000;
+
+/**
+ * The release of the press that closed the menu goes to the closed popup's grab, not to the tray icon under
+ * the pointer (not even a stage handler sees it), so a legacy (XEmbed) tray icon, which clicks its app on release, would never fire. Forward the
+ * next release of `button` to `actor` (after the replayed press, on idle), unless it reached `actor` anyway.
+ */
+export function forwardNextRelease(scope: Scope, actor: unknown, button: number): void {
+    const watch = scope.child('forward release');
+    try {
+        const target = actor as Clutter.Actor;
+        let delivered = false;
+        watch.connect(target, 'button-release-event', () => {
+            delivered = true;
+            return Clutter.EVENT_PROPAGATE;
+        });
+        // An event filter sees the release before any grab routing does (a stage handler never gets it).
+        const filters = Clutter.Event as unknown as {
+            add_filter(stage: unknown, fn: (event: Clutter.Event) => boolean): number;
+            remove_filter(id: number): void;
+        };
+        let pending = false;
+        const id = filters.add_filter(global.stage, (event: Clutter.Event) => {
+            if (pending || event.type() !== Clutter.EventType.BUTTON_RELEASE || event.get_button() !== button)
+                return Clutter.EVENT_PROPAGATE;
+            pending = true;
+            const release = typeof event.copy === 'function' ? event.copy() : event;
+            watch.idle(() => {
+                const forward = !delivered && isActorAlive(target as Parameters<typeof isActorAlive>[0]);
+                watch.dispose();
+                if (forward)
+                    target.event(release, false);
+            });
+            return Clutter.EVENT_PROPAGATE;
+        });
+        watch.add(() => filters.remove_filter(id), 'release filter');
+        watch.timeout(RELEASE_FORWARD_MS, () => watch.dispose());
+    } catch (e) {
+        error('cannot forward the release to a tray icon', e);
+        watch.dispose();
+    }
 }
 
 function shellPopupDeps(): ShellPopupDeps {

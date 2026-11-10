@@ -92,6 +92,62 @@ test('opening on another panel puts the first one back', () => {
     assertEquals([a.box.visible, b.box.visible], [false, false]);
 });
 
+function fakeMenu() {
+    const handlers = new Map();
+    let next = 1;
+    return {
+        isOpen: false,
+        connect(sig, cb) {
+            const id = next++;
+            handlers.set(id, {sig, cb});
+            return id;
+        },
+        disconnect(id) {
+            handlers.delete(id);
+        },
+        set(open) {
+            this.isOpen = open;
+            for (const h of [...handlers.values()]) {
+                if (h.sig === 'open-state-changed')
+                    h.cb(this, open);
+            }
+        },
+        handlerCount: () => handlers.size,
+    };
+}
+
+test('a click passed on to a tray icon keeps the panel while its menu is open, then hides it', () => {
+    const p = fakePanel();
+    const {reveal, scope} = fixture([p]);
+    const menu = fakeMenu();
+    reveal.show(p.button);
+    reveal.holdWhileOpen(menu);
+    assert(p.box.visible === true, 'still shown while the tray menu may open');
+    menu.set(true);
+    assert(p.box.visible === true, 'shown while the tray menu is open');
+    menu.set(false);
+    assert(p.box.visible === false, 'hidden when the tray menu closes');
+    assert(!reveal.shown);
+    assertEquals(menu.handlerCount(), 0);
+    scope.dispose();
+});
+
+test('reopening Spawn or closing it ends a hold; no panel shown means nothing to hold', () => {
+    const p = fakePanel();
+    const {reveal, scope} = fixture([p]);
+    const menu = fakeMenu();
+    reveal.holdWhileOpen(menu);           // nothing shown: no-op
+    assertEquals(menu.handlerCount(), 0);
+    reveal.show(p.button);
+    reveal.holdWhileOpen(menu);
+    reveal.show(p.button);                // Spawn opened again on the same panel
+    assertEquals(menu.handlerCount(), 0);
+    assert(p.box.visible === true);
+    reveal.holdWhileOpen({});             // not a menu: hide at once
+    assert(p.box.visible === false);
+    scope.dispose();
+});
+
 test('a destroyed panel box and API drift never throw', () => {
     const p = fakePanel();
     const {reveal, scope, state} = fixture([{get box() { throw new Error('stale'); }}, p]);

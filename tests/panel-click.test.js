@@ -1,5 +1,5 @@
 // panelClickTarget (build/panel/panelClick.js) against a fake panel actor tree.
-import {MIDDLE, PRIMARY, panelClickTarget} from '../build/panel/panelClick.js';
+import {MIDDLE, PRIMARY, SECONDARY, panelClickAction, panelClickTarget} from '../build/panel/panelClick.js';
 import {assert, run, test} from './harness.js';
 
 // A tiny actor tree: node(name, children) with contains / get_parent like Clutter.Actor.
@@ -42,13 +42,51 @@ test('a primary or middle click on a launcher in the anchor\'s panel targets tha
     assert(panelClickTarget({x: 10, y: 5, button: MIDDLE}, w.anchor, w.deps) === w.appButton);
 });
 
-test('right clicks, keyboard closes and clicks on the Spawn button itself are not passed on', () => {
+test('a right click is passed on too (tray icons); keyboard closes and clicks on the Spawn button itself are not', () => {
     const w = world();
     w.at['10,5'] = w.appIcon;
     w.at['1,1'] = w.spawnIcon;
-    assert(panelClickTarget({x: 10, y: 5, button: 3}, w.anchor, w.deps) === null);
+    assert(panelClickTarget({x: 10, y: 5, button: SECONDARY}, w.anchor, w.deps) === w.appButton);
+    assert(panelClickTarget({x: 10, y: 5, button: 8}, w.anchor, w.deps) === null);   // a "back" side button
     assert(panelClickTarget(null, w.anchor, w.deps) === null);
     assert(panelClickTarget({x: 1, y: 1, button: PRIMARY}, w.anchor, w.deps) === null);
+    assert(panelClickTarget({x: 1, y: 1, button: SECONDARY}, w.anchor, w.deps) === null);
+});
+
+test('panelClickAction: a pinned app launches on left / middle click, its right click is left alone', () => {
+    const k = {kind: 'launcher'};
+    assert(panelClickAction(k, PRIMARY, true) === 'clicked');
+    assert(panelClickAction(k, MIDDLE, true) === 'clicked');
+    assert(panelClickAction(k, SECONDARY, true) === null);
+});
+
+test('panelClickAction: Activities opens the Overview on a left click only', () => {
+    const k = {kind: 'activities'};
+    assert(panelClickAction(k, PRIMARY, true) === 'overview');
+    assert(panelClickAction(k, SECONDARY, true) === null);
+});
+
+test('panelClickAction: the clock, quick settings and indicators toggle their menu with the buttons their gesture takes', () => {
+    const any = {kind: 'gesture', gestureButton: 0};
+    assert(panelClickAction(any, PRIMARY, true) === 'toggle');
+    assert(panelClickAction(any, SECONDARY, true) === 'toggle');
+    assert(panelClickAction(any, MIDDLE, false) === 'toggle');
+    const leftOnly = {kind: 'gesture', gestureButton: PRIMARY};
+    assert(panelClickAction(leftOnly, PRIMARY, true) === 'toggle');
+    assert(panelClickAction(leftOnly, SECONDARY, true) === null);
+});
+
+test('panelClickAction: tray icons that read raw presses get the press replayed (any button)', () => {
+    const raw = {kind: 'raw'};
+    assert(panelClickAction(raw, PRIMARY, true) === 'replay');
+    assert(panelClickAction(raw, SECONDARY, true) === 'replay');
+    assert(panelClickAction(raw, MIDDLE, true) === 'replay');
+    // Closed by a release (no press to replay): open its menu for left / right, nothing for middle.
+    assert(panelClickAction(raw, PRIMARY, false) === 'toggle');
+    assert(panelClickAction(raw, SECONDARY, false) === 'toggle');
+    assert(panelClickAction(raw, MIDDLE, false) === null);
+    assert(panelClickAction(null, PRIMARY, true) === null);
+    assert(panelClickAction(raw, 8, true) === null);
 });
 
 test('a button in ANOTHER panel (a second monitor\'s Dash to Panel) is clicked too, not only the anchor\'s panel', () => {
