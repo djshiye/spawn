@@ -52,15 +52,17 @@ import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {FullscreenReveal} from '../panel/fullscreenReveal.js';
 import type {IntellihideHold} from '../panel/intellihide.js';
-import {type ClickLike, panelClickTarget} from '../panel/panelClick.js';
+import {type ClickLike, PRIMARY, panelClickTarget} from '../panel/panelClick.js';
 import {
     activatePanelButton,
     closeOtherShellPopups,
     createFullscreenReveal,
     createIntellihideHold,
     forwardNextRelease,
+    openShellMenu,
     panelButtonKind,
     panelClickDeps,
+    setPanelHover,
 } from '../panel/targets.js';
 import {isActorAlive} from '../panel/validate.js';
 import type {FakePlace} from '../model/places.js';
@@ -90,6 +92,10 @@ export class SpawnPopup {
     private _open = false;
     private readonly _intellihide: IntellihideHold;
     private readonly _fullscreen: FullscreenReveal;
+    /** The panel button Spawn shows hovered while its grab hides crossing events (see _relayHover). */
+    private _hovered: unknown = null;
+    /** The panel menu the shell switched to under a held panel (pointer moved onto its icon), see _nextHeldMenu. */
+    private _handedOver: unknown = null;
 
     constructor(scope: Scope, services: Services) {
         this._scope = scope;
@@ -320,6 +326,12 @@ export class SpawnPopup {
             closeMenu(menu, false);
             menu.destroy();
         }, 'popup menu');
+        // The grab sends pointer motion over the panels to the popup: light up the panel button under the pointer.
+        // Connected after the 'popup menu' teardown, so it is disconnected before the popup is destroyed.
+        anchorScope.connect(menu.actor, 'captured-event', (_actor: Clutter.Actor, event: Clutter.Event) => {
+            this._relayHover(event);
+            return Clutter.EVENT_PROPAGATE;
+        });
 
         this._anchorOwned = anchorOwned;
         this._anchor = anchor;
@@ -381,6 +393,7 @@ export class SpawnPopup {
             error('popup open-state handler failed', e);
         }
         if (!open) {
+            this._clearHover();
             // Resolve a closing click on a panel launcher BEFORE a fullscreen panel hides again.
             const passedTo = this._passClickOn(anchor);
             this._intellihide.release();
@@ -388,7 +401,7 @@ export class SpawnPopup {
             // until that menu closes (or, if it never opens, hide it after a moment).
             const passedMenu = (passedTo as {menu?: unknown} | null)?.menu;
             if (passedMenu && this._fullscreen.shown)
-                this._fullscreen.holdWhileOpen(passedMenu);
+                this._fullscreen.holdWhileOpen(passedMenu, closed => this._nextHeldMenu(closed));
             else
                 this._fullscreen.restore();
         }
@@ -399,6 +412,75 @@ export class SpawnPopup {
                 error('popup listener threw', e);
             }
         }
+    }
+
+    /**
+     * Over a fullscreen game, the tray / panel menu the panel is held for closed. Which menu takes over: one the
+     * shell switched to (the pointer moved on to the next icon), or the menu of the icon a closing click landed on
+     * (that click is passed on, as for Spawn's own menu). Null: none, the panel may hide.
+     */
+    private _nextHeldMenu(closed: unknown): unknown {
+        const other = openShellMenu(closed);
+        if (other) {
+            this._handedOver = other;
+            return other;
+        }
+        const handedOver = this._handedOver === closed;
+        this._handedOver = null;
+        const source = (closed as {sourceActor?: St.Widget} | null)?.sourceActor ?? null;
+        // The shell opened this menu because the pointer moved onto its icon; the click on that icon that just
+        // closed it meant "this one": open it again (over a game the panel would otherwise be gone).
+        if (handedOver && source && this._clickLandsOn(source)) {
+            const menu = closed as {open?: (animate?: unknown) => void};
+            this._scope.idle(() => {
+                if (isActorAlive(source))
+                    menu.open?.(false);
+            });
+            return closed;
+        }
+        const target = this._passClickOn(source);
+        return (target as {menu?: unknown} | null)?.menu ?? null;
+    }
+
+    /** The event being handled is a mouse press / release on `actor`. */
+    private _clickLandsOn(actor: St.Widget): boolean {
+        try {
+            const event = Clutter.get_current_event();
+            const type = event?.type();
+            if (!event || (type !== Clutter.EventType.BUTTON_PRESS && type !== Clutter.EventType.BUTTON_RELEASE))
+                return false;
+            const [x, y] = event.get_coords();
+            const hit = panelClickDeps().actorAt(x, y);
+            return Boolean(hit && actor.contains(hit as Clutter.Actor));
+        } catch {
+            return false;
+        }
+    }
+
+    /** While the popup holds the grab, panel buttons get no crossing events: show their hover look ourselves. */
+    private _relayHover(event: Clutter.Event): void {
+        try {
+            if (event.type() !== Clutter.EventType.MOTION)
+                return;
+            const [x, y] = event.get_coords();
+            const target = this._open ? panelClickTarget({x, y, button: PRIMARY}, this._anchor, panelClickDeps()) : null;
+            if (target === this._hovered)
+                return;
+            this._clearHover();
+            if (target) {
+                setPanelHover(target, true);
+                this._hovered = target;
+            }
+        } catch (e) {
+            error('panel hover relay failed', e);
+        }
+    }
+
+    private _clearHover(): void {
+        const hovered = this._hovered;
+        this._hovered = null;
+        if (hovered)
+            setPanelHover(hovered, false);
     }
 
     /**

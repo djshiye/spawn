@@ -22,9 +22,12 @@
 //                                      wiring is createFullscreenReveal() in panel/targets.ts)
 //   reveal.show(anchor): void          before the menu opens on `anchor`: show its hidden fullscreen panel
 //   reveal.restore(): void             menu closed: hide that panel again if its monitor is still fullscreen
-//   reveal.holdWhileOpen(menu)         menu closed by a click passed on to a panel button (panel/panelClick.ts):
+//   reveal.holdWhileOpen(menu, next?)  menu closed by a click passed on to a panel button (panel/panelClick.ts):
 //                                      keep the panel while that button's `menu` is open (a tray icon's menu,
-//                                      the calendar), then hide it; hide it after HOLD_GRACE_MS if it never opens
+//                                      the calendar), then hide it; hide it after HOLD_GRACE_MS if it never opens.
+//                                      When that menu closes, `next(closed)` may name the menu that takes over
+//                                      (the pointer moved on to the next icon, or a click there was passed on):
+//                                      the panel is then held for that one instead of hiding under it.
 //   reveal.shown: boolean              a panel is being shown by Spawn
 
 import type {Scope} from '../core/scope.js';
@@ -93,7 +96,7 @@ export class FullscreenReveal {
         this._hideNow();
     }
 
-    holdWhileOpen(menu: unknown): void {
+    holdWhileOpen(menu: unknown, next: ((closed: unknown) => unknown) | null = null): void {
         this._dropHold();
         if (!this._shown)
             return;
@@ -111,7 +114,16 @@ export class FullscreenReveal {
                     opened = true;
                     return;
                 }
-                this._hideNow();
+                let following: unknown = null;
+                try {
+                    following = next?.(m) ?? null;
+                } catch (e) {
+                    warn('fullscreen panel hand-over failed', e);
+                }
+                if (following)
+                    this.holdWhileOpen(following, next);
+                else
+                    this._hideNow();
             });
             hold.timeout(HOLD_GRACE_MS, () => {
                 if (!opened && !m.isOpen)

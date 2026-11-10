@@ -132,6 +132,29 @@ test('a click passed on to a tray icon keeps the panel while its menu is open, t
     scope.dispose();
 });
 
+test('when the held menu hands over to another (next icon, the calendar), the panel is held for that one', () => {
+    const p = fakePanel();
+    const {reveal, scope} = fixture([p]);
+    const tray = fakeMenu();
+    const calendar = fakeMenu();
+    let asked = null;
+    reveal.show(p.button);
+    reveal.holdWhileOpen(tray, closed => {
+        asked = closed;
+        return closed === tray ? calendar : null;
+    });
+    tray.set(true);
+    calendar.isOpen = true;
+    tray.set(false);                      // the shell switched to the calendar
+    assert(asked === tray);
+    assert(p.box.visible === true, 'the panel stays under the calendar');
+    assertEquals(tray.handlerCount(), 0);
+    calendar.set(false);                  // nothing takes over from the calendar
+    assert(p.box.visible === false);
+    assertEquals(calendar.handlerCount(), 0);
+    scope.dispose();
+});
+
 test('reopening Spawn or closing it ends a hold; no panel shown means nothing to hold', () => {
     const p = fakePanel();
     const {reveal, scope} = fixture([p]);

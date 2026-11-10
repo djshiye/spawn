@@ -285,6 +285,11 @@ export class MenuButton extends PanelMenu.Button {
             this.remove_style_pseudo_class('active');
     }
 
+    /** A click passed on from another menu that held the grab (panel/panelClick.ts): do what a click here does. */
+    handlePassedClick(buttonNumber: number): void {
+        this._onClick(buttonNumber);
+    }
+
     private _onClick(buttonNumber: number): void {
         try {
             const key = BUTTON_ACTION_KEY[buttonNumber as keyof typeof BUTTON_ACTION_KEY];

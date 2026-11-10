@@ -23,6 +23,8 @@
 //   forwardNextRelease(scope, actor, button)  a tray icon that got the closing press replayed also gets the
 //                                        matching release (legacy tray icons click on release), unless the
 //                                        shell delivers it there itself
+//   openShellMenu(except?)              the shell / panel menu that is open right now (not `except`), or null
+//   setPanelHover(actor, hover)          show / clear a panel button's hover look (HoverRelay in ui/menu.ts)
 //   closeOtherShellPopups(keep?)         close the calendar / quick settings / any other open shell menu
 //                                        (panel/shellPopups.ts) before Spawn opens
 //   dtpWrapperOfPanel(panel)             the current Dash to Panel wrapper of an inner panel, or null
@@ -138,6 +140,12 @@ export function panelButtonKind(actor: unknown): PanelButtonKind {
  * closing button-press event, replayed to a tray icon that handles presses itself. True when it acted.
  */
 export function activatePanelButton(actor: unknown, button: number, press: Clutter.Event | null = null): boolean {
+    // Another Spawn button (a second panel's): run its own click action (it reads clicks from its own gesture).
+    const own = (actor as {handlePassedClick?: (button: number) => void} | null)?.handlePassedClick;
+    if (typeof own === 'function') {
+        own.call(actor, button);
+        return true;
+    }
     const action = panelClickAction(panelButtonKind(actor), button, press !== null);
     switch (action) {
     case 'clicked':
@@ -225,6 +233,29 @@ function shellPopupDeps(): ShellPopupDeps {
         },
         close: menu => closeMenu(menu as PopupMenu.PopupMenu, false),
     };
+}
+
+/** The shell / panel menu that is open now (the one that took over from `except`), or null. */
+export function openShellMenu(except: unknown = null): unknown {
+    try {
+        for (const menu of shellPopupDeps().menus()) {
+            if (menu && menu !== except && (menu as {isOpen?: boolean}).isOpen)
+                return menu;
+        }
+    } catch (e) {
+        error('cannot read the open shell menu', e);
+    }
+    return null;
+}
+
+/** Show (or clear) the hover look of a panel button under Spawn's grab, which keeps crossing events from it. */
+export function setPanelHover(actor: unknown, hover: boolean): void {
+    try {
+        if (actor instanceof St.Widget && isActorAlive(actor as Parameters<typeof isActorAlive>[0]))
+            actor.hover = hover;
+    } catch {
+        // a button going away: nothing to show
+    }
 }
 
 /** Closes every other open shell menu (not those in `keep`), without animation. Returns how many it closed. */
