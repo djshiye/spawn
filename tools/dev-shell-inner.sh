@@ -294,9 +294,18 @@ if [ "$with_dtp" = 1 ]; then
     cp -r "$src" "$ext_dir/$dtp_uuid"
 fi
 
+# Scenarios marked "# uses: tray-standin" get two stand-in tray icons (tools/dev/tray-standin).
+tray_uuid="spawn-tray-standin@djshiye.github.io"
+with_tray=0
+if [ -f "$root/tools/dev/scenarios/$scenario.sh" ] && grep -q '^# uses: tray-standin' "$root/tools/dev/scenarios/$scenario.sh"; then
+    cp -r "$root/tools/dev/tray-standin" "$ext_dir/$tray_uuid"
+    with_tray=1
+fi
+
 # ---------------------------------------------------------------- seed the ISOLATED dconf
 enabled="['$uuid'"
 [ "$with_dtp" = 1 ] && enabled="$enabled, '$dtp_uuid'"
+[ "$with_tray" = 1 ] && enabled="$enabled, '$tray_uuid'"
 theme_uuid="user-theme@gnome-shell-extensions.gcampax.github.com"
 theme_name="Orchis-Dark-Compact"
 if [ "$seeded" = 1 ] && [ -d "$SPAWN_REAL_DATA_HOME/gnome-shell/extensions/$theme_uuid" ] && [ -d "$SPAWN_REAL_HOME/.themes/$theme_name" ]; then

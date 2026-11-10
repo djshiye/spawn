@@ -5,6 +5,16 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-10
+
+### Fixed
+
+- **Tray icons work while the menu is open:** one left, middle or right click on a tray icon (Steam, Slack,
+  Discord and other app indicators, including older-style tray icons) closes the menu and does what that click
+  normally does: opens the icon's menu or brings up the app. A right click on the clock or the system status icons
+  opens their menu too. Over a fullscreen game the panel now stays visible while that icon's menu is open, and
+  hides again when it closes.
+
 ## [1.2.0] - 2026-11-10
 
 Fixes from four reviews of 1.1.5: logic, user experience, visuals and performance.

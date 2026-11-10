@@ -22,6 +22,9 @@
 //                                      wiring is createFullscreenReveal() in panel/targets.ts)
 //   reveal.show(anchor): void          before the menu opens on `anchor`: show its hidden fullscreen panel
 //   reveal.restore(): void             menu closed: hide that panel again if its monitor is still fullscreen
+//   reveal.holdWhileOpen(menu)         menu closed by a click passed on to a panel button (panel/panelClick.ts):
+//                                      keep the panel while that button's `menu` is open (a tray icon's menu,
+//                                      the calendar), then hide it; hide it after HOLD_GRACE_MS if it never opens
 //   reveal.shown: boolean              a panel is being shown by Spawn
 
 import type {Scope} from '../core/scope.js';
@@ -45,12 +48,24 @@ export interface FullscreenRevealDeps {
     alive?: (box: PanelBoxLike) => boolean;
 }
 
+/** How long a passed-on click may take to open its menu (a tray icon waits out the double-click time first). */
+export const HOLD_GRACE_MS = 1000;
+
+interface MenuLike {
+    isOpen?: boolean;
+    connect?: (signal: string, cb: (...args: unknown[]) => void) => number;
+    disconnect?: (id: number) => void;
+}
+
 export class FullscreenReveal {
     private readonly _deps: FullscreenRevealDeps;
+    private readonly _scope: Scope;
     private _shown: PanelBoxInfo | null = null;
+    private _hold: Scope | null = null;
 
     constructor(scope: Scope, deps: FullscreenRevealDeps) {
         this._deps = deps;
+        this._scope = scope;
         scope.add(() => this._hideNow(), 'FullscreenReveal');
     }
 
@@ -60,6 +75,7 @@ export class FullscreenReveal {
 
     show(anchor: unknown): void {
         try {
+            this._dropHold();
             const info = this._infoOf(anchor);
             if (this._shown && info && this._shown.box === info.box)
                 return; // already shown on this panel
@@ -77,6 +93,36 @@ export class FullscreenReveal {
         this._hideNow();
     }
 
+    holdWhileOpen(menu: unknown): void {
+        this._dropHold();
+        if (!this._shown)
+            return;
+        const m = menu as MenuLike | null;
+        if (typeof m?.connect !== 'function') {
+            this._hideNow();
+            return;
+        }
+        try {
+            const hold = this._scope.child('hold');
+            this._hold = hold;
+            let opened = Boolean(m.isOpen);
+            hold.connect(m as Parameters<Scope['connect']>[0], 'open-state-changed', (_m: unknown, open: unknown) => {
+                if (open) {
+                    opened = true;
+                    return;
+                }
+                this._hideNow();
+            });
+            hold.timeout(HOLD_GRACE_MS, () => {
+                if (!opened && !m.isOpen)
+                    this._hideNow();
+            });
+        } catch (e) {
+            warn('fullscreen panel hold failed', e);
+            this._hideNow();
+        }
+    }
+
     // ---- internals ----
 
     private _infoOf(anchor: unknown): PanelBoxInfo | null {
@@ -92,7 +138,14 @@ export class FullscreenReveal {
     }
 
     /** Put the panel back NOW: hidden if its monitor is still fullscreen (outside the Overview). */
+    private _dropHold(): void {
+        const hold = this._hold;
+        this._hold = null;
+        hold?.dispose();
+    }
+
     private _hideNow(): void {
+        this._dropHold();
         const shown = this._shown;
         this._shown = null;
         if (!shown?.box)

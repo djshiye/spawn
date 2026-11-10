@@ -12,8 +12,9 @@
 // fullscreen window has hidden (top bar, or Dash to Panel without intellihide) is shown while the popup is
 // open on it and hidden again on close (panel/fullscreenReveal.ts), so Super in a fullscreen game opens the
 // menu attached to its panel instead of floating at the screen edge. A click that closes the popup on a
-// launcher in its panel (a Dash to Panel pinned app) is passed on to that launcher (panel/panelClick.ts),
-// so it launches in one click, also over a fullscreen game.
+// button in a panel (a Dash to Panel pinned app, the clock, a tray icon, with the left, middle or right
+// button) is passed on to that button (panel/panelClick.ts), so it works in one click, also over a
+// fullscreen game, where the panel then stays until a menu that click opened is closed again.
 // The popup actor carries `spawn-popup spawn-menu-popup` (the theme's `menu-arrow-rise` targets
 // .spawn-menu-popup only; the runner shares .spawn-popup). `menu-position-alignment` moves a popup under
 // a panel button that is centred in the panel (see _align).
@@ -52,7 +53,15 @@ import type {Scope} from '../core/scope.js';
 import type {FullscreenReveal} from '../panel/fullscreenReveal.js';
 import type {IntellihideHold} from '../panel/intellihide.js';
 import {type ClickLike, panelClickTarget} from '../panel/panelClick.js';
-import {activatePanelButton, closeOtherShellPopups, createFullscreenReveal, createIntellihideHold, panelClickDeps} from '../panel/targets.js';
+import {
+    activatePanelButton,
+    closeOtherShellPopups,
+    createFullscreenReveal,
+    createIntellihideHold,
+    forwardNextRelease,
+    panelButtonKind,
+    panelClickDeps,
+} from '../panel/targets.js';
 import {isActorAlive} from '../panel/validate.js';
 import type {FakePlace} from '../model/places.js';
 import {installUiDevHooks} from './devHooks.js';
@@ -373,9 +382,15 @@ export class SpawnPopup {
         }
         if (!open) {
             // Resolve a closing click on a panel launcher BEFORE a fullscreen panel hides again.
-            this._passClickOn(anchor);
+            const passedTo = this._passClickOn(anchor);
             this._intellihide.release();
-            this._fullscreen.restore();
+            // A tray icon / indicator clicked over a fullscreen game opens its menu on that panel: keep the panel
+            // until that menu closes (or, if it never opens, hide it after a moment).
+            const passedMenu = (passedTo as {menu?: unknown} | null)?.menu;
+            if (passedMenu && this._fullscreen.shown)
+                this._fullscreen.holdWhileOpen(passedMenu);
+            else
+                this._fullscreen.restore();
         }
         for (const cb of [...this._listeners]) {
             try {
@@ -388,26 +403,40 @@ export class SpawnPopup {
 
     /**
      * The menu closed because of a click outside it: when that click landed on a button in any panel (the clock,
-     * quick settings, a tray icon, a Dash to Panel pinned app, on any monitor), click that button too, once the
-     * grab is gone (panel/panelClick.ts).
+     * quick settings, a tray icon, a Dash to Panel pinned app, on any monitor), click that button too, with the
+     * same mouse button, once the grab is gone (panel/panelClick.ts). Returns the button, or null.
      */
-    private _passClickOn(anchor: St.Widget | null): void {
+    private _passClickOn(anchor: St.Widget | null): unknown {
         try {
             const event = Clutter.get_current_event();
             const type = event?.type();
             if (!event || (type !== Clutter.EventType.BUTTON_PRESS && type !== Clutter.EventType.BUTTON_RELEASE))
-                return;
+                return null;
             const [x, y] = event.get_coords();
             const click: ClickLike = {x, y, button: event.get_button()};
             const target = panelClickTarget(click, anchor, panelClickDeps());
             if (!target)
-                return;
+                return null;
+            // A tray icon that reads raw presses gets this very press again: keep a copy past this dispatch.
+            let press: Clutter.Event | null = null;
+            if (type === Clutter.EventType.BUTTON_PRESS) {
+                try {
+                    press = typeof event.copy === 'function' ? event.copy() : event;
+                } catch {
+                    press = null;
+                }
+                // ... and the release that follows it (a legacy tray icon clicks its app on release).
+                if (press && panelButtonKind(target)?.kind === 'raw')
+                    forwardNextRelease(this._scope, target, click.button);
+            }
             this._scope.idle(() => {
                 if (isActorAlive(target as St.Widget))
-                    activatePanelButton(target, click.button);
+                    activatePanelButton(target, click.button, press);
             });
+            return target;
         } catch (e) {
             error('panel click pass-through failed', e);
+            return null;
         }
     }
 

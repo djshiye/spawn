@@ -1,0 +1,6 @@
+{
+  "uuid": "spawn-tray-standin@djshiye.github.io",
+  "name": "Spawn test: tray icon stand-ins",
+  "description": "Dev sandbox only: two panel icons that read raw presses like the AppIndicator extension's tray icons.",
+  "shell-version": ["49", "50", "51"]
+}
