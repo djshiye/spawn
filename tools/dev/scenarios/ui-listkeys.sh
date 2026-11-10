@@ -4,10 +4,12 @@ cls() { state_get layout.focus | cut -d. -f2 | cut -d' ' -f1; }
 echo "-- All Apps"
 open_menu 1.2
 ui_call ShowView all >/dev/null; sleep 2.5   # the first All Apps of a session builds its lists
-n="$(nrows)"
-check "All Apps lists many apps ($n)" "$([ "$n" -ge 20 ] && echo 0 || echo 1)"
+# All Apps builds its rows lazily (only a screenful at first): End must build the rest and reach the real last app.
+shown="$(nrows)"
 focus_class spawn-list-row 0
 key End 0.6
+n="$(nrows)"
+check "All Apps lists many apps ($n, $shown built before End)" "$([ "$n" -ge 20 ] && echo 0 || echo 1)"
 expect_state "End goes to the last app" layout.focusIndex "$((n - 1))"
 key Home 0.6
 expect_state "Home goes to the first app" layout.focusIndex 0
