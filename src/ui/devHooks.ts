@@ -19,6 +19,7 @@
 //                            style class list contains `cls` (popup, context menu, tooltip), or ""
 //                            Scenarios use it to find targets instead of hard-coded pixels.
 //   Count(s cls) -> i        how many visible actors carry `cls`
+//   Pseudo(s cls, i nth) -> s  the style pseudo classes of that actor ("hover active ..."), '' when absent
 //   TextRect(s text, i nth) -> s   JSON [x, y, w, h] of the nth VISIBLE St.Label whose text is exactly `text`
 //                            (a context menu item such as "Hide from Menu"), or ""
 //   FocusActor(s cls, i nth) give the nth visible actor with `cls` the keyboard focus
@@ -90,6 +91,7 @@ const IFACE = `
     <method name="Pick"><arg type="i" direction="in" name="x"/><arg type="i" direction="in" name="y"/><arg type="s" direction="out" name="actor"/></method>
     <method name="State"><arg type="s" direction="out" name="json"/></method>
     <method name="Rect"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/><arg type="s" direction="out" name="rect"/></method>
+    <method name="Pseudo"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/><arg type="s" direction="out" name="pseudo"/></method>
     <method name="Count"><arg type="s" direction="in" name="cls"/><arg type="i" direction="out" name="count"/></method>
     <method name="TextRect"><arg type="s" direction="in" name="text"/><arg type="i" direction="in" name="nth"/><arg type="s" direction="out" name="rect"/></method>
     <method name="FocusActor"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/></method>
@@ -548,6 +550,10 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
         TextRectAsync: ([text, nth]: [string, number], inv: Invocation) => reply(inv, () => {
             const a = findText(text)[nth];
             return new GLib.Variant('(s)', [a ? JSON.stringify(rectOf(a)) : '']);
+        }),
+        PseudoAsync: ([cls, nth]: [string, number], inv: Invocation) => reply(inv, () => {
+            const a = findAll(cls)[nth] as unknown as {get_style_pseudo_class?: () => string | null} | undefined;
+            return new GLib.Variant('(s)', [a?.get_style_pseudo_class?.() ?? '']);
         }),
         CountAsync: ([cls]: [string], inv: Invocation) => reply(inv, () => new GLib.Variant('(i)', [findAll(cls).length])),
         FocusActorAsync: ([cls, nth]: [string, number], inv: Invocation) => reply(inv, () => {

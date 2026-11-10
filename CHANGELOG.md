@@ -5,6 +5,18 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-11-10
+
+### Fixed
+
+- **Calendar no longer pops up in the corner over games:** over a fullscreen game, moving from one tray icon's menu
+  to the clock (or another icon) opened that menu without its panel, so the calendar floated at the top-left
+  corner. The panel now stays for as long as any of its menus is open.
+- **Switching between tray icons over games:** with one tray icon's menu open, a click or right click on another
+  icon now opens that icon's menu straight away instead of closing everything.
+- **Hover effects while the menu is open:** panel and tray icons now light up under the pointer while Spawn is open,
+  including the hover animations from your theme.
+
 ## [1.2.1] - 2026-11-10
 
 ### Fixed
