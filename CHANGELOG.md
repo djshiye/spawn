@@ -5,6 +5,59 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-10
+
+Fixes from four reviews of 1.1.5: logic, user experience, visuals and performance.
+
+### Security
+
+- **Test hooks are no longer shipped:** the developer test hooks (which can type keys, click and take screenshots)
+  are now left out of the released package entirely, and the setting that switched them on is gone from it. A
+  release check fails the build if any of them ever comes back.
+
+### Added
+
+- **Undo for more actions:** Pin, Unpin, Remove from Folder and removing a shortcut now show the same Undo banner as
+  deleting a folder or hiding an app, and Ctrl+Z works for them too. Undo puts the app back in its exact place.
+- **New folders ask for a name:** Add to Folder, New Folder opens the folder with its name ready to type.
+- **Empty pinned view:** with nothing pinned, the menu explains how to pin an app and offers a button to All Apps.
+- **Shortcut and user card menus:** right-click (or the Menu key) on a right-pane shortcut offers Open, New Window,
+  Remove from Menu and Edit Shortcuts…; the user card offers Menu Settings.
+- **More keys:** Home, End, Page Up and Page Down in every list and grid, F2 renames a folder, Delete unpins an app.
+- **Keyboard shortcuts list** on the About page of the settings window.
+- **Update notice:** after a package update, Spawn says once that you need to log out and back in to finish it, in a
+  notification and in the settings window. (This starts with the next update after 1.2.0.)
+
+### Changed
+
+- **Search keys:** typing stays in the search box and the arrow keys move one highlight through the results. With the
+  search bar at the bottom, the best match now sits right above it. Ctrl+Return opens the highlighted app in a new
+  window, as Ctrl+click does.
+- **One highlight at a time:** the mouse and the keyboard share a single highlight in every list.
+- **Left and Right between panes** land on the item at the same height, and Tab follows reading order.
+- **All Apps is much faster and lighter:** it opens in about 75 ms instead of 300 ms and uses about a seventh of the
+  memory, because rows are built as they scroll into view.
+- **Instant app results:** app search results appear on every key press instead of after a short pause.
+- **Visual polish:** right-click menus use the theme's shadow, tooltips appear only for cut-off names and no longer
+  cover the next row, the folder dimming reaches the menu edge, the folder card takes the menu's own colour, the
+  search box has a visible edge and the default avatar is visible in light themes, grid tiles have even gaps, and
+  Restart and Power Off show a red focus ring.
+- **Settings window:** a small revert icon replaces the "Reset" buttons and only appears when a group has changed,
+  list icons have consistent sizes, the Add Application dialog fits cleanly and the icon picker shows friendly names.
+
+### Fixed
+
+- **Keys stopped working on a row after its right-click menu** was used (GNOME 51).
+- **The clock, quick settings and other panel buttons** needed two clicks while the menu was open; one click now
+  works, on every panel and monitor.
+- **Super over the calendar or quick settings** opened the menu on top of it; the other menu now closes first.
+- **One damaged pinned entry or shortcut** no longer breaks the whole list, and extreme icon or button sizes set by
+  hand are clamped.
+- **Removing the last app from a folder** keeps it in the folder's place instead of moving it to the end.
+- **"Hidden" banner on a pinned app** now says it is hidden from All Apps and still pinned.
+- **Bookmarks and recent files** are checked in the background, so a hung network share can no longer freeze the
+  desktop, and recent files are not re-read every time the menu opens.
+
 ## [1.1.5] - 2026-11-09
 
 ### Fixed
