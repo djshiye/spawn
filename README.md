@@ -69,7 +69,8 @@ above (the key is downloaded from the same site as the packages, so this compari
 `spawn-enable` (installed by the package) adds the extension to GNOME's enabled list without asking the running shell:
 `gnome-extensions enable` only works for extensions the shell already knows, and it learns about a newly installed
 system-wide extension at the next login.
-The extension declares GNOME Shell 49, 50 and 51 (Fedora 43, 44 and 45). `spawn.repo` sets `gpgcheck=1` and `repo_gpgcheck=1`.
+The extension declares GNOME Shell 49, 50 and 51 (Fedora 43, 44 and 45). `spawn.repo` sets `gpgcheck=1` and `repo_gpgcheck=1`, and `metadata_expire=1h`, so a plain `sudo dnf upgrade` sees a new release
+within an hour without `--refresh`. GNOME Software checks on its own schedule (about once a day).
 The extension lands in `/usr/share/gnome-shell/extensions/` and its schema in `/usr/share/glib-2.0/schemas/`.
 
 **Fedora Glass:** [Fedora Glass](https://github.com/djshiye/fedora-glass) 1.5.6 and later themes Spawn the way it
