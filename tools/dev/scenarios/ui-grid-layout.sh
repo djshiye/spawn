@@ -50,6 +50,9 @@ echo "-- paging"
 focus_class spawn-tile 0
 key Page_Down 0.8
 expect_state "Page Down: second page" layout.gridPage 1
+pager=$(state_get layout.pager)
+value=$(echo "$pager" | json_get value); pageH=$(echo "$pager" | json_get pageH)
+expect "the second page starts on a row of its own (scrolled one whole page)" "$value" "$pageH"
 screenshot grid-03-page-two
 key Home 0.8
 expect_state "Home: first page" layout.gridPage 0
@@ -58,6 +61,15 @@ sleep 0.8
 expect_state "clicking the second dot: second page" layout.gridPage 1
 click_class spawn-grid-dot 0
 sleep 0.8
+
+echo "-- fewer apps: one page"
+dconf write $K/pinned-apps "[{'id': 'org.gnome.Nautilus.desktop'}, {'id': 'org.mozilla.firefox.desktop'}]"
+sleep 1.2
+expect_state "two pinned apps: one page" layout.gridPages 1
+dconf write $K/pinned-apps "[${many}{'id': '3c2219f1-a114-4e2e-a06c-51fdefa91991', 'name': 'Games', 'isFolder': 'true'}]"
+sleep 1.2
+pages=$(state_get layout.gridPages)
+check "pins back: two pages again (got $pages)" "$([ "${pages:-0}" -ge 2 ]; echo $?)"
 
 echo "-- All apps and back"
 click_class spawn-grid-header-button 0

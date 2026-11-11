@@ -261,6 +261,8 @@ export class GridPager {
     private _relayoutId = 0;
     private _dotsSig = '';
     private _destroyed = false;
+    /** Pages of the pinned grid (its rows over the rows on one page). */
+    private _gridPages = 1;
     /** The scroll view the pager changed (sizes, classes), so Classic can undo it once. */
     private _paged: St.ScrollView | null = null;
 
@@ -289,6 +291,9 @@ export class GridPager {
         // Sizes change during an allocation; measuring and resizing then would be dropped: do it before the next frame.
         this._deps.stack().connect('notify::height', () => this._queueRelayout());
         grid.connect('notify::height', () => this._queueRelayout());
+        // Rows come and go without the height changing (it is a whole number of pages): count the pages again.
+        grid.connect('child-added', () => this._queueRelayout());
+        grid.connect('child-removed', () => this._queueRelayout());
         scroll.vadjustment.connect('notify::upper', () => this._syncDots());
         this.relayout();
     }
@@ -328,7 +333,7 @@ export class GridPager {
 
     /** Dev hook: what the pager measured last. */
     debug(): Record<string, unknown> {
-        return {shown: this._shown, attached: Boolean(this._scroll), pageH: this._pageH, trim: this._trim, rows: this.rows,
+        return {value: Math.round(this._scroll?.vadjustment.value ?? 0), shown: this._shown, attached: Boolean(this._scroll), pageH: this._pageH, trim: this._trim, rows: this.rows,
             stackH: this._deps.stack().height, rowH0: this._grid?.get_first_child()?.height ?? -1, dots: this.dots.visible};
     }
 
@@ -380,6 +385,7 @@ export class GridPager {
                 this._paged = null;
                 for (const row of this._grid?.get_children() ?? [])
                     row.set_height(-1);
+                this._grid?.set_height(-1);
                 scroll.set_height(-1);
                 scroll.y_expand = true;
                 scroll.remove_style_class_name('spawn-grid-paged');
@@ -426,6 +432,17 @@ export class GridPager {
         scroll.y_expand = false;
         if (scroll.height !== pageH)
             scroll.set_height(pageH);
+        // The last page starts on a row of its own (a short last page shows empty space below its apps, never
+        // the end of the page before it again): the grid is a whole number of pages high.
+        const grid = this._grid;
+        const total = grid?.get_n_children() ?? 0;
+        this._gridPages = total > 0 ? Math.ceil(total / rows) : 1;
+        if (grid) {
+            const minH = this._gridPages * pageH;
+            // Both minimum and natural (a minimum above the natural height aborts Clutter's box layout).
+            if (grid.height !== minH)
+                grid.set_height(minH);
+        }
         const trim = Math.floor(room - pageH); // negative: the menu grows to fit MIN_ROWS
         if (trim !== this._trim) {
             this._trim = trim;
@@ -465,7 +482,7 @@ export class GridPager {
         const adj = this._scroll?.vadjustment;
         if (!adj || this._pageH <= 0)
             return 1;
-        return Math.max(1, Math.ceil((adj.upper - 1) / this._pageH));
+        return Math.max(1, this._gridPages);
     }
 
     private _goTo(page: number, animate: boolean): void {
