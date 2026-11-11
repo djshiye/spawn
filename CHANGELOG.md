@@ -5,6 +5,19 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-11-11
+
+### Changed
+
+- **Simpler settings window:** five pages instead of seven (General, Menu, Pinned, Appearance, About). Each page
+  shows the everyday settings; fine-tuning sits one click away in a sub-page, such as "More button options",
+  "Search sources", "Icons" and "Advanced". The Menu page went from 47 settings to 16 rows.
+- The panel button settings moved to General; Back Up, Restore and Import from ArcMenu are under About > Your settings.
+- Settings that do not apply are hidden instead of greyed out, and custom colours, presets and shape appear only
+  while "Use custom colours" is on.
+- No setting was removed and saved values are kept. The page-wide "Reset General Settings" button is gone; each
+  group still has its own reset icon.
+
 ## [1.3.0] - 2026-11-11
 
 ### Added
