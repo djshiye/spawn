@@ -5,6 +5,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-11
+
 ### Added
 
 - **Calculator in the search box:** type `2+2`, `(3.5*4)/2`, `2^10`, `15% of 80`, `sqrt(16)` or `-3 + 4e2` (also × ÷ −)
@@ -14,7 +16,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Settings panels:** `bluetooth`, `wifi`, `display`, `sound` and the other GNOME Settings panels open straight away.
 - **App actions:** `firefox private` runs New Private Window, `chrome incognito` and so on.
 - Each has a switch under Search sources in the preferences (all on by default).
-
+- **Drag from All Apps to Pinned:** drag an app from All Apps, a category, Frequent or search results onto the
+  Back button ("Drop to pin") to pin it at the end, or rest on it for half a second to jump into Pinned and drop it
+  exactly where you want it, or onto a folder. Undo works as usual.
 - **Back up and restore settings:** General > Back Up and Restore writes your settings, pinned apps and folders to
   one JSON file (mode 0600) and restores them from one. A restore validates every value against the schema, ignores
   and reports unknown keys, asks for confirmation and offers Undo.
@@ -24,6 +28,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- The menu layout code is split into smaller per-view modules (no visible change).
+- Developer tools: ESLint 10; the panel click, hover and fullscreen scenarios now run in CI.
 - Fuzzy search no longer matches a word cut off in the middle ("display" no longer finds Disk Player).
 
 ### Fixed
