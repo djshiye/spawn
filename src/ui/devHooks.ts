@@ -13,6 +13,8 @@
 //   Click(i x, i y, i btn)   move there, then click (async, ~250 ms)
 //   Move(i x, i y)           move the virtual pointer
 //   Drag(i x1, i y1, i x2, i y2)  press at 1, hold 300 ms, move in steps, release at 2 (async; ~1 s)
+//   DragVia(i x1, i y1, i x2, i y2, i holdMs, i x3, i y3)  press at 1, move to 2, rest there holdMs (spring-loaded
+//                            navigation), move on to 3, release (async; ~1.1 s + holdMs)
 //   Pick(i x, i y) -> s      class + style class of the actor at those stage coordinates
 //   State() -> s             JSON: view, focus, counts, popup state
 //   Rect(s cls, i nth) -> s  JSON [x, y, w, h] (stage coordinates) of the nth VISIBLE actor whose
@@ -88,6 +90,7 @@ const IFACE = `
     <method name="Click"><arg type="i" direction="in" name="x"/><arg type="i" direction="in" name="y"/><arg type="i" direction="in" name="button"/></method>
     <method name="Move"><arg type="i" direction="in" name="x"/><arg type="i" direction="in" name="y"/></method>
     <method name="Drag"><arg type="i" direction="in" name="x1"/><arg type="i" direction="in" name="y1"/><arg type="i" direction="in" name="x2"/><arg type="i" direction="in" name="y2"/></method>
+    <method name="DragVia"><arg type="i" direction="in" name="x1"/><arg type="i" direction="in" name="y1"/><arg type="i" direction="in" name="x2"/><arg type="i" direction="in" name="y2"/><arg type="i" direction="in" name="holdMs"/><arg type="i" direction="in" name="x3"/><arg type="i" direction="in" name="y3"/></method>
     <method name="Pick"><arg type="i" direction="in" name="x"/><arg type="i" direction="in" name="y"/><arg type="s" direction="out" name="actor"/></method>
     <method name="State"><arg type="s" direction="out" name="json"/></method>
     <method name="Rect"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/><arg type="s" direction="out" name="rect"/></method>
@@ -638,6 +641,33 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
                 } else {
                     scope.timeout(250, () => dev.notify_button(now(), 1, Clutter.ButtonState.RELEASED));
                 }
+            };
+            scope.timeout(320, step);
+        }),
+        DragViaAsync: ([x1, y1, x2, y2, hold, x3, y3]: [number, number, number, number, number, number, number], inv: Invocation) => reply(inv, () => {
+            pointer ??= seat().create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+            const dev = pointer;
+            dev.notify_absolute_motion(now(), x1, y1);
+            dev.notify_button(now(), 1, Clutter.ButtonState.PRESSED);
+            const steps = 8;
+            // legs: [from, to] pairs walked in steps; the rest at the end of the first leg is `hold` ms
+            const legs: [number, number, number, number, number][] = [[x1, y1, x2, y2, hold], [x2, y2, x3, y3, 250]];
+            let leg = 0;
+            let i = 0;
+            const step = () => {
+                const [ax, ay, bx, by, rest] = legs[leg];
+                i++;
+                dev.notify_absolute_motion(now(), ax + (bx - ax) * i / steps, ay + (by - ay) * i / steps);
+                if (i < steps) {
+                    scope.timeout(60, step);
+                    return;
+                }
+                i = 0;
+                leg++;
+                if (leg < legs.length)
+                    scope.timeout(rest, step);
+                else
+                    scope.timeout(rest, () => dev.notify_button(now(), 1, Clutter.ButtonState.RELEASED));
             };
             scope.timeout(320, step);
         }),

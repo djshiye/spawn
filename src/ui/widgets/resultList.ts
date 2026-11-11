@@ -74,6 +74,8 @@ export type ResultHost = ShortcutHost & {
     /** One-line "No results" without icon and hint (the runner, which sizes itself to its content). */
     compactEmpty?: boolean;
     openResultContext?(row: St.Widget, result: SearchResult): void;
+    /** Make a row of an app result a drag source that pins it (desktop id, display name). */
+    dragApp?(row: St.Widget, id: string, name: string): void;
     /** Is the app with this desktop id new (a "New" pill after its name in the results)? */
     isNewApp?(id: string): boolean;
 };
@@ -521,6 +523,8 @@ export class ResultList {
                     this._host.openResultContext?.(button, result);
             } : undefined,
         });
+        if (result.providerId === 'apps')
+            this._host.dragApp?.(button, result.id, result.title);
         return button;
     }
 }

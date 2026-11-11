@@ -37,6 +37,8 @@ export interface TileHost {
     openContext(tile: St.Widget, app: Shell.App, folderUuid?: string): void;
     /** Is this a recently installed app that shows a "New" badge? Asked once when a row or tile is built. */
     isNew?(app: Shell.App): boolean;
+    /** Make a row of a generated list (not a pinned entry) a drag source that pins the app. */
+    dragApp?(row: St.Widget, app: Shell.App, name: string): void;
     tooltips?: TooltipManager;
 }
 
