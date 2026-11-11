@@ -442,6 +442,26 @@
       <summary>Include GNOME Shell search providers</summary>
       <description>Include GNOME Shell search providers (e.g. Calculator, Characters)</description>
     </key>
+    <key name="search-calculator" type="b">
+      <default>true</default>
+      <summary>Calculate in the search box</summary>
+      <description>Typing an arithmetic expression such as 2+2 or 15% of 80 shows the answer; activating it copies it</description>
+    </key>
+    <key name="search-unit-conversion" type="b">
+      <default>true</default>
+      <summary>Convert units in the search box</summary>
+      <description>Typing a conversion such as 5 km in miles shows the answer; activating it copies it</description>
+    </key>
+    <key name="search-settings-panels" type="b">
+      <default>true</default>
+      <summary>Search GNOME Settings panels</summary>
+      <description>Find the panels of GNOME Settings (Wi-Fi, Bluetooth, Display...) and open them</description>
+    </key>
+    <key name="search-app-actions" type="b">
+      <default>true</default>
+      <summary>Search app actions</summary>
+      <description>Find the actions of an app, such as New Private Window of Firefox, and run them</description>
+    </key>
     <key name="show-hidden-recent-files" type="b">
       <default>false</default>
       <summary>Show hidden files in recent-file results</summary>

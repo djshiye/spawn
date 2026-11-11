@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Wi-Fi
+Comment=Connect to Wi-Fi
+Exec=true
+Icon=org.gnome.Settings-wifi-symbolic
+Keywords=Wireless;WLAN;Hotspot;
+NoDisplay=true
+X-GNOME-Settings-Panel=wifi
+OnlyShowIn=GNOME;

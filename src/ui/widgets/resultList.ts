@@ -487,7 +487,7 @@ export class ResultList {
 
         const text = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, y_align: Clutter.ActorAlign.CENTER, x_expand: true});
         const title = new St.Label({style_class: 'spawn-row-label'});
-        if (this._settings.get('highlight-search-result-terms'))
+        if (this._settings.get('highlight-search-result-terms') && !result.plainTitle)
             title.clutter_text.set_markup(highlightMarkup(result.title, query));
         else
             title.text = result.title;

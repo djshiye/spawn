@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Bluetooth
+Comment=Pair devices
+Exec=true
+Icon=bluetooth-symbolic
+Keywords=Headphones;Pairing;
+NoDisplay=true
+X-GNOME-Settings-Panel=bluetooth
+OnlyShowIn=GNOME;

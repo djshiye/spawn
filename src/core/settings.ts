@@ -132,6 +132,10 @@ export interface SettingsMap {
     'search-provider-open-windows': boolean;
     'search-provider-recent-files': boolean;
     'search-provider-shell': boolean;
+    'search-calculator': boolean;
+    'search-unit-conversion': boolean;
+    'search-settings-panels': boolean;
+    'search-app-actions': boolean;
     'show-hidden-recent-files': boolean;
     'apps-show-extra-details': boolean;
     'apps-show-generic-names': boolean;

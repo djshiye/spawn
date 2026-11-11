@@ -36,7 +36,8 @@
 //   engine.clear(): void                                 drop caches in providers (menu closed)
 //
 // SearchProvider contract (search/providers/*.ts):
-//   id, title                      stable ids: 'apps' | 'windows' | 'recentFiles' | 'shell:<appId>'
+//   id, title                      stable ids: 'calculator' | 'conversion' | 'appActions' | 'apps' | 'settingsPanels' |
+//                                  'windows' | 'recentFiles' | 'shell:<appId>'
 //   isEnabled(): boolean           reads settings; called per query
 //   immediate?: boolean            (addition) in memory, synchronous and cheap (apps, open windows):
 //                                  runs on every keystroke, without the debounce. Only for providers
@@ -70,6 +71,8 @@ export interface SearchResult {
     createIcon?: (size: number) => Clutter.Actor | null | undefined;
     /** Show `description` even when show-search-result-details is off (e.g. the folder of a file). */
     alwaysShowDescription?: boolean;
+    /** Never highlight the query terms in the title (an answer such as "= 4" is not a match of the query). */
+    plainTitle?: boolean;
     /** Higher is better; comparable across providers only after rank.ts normalisation. */
     score: number;
     /** Perform the default action (launch app, focus window, open file). `newWindow` (Ctrl+Return / Ctrl+click): an app opens a new window. */

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Sharing
+Comment=Share
+Exec=true
+Icon=org.gnome.Settings-sharing-symbolic
+Keywords=Remote Desktop;
+NoDisplay=true
+X-GNOME-Settings-Panel=sharing
+OnlyShowIn=GNOME;

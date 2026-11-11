@@ -10,7 +10,8 @@
 //   services.appIndex     AppIndex (lazy); follows hidden-apps / search-hidden-apps and feeds services.newApps
 //   services.newApps      NewAppsStore (lazy): the "New" badge state (known-apps / new-apps)
 //   services.pinned       PinnedStore (lazy)
-//   services.search       SearchEngine (lazy; apps/windows/recent/shell providers registered here)
+//   services.search       SearchEngine (lazy; calculator, conversion, app actions, apps, Settings panels, windows,
+//                         recent files and GNOME shell providers registered here, in this section order)
 //   services.recentFiles  the RecentFilesProvider registered in services.search (also feeds the Recent Files view)
 //   services.warmUp()     (call from layout onOpen) create the search engine and start loading the
 //                         GNOME shell search providers in the background, so the first query of
@@ -23,8 +24,11 @@ import {AppIndex} from '../model/appIndex.js';
 import {NewAppsStore} from '../model/newAppsStore.js';
 import {PinnedStore} from '../model/pinned.js';
 import {SearchEngine} from '../search/engine.js';
+import {AppActionsProvider} from '../search/providers/appActions.js';
 import {AppsProvider} from '../search/providers/apps.js';
+import {CalculatorProvider, UnitConversionProvider} from '../search/providers/calculator.js';
 import {RecentFilesProvider} from '../search/providers/recentFiles.js';
+import {SettingsPanelsProvider} from '../search/providers/settingsPanels.js';
 import {ShellProviders} from '../search/providers/shellProviders.js';
 import {WindowsProvider} from '../search/providers/windows.js';
 import {error} from './log.js';
@@ -99,7 +103,12 @@ export class Services {
         if (!this._search) {
             const scope = this.scope.child('search');
             const engine = new SearchEngine(scope);
+            // Section order (SearchBatch.order): answers first, then the actions of an app, then the apps.
+            engine.addProvider(new CalculatorProvider(this.settings));
+            engine.addProvider(new UnitConversionProvider(this.settings));
+            engine.addProvider(new AppActionsProvider(this.appIndex, this.settings));
             engine.addProvider(new AppsProvider(this.appIndex, this.settings));
+            engine.addProvider(new SettingsPanelsProvider(this.settings));
             engine.addProvider(new WindowsProvider(this.settings));
             this._recent = new RecentFilesProvider(scope, this.settings);
             engine.addProvider(this._recent);

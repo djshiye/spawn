@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=Not a panel
+Exec=true
+NoDisplay=true
