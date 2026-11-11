@@ -46,7 +46,7 @@ import St from 'gi://St';
 
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-import {CategoryLink, ShortcutId} from '../core/constants.js';
+import {ShortcutId} from '../core/constants.js';
 import {openSpawnPrefs} from '../core/openPrefs.js';
 import {debounce} from '../core/debounce.js';
 import {error} from '../core/log.js';
@@ -59,6 +59,7 @@ import {nearestIndex, pageTarget, searchStep, type Pos} from '../model/listNav.j
 import {reorderTarget, type ReorderKey} from '../model/reorder.js';
 import type {SearchResult} from '../search/engine.js';
 import {AppContextMenu} from './contextMenu.js';
+import {LeftPane} from './layout/leftPane.js';
 import {RightPane} from './layout/rightPane.js';
 import {UndoController} from './layout/undo.js';
 import {LayoutState, type Dir, type Group, type LayoutHost, type TileEntry, type ViewId} from './layout/types.js';
@@ -69,7 +70,6 @@ import {acceptDrops, enableDrag, rejectDrops} from './dnd.js';
 import {bindReducedMotion, markList, nameItem} from './widgets/a11y.js';
 import {ActionRow, AppRow} from './widgets/appRow.js';
 import {ActionTile, AppTile, type TileHost} from './widgets/appTile.js';
-import {CategoryLinks} from './widgets/categoryLinks.js';
 import {CategoryList} from './widgets/categoryList.js';
 import {ExtraList} from './widgets/extraList.js';
 import {FolderRow, FolderTile, type FolderHost} from './widgets/folderTile.js';
@@ -82,7 +82,7 @@ import {SearchBox} from './widgets/searchBox.js';
 import {resolveShortcut, type ShortcutHost} from './widgets/shortcutRow.js';
 import {TileGrid} from './widgets/tileGrid.js';
 import {TooltipManager} from './widgets/tooltip.js';
-import {applyScrollSettings, displayName, iconSizeFor, iconSizeOrHidden, isPointerEvent, launchApp, lookupApp, ownedScope, scrollIntoView, showDescriptions} from './util.js';
+import {applyScrollSettings, displayName, iconSizeFor, isPointerEvent, launchApp, lookupApp, ownedScope, scrollIntoView, showDescriptions} from './util.js';
 
 export type {LayoutHost, ViewId} from './layout/types.js';
 export {MIN_LEFT_WIDTH, MIN_RIGHT_WIDTH} from './layout/metrics.js';
@@ -144,10 +144,6 @@ function inView(actor: Clutter.Actor): boolean {
     return c >= top && c <= top + height;
 }
 
-function isDefaultViewPinnedish(view: string): boolean {
-    return view === 'Pinned_Apps' || view === 'Frequent_Apps' || view === 'Pinned_And_Frequent_Apps';
-}
-
 export class SpawnLayout implements ShortcutHost {
     readonly actor: St.Widget;
 
@@ -160,11 +156,8 @@ export class SpawnLayout implements ShortcutHost {
     private readonly _left: St.BoxLayout;
     private readonly _right: St.BoxLayout;
     private readonly _vsep: St.Widget;
-    private readonly _stack: St.BoxLayout;
-    private readonly _nav: St.BoxLayout;
     private readonly _undo: UndoController;
-    private readonly _backButton: St.Button;
-    private readonly _allAppsButton: St.Button;
+    private readonly _leftPane: LeftPane;
     private readonly _search: SearchBox;
     private readonly _tooltips: TooltipManager;
     private readonly _context: AppContextMenu;
@@ -186,7 +179,6 @@ export class SpawnLayout implements ShortcutHost {
     private _folderView: FolderView | null = null;
     private _extraList: ExtraList | null = null;
     private _extraScroll: St.ScrollView | null = null;
-    private _links: CategoryLinks | null = null;
     private _resultsScroll: St.ScrollView | null = null;
     private _results: ResultList | null = null;
     private readonly _tileEntries = new Map<string, TileEntry>();
@@ -307,18 +299,25 @@ export class SpawnLayout implements ShortcutHost {
         this._scrollFactory = new ScrollFactory(settings);
 
         this._search = new SearchBox(scope, settings);
-        this._stack = new St.BoxLayout({style_class: 'spawn-stack', orientation: Clutter.Orientation.VERTICAL, x_expand: true, y_expand: true});
-
-        this._nav = new St.BoxLayout({style_class: 'spawn-nav'});
-        this._backButton = this._navButton('go-previous-symbolic', _('Back'), () => this._back());
-        this._allAppsButton = this._navButton('view-app-grid-symbolic', _('All Apps'), () => this._openAllApps());
-        this._nav.add_child(this._backButton);
-        this._nav.add_child(this._allAppsButton);
-
         this._undo = new UndoController(scope, services, this._state, {
             focusMain: () => this._focusMain(),
             syncPinned: () => this._syncPinnedIfNeeded(),
             pinnedTile: key => this._tileEntries.get(key)?.widget ?? null,
+        });
+        this._leftPane = new LeftPane(scope, services, this._state, {
+            left: this._left,
+            search: this._search.actor,
+            banner: this._undo.banner.actor,
+            tooltips: this._tooltips,
+            metrics: this._metrics,
+            host: {
+                canGoBack: () => this._canGoBack(),
+                setView: view => this._setView(view),
+                focusMain: () => this._focusMain(),
+                back: () => this._back(),
+                openAllApps: () => this._openAllApps(),
+                arranged: top => this._results?.setReversed(!top),
+            },
         });
 
         this._rightPane = new RightPane(scope, services, this._state, {
@@ -328,7 +327,7 @@ export class SpawnLayout implements ShortcutHost {
             context: this._context,
             scrolls: this._scrollFactory,
         });
-        this._arrangeLeft();
+        this._leftPane.arrange();
         this._rightPane.build();
         this._metrics.apply();
 
@@ -412,8 +411,8 @@ export class SpawnLayout implements ShortcutHost {
             // widths make the cached pinned tiles stale.
             if (this._metrics.apply())
                 this._pinnedDirty = true;
-            if (this._searchOnTop() !== this._state.searchTop)
-                this._arrangeLeft();
+            if (this._leftPane.searchOnTop() !== this._state.searchTop)
+                this._leftPane.arrange();
             this._setView(this._defaultView());
             for (const s of [this._pinnedScroll, this._frequentScroll, this._extraScroll, this._resultsScroll, this._rightPane.scroll])
                 s?.vadjustment.set_value(0);
@@ -439,8 +438,8 @@ export class SpawnLayout implements ShortcutHost {
             this._state.side = side;
             if (this._metrics.apply())
                 this._pinnedDirty = true;
-            if (this._searchOnTop() !== this._state.searchTop)
-                this._arrangeLeft();
+            if (this._leftPane.searchOnTop() !== this._state.searchTop)
+                this._leftPane.arrange();
             this._setView(this._defaultView());
         } catch (e) {
             error('layout prepare failed', e);
@@ -541,7 +540,7 @@ export class SpawnLayout implements ShortcutHost {
             folderTiles: this._state.view === 'folder' ? this._folderView?.tiles().length ?? 0 : 0,
             folderColumns: this._state.view === 'folder' ? this._folderView?.columns ?? 0 : 0,
             results: this._results?.rows().length ?? 0,
-            links: this._links?.actor.visible ? this._links.buttons().length : 0,
+            links: this._leftPane.links?.actor.visible ? this._leftPane.links.buttons().length : 0,
             extraRows: this._extraList?.rows().length ?? 0,
             places: [this._rightPane.places.devices().length, this._rightPane.places.network().length, this._rightPane.places.bookmarks().length],
             tooltip: this._tooltips.debugText(),
@@ -590,7 +589,7 @@ export class SpawnLayout implements ShortcutHost {
         if (this._state.destroyed)
             return;
         this._metrics.apply();
-        this._arrangeLeft();
+        this._leftPane.arrange();
         this._pinnedDirty = true;
         if (this._state.isOpen)
             this._setView(this._state.view);
@@ -604,7 +603,7 @@ export class SpawnLayout implements ShortcutHost {
         if (this._state.destroyed)
             return;
         this._categories?.refresh();
-        this._syncLinks();
+        this._leftPane.syncLinks();
         this._pinnedDirty = true;
         if (this._state.isOpen)
             this._setView(this._state.view);
@@ -650,145 +649,11 @@ export class SpawnLayout implements ShortcutHost {
             this._folderView?.refresh();
     }
 
-    // ---- chrome ----
-
-    private _navButton(iconName: string, text: string, cb: () => void): St.Button {
-        // Full pane width like every other row: only one of Back / All Apps shows at a time (_updateNav), so the
-        // whole row highlights on hover and takes the click, not just the icon + label.
-        const button = makeItemButton('spawn-nav-button');
-        const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
-        const navIcon = new St.Icon({icon_name: iconName, icon_size: iconSizeFor(this._services.settings, 'icon-size-misc', 16), y_align: Clutter.ActorAlign.CENTER});
-        // The small icon sits centred in a slot as wide as a list row's icon, so "All Apps" / "Back"
-        // start on the same text column as the app names above them.
-        navIcon.x_align = Clutter.ActorAlign.CENTER;
-        const slot = new St.Bin({child: navIcon, x_expand: false, y_align: Clutter.ActorAlign.CENTER});
-        const sync = (): void => {
-            navIcon.icon_size = iconSizeFor(this._services.settings, 'icon-size-misc', 16);
-            slot.set_style(`width: ${Math.max(navIcon.icon_size, this._metrics.rowIconSize())}px;`); // CSS px: St scales them
-        };
-        sync();
-        this._services.settings.onChanged(this._scope, ['icon-size-misc', 'icon-size-apps', 'pinned-item-size'], sync);
-        box.add_child(slot);
-        const navLabel = new St.Label({text, y_align: Clutter.ActorAlign.CENTER});
-        box.add_child(navLabel);
-        nameItem(button, text, {label: navLabel});
-        button.set_child(makeFace('spawn-nav-surface', box));
-        wireItem(button, {activate: () => cb()});
-        return button;
-    }
-
-    /**
-     * Search entry on top? `Top` / `Bottom` as set; `Auto` puts it on the side nearest the panel
-     * (arrow side TOP = popup below a top panel = entry on top; BOTTOM = popup above = entry below).
-     */
-    private _searchOnTop(): boolean {
-        const loc = this._services.settings.get('search-entry-location') as string;
-        if (loc === 'Auto')
-            return this._state.side === St.Side.TOP;
-        return loc === 'Top';
-    }
-
-    /** (Re)order the left pane children: search, quick links, stack, nav according to settings. */
-    private _arrangeLeft(): void {
-        const top = this._searchOnTop();
-        this._state.searchTop = top;
-        this._syncLinks();
-        const links = this._links?.actor ?? null;
-        for (const c of [this._search.actor, this._stack, this._undo.banner.actor, this._nav, links]) {
-            if (c && c.get_parent() === this._left)
-                this._left.remove_child(c);
-        }
-        this._search.actor.remove_style_class_name('spawn-search-top');
-        this._search.actor.remove_style_class_name('spawn-search-bottom');
-        const linksTop = this._links?.location === 'Top';
-        const add = (c: St.Widget | null): void => {
-            if (c)
-                this._left.add_child(c);
-        };
-        if (top)
-            add(this._search.actor);
-        if (linksTop)
-            add(links);
-        add(this._stack);
-        if (!linksTop)
-            add(links);
-        add(this._undo.banner.actor);
-        add(this._nav);
-        if (!top)
-            add(this._search.actor);
-        this._search.actor.add_style_class_name(top ? 'spawn-search-top' : 'spawn-search-bottom');
-        // Entry below the list: the best match sits right above it.
-        this._results?.setReversed(!top);
-    }
-
-    /** The enabled quick links, minus the start view itself and All Apps where its nav button shows (none for the category list). */
-    private _linkIds(): number[] {
-        const s = this._services.settings;
-        const view = s.get('default-menu-view');
-        if (view === 'Categories_List')
-            return [];
-        const skip = new Set<number>();
-        if (view === 'Pinned_Apps' || view === 'Pinned_And_Frequent_Apps')
-            skip.add(CategoryLink.PINNED);
-        if (view === 'Frequent_Apps' || view === 'Pinned_And_Frequent_Apps')
-            skip.add(CategoryLink.FREQUENT);
-        // All_Programs is the start view itself; on the pinned-ish start views the All Apps nav button is already
-        // right under the links, so a second "All Apps" row would only duplicate it.
-        if (view === 'All_Programs' || isDefaultViewPinnedish(view))
-            skip.add(CategoryLink.ALL_PROGRAMS);
-        const known = new Set<number>(Object.values(CategoryLink));
-        const seen = new Set<number>();
-        const ids: number[] = [];
-        for (const [id, on] of s.get('arcmenu-extra-categories-links')) {
-            if (on && known.has(id) && !skip.has(id) && !seen.has(id)) {
-                seen.add(id);
-                ids.push(id);
-            }
-        }
-        return ids;
-    }
-
-    /** Create / refill the quick links box (it is parented by _arrangeLeft) and show it where it belongs. */
-    private _syncLinks(): void {
-        const s = this._services.settings;
-        const location = s.get('arcmenu-extra-categories-links-location');
-        const ids = this._linkIds();
-        if (this._links && this._links.location !== location) {
-            this._links.destroy();
-            this._links = null;
-        }
-        if (ids.length === 0) {
-            this._links?.setLinks([], 0);
-        } else {
-            this._links ??= new CategoryLinks({open: id => this._openLink(id), tooltips: this._tooltips}, location);
-            this._links.setLinks(ids, iconSizeOrHidden(s, 'icon-size-categories', 16));
-        }
-        this._updateLinksVisible();
-    }
-
-    /** The links belong to the start view only: any other view (or a search) has Back instead. */
-    private _updateLinksVisible(): void {
-        if (this._links)
-            this._links.actor.visible = this._links.buttons().length > 0 && !this._canGoBack();
-    }
-
-    private _openLink(id: number): void {
-        switch (id) {
-        case CategoryLink.FAVORITES: this._setView('favorites'); break;
-        case CategoryLink.FREQUENT: this._setView('frequent'); break;
-        case CategoryLink.ALL_PROGRAMS: this._setView('all'); break;
-        case CategoryLink.PINNED: this._setView('pinned'); break;
-        case CategoryLink.RECENT_FILES: this._setView('recent'); break;
-        default: return;
-        }
-        this._focusMain();
-    }
-
     /** The links settings changed: rebuild the box (a new location re-parents it). */
     private _relink(): void {
         if (this._state.destroyed)
             return;
-        this._arrangeLeft();
+        this._leftPane.arrange();
     }
 
     // ---- views ----
@@ -851,7 +716,7 @@ export class SpawnLayout implements ShortcutHost {
             // A relayout while the popup is open (display / size settings): the pinned grid under it follows.
             if (this._pinnedShowing())
                 this._syncPinnedIfNeeded();
-            this._updateNav();
+            this._leftPane.updateNav();
             this._results?.setSelectionVisible(true);
             return;
         }
@@ -859,9 +724,9 @@ export class SpawnLayout implements ShortcutHost {
             this._folderView?.hide(this._state.isOpen);
         const actors = this._ensureView(view);
         this._state.view = view;
-        for (const child of this._stack.get_children())
+        for (const child of this._leftPane.stack.get_children())
             child.visible = actors.includes(child);
-        this._updateNav();
+        this._leftPane.updateNav();
         if (view === 'pinned')
             this._results?.setSelectionVisible(true);
     }
@@ -869,8 +734,8 @@ export class SpawnLayout implements ShortcutHost {
     /** Build (if needed) and refresh the actors a view consists of; returns the actors to show. */
     private _ensureView(view: ViewId): Clutter.Actor[] {
         const add = (a: Clutter.Actor) => {
-            if (a.get_parent() !== this._stack)
-                this._stack.add_child(a);
+            if (a.get_parent() !== this._leftPane.stack)
+                this._leftPane.stack.add_child(a);
             return a;
         };
         switch (view) {
@@ -910,7 +775,7 @@ export class SpawnLayout implements ShortcutHost {
                     // recent files that arrived late: the focus moves to them as the view would have done
                     rowsChanged: () => {
                         const focus = global.stage.key_focus as Clutter.Actor | null;
-                        if (this._state.isOpen && this._state.view === 'recent' && (!focus || this._navGroup()?.items.includes(focus)))
+                        if (this._state.isOpen && this._state.view === 'recent' && (!focus || this._leftPane.navGroup()?.items.includes(focus)))
                             this._focusMain();
                     },
                 });
@@ -1474,25 +1339,6 @@ export class SpawnLayout implements ShortcutHost {
 
     // ---- navigation ----
 
-    private _updateNav(): void {
-        // An open folder popup leaves the nav of the view under it alone (no jump behind the scrim).
-        if (this._state.view === 'folder')
-            return;
-        const dv = this._services.settings.get('default-menu-view');
-        const back = this._canGoBack();
-        this._backButton.visible = back;
-        this._allAppsButton.visible = !back && isDefaultViewPinnedish(dv);
-        this._nav.visible = this._backButton.visible || this._allAppsButton.visible;
-        this._updateLinksVisible();
-        // dragging out of a folder onto Back removes the app from the folder
-        if (!this._backDropRegistered) {
-            this._backDropRegistered = true;
-            acceptDrops(this._scope, this._backButton, this._services.pinned, {kind: 'unfolder', folderUuid: ''});
-        }
-    }
-
-    private _backDropRegistered = false;
-
     private _mainGroups(): Group[] {
         switch (this._state.view) {
         case 'pinned': {
@@ -1534,16 +1380,6 @@ export class SpawnLayout implements ShortcutHost {
         return {id: 'categories', items: this._categories.categoryButtons(), cols: 1};
     }
 
-    private _linksGroup(): Group | null {
-        const links = this._links;
-        return links?.actor.visible && links.buttons().length ? {id: 'links', items: links.buttons(), cols: 1} : null;
-    }
-
-    private _navGroup(): Group | null {
-        const items = [this._backButton, this._allAppsButton].filter(b => b.visible && this._nav.visible);
-        return items.length ? {id: 'nav', items, cols: items.length} : null;
-    }
-
     private _undoGroup(): Group | null {
         return this._undo.banner.visible ? {id: 'undo', items: [this._undo.banner.button], cols: 1} : null;
     }
@@ -1562,8 +1398,8 @@ export class SpawnLayout implements ShortcutHost {
         const top = this._state.searchTop;
         if (search && top)
             out.push(search);
-        const links = this._linksGroup();
-        const linksTop = this._links?.location === 'Top';
+        const links = this._leftPane.linksGroup();
+        const linksTop = this._leftPane.links?.location === 'Top';
         if (links && linksTop)
             out.push(links);
         out.push(...this._mainGroups().filter(g => g.items.length > 0));
@@ -1572,7 +1408,7 @@ export class SpawnLayout implements ShortcutHost {
         const undo = this._undoGroup();
         if (undo)
             out.push(undo);
-        const nav = this._navGroup();
+        const nav = this._leftPane.navGroup();
         if (nav)
             out.push(nav);
         if (search && !top)
@@ -1617,7 +1453,7 @@ export class SpawnLayout implements ShortcutHost {
         if (groups.length === 0) {
             // Results still pending (or none): stay where the focus is instead of jumping to Back.
             if (this._state.view !== 'results')
-                this._focusItem(this._navGroup() ?? undefined);
+                this._focusItem(this._leftPane.navGroup() ?? undefined);
             return;
         }
         this._focusItem(last ? groups[groups.length - 1] : groups[0], last ? 'last' : 'first');
@@ -1671,7 +1507,7 @@ export class SpawnLayout implements ShortcutHost {
                 // The category column is not one of the left column's groups: leave it explicitly.
                 const search = this._searchGroup();
                 if (delta > 0)
-                    return this._focusItem(this._navGroup() ?? (!this._state.searchTop && search ? search : undefined), 'first') || true;
+                    return this._focusItem(this._leftPane.navGroup() ?? (!this._state.searchTop && search ? search : undefined), 'first') || true;
                 return (this._state.searchTop && search ? this._focusItem(search, 'first') : false) || true;
             }
             const next = col[groupIdx + delta];
@@ -1821,7 +1657,7 @@ export class SpawnLayout implements ShortcutHost {
         const search = this._searchGroup();
         const cats = this._categoryGroup();
         const main = this._mainGroups().filter(g => g.items.length > 0);
-        const nav = this._navGroup();
+        const nav = this._leftPane.navGroup();
         const right = this._rightPane.groups().filter(g => g.items.length > 0);
         const focus = global.stage.key_focus as Clutter.Actor | null;
 
@@ -1832,8 +1668,8 @@ export class SpawnLayout implements ShortcutHost {
             const at = g.id === 'results' ? g.items.indexOf(this._results?.selected() as Clutter.Actor) : -1;
             panes.push(() => this._focusItem(g, at >= 0 ? at : which));
         };
-        const links = this._linksGroup();
-        const linksTop = this._links?.location === 'Top';
+        const links = this._leftPane.linksGroup();
+        const linksTop = this._leftPane.links?.location === 'Top';
         // Reading order wherever the entry sits: search, the list (and what is below it), right pane, power buttons.
         add(search);
         if (linksTop)
