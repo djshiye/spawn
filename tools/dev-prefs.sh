@@ -3,7 +3,7 @@
 # as tools/dev-shell.sh: every XDG dir lives under .dev/) and screenshots each page.
 #
 # Usage: tools/dev-prefs.sh [--no-arcmenu] [pages...]
-#   pages        page indices to capture (default: 0 1 2 3 4 5 6 = General..About)
+#   pages        page indices to capture (default: 0 1 2 3 4 = General..About)
 #   --tall       use a 1600x2600 virtual monitor and stretch the prefs window to nearly full
 #                height, so whole pages fit in one screenshot
 #   --apply-import  run the real migration against the sandbox dconf (tools/dev-prefs-import.js), check that
@@ -51,7 +51,7 @@ if [ "${1:-}" != "--inner" ]; then
             *) echo "unknown argument: $arg" >&2; exit 2 ;;
         esac
     done
-    [ ${#pages[@]} -eq 0 ] && pages=(0 1 2 3 4 5 6)
+    [ ${#pages[@]} -eq 0 ] && pages=(0 1 2 3 4)
 
     mkdir -p "$dev"
     rm -rf "$dev/config" "$dev/cache" "$dev/runtime" "$dev/data" "$dev/shots" "$dev/build"

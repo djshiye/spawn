@@ -1,4 +1,5 @@
-// Preferences page "About": version, licence, links and credits (incl. ArcMenu).
+// Preferences page "About": version, licence, backup / restore and the ArcMenu import (a sub-page), links and credits (incl. ArcMenu).
+// createShortcutsGroup (the keys of the open menu) is shown by the General page's "Keys in the menu" sub-page.
 //
 // Public API:
 //   createAboutPage(ctx: PrefsContext): Adw.PreferencesPage
@@ -9,7 +10,9 @@ import Gdk from 'gi://Gdk?version=4.0';
 import Gtk from 'gi://Gtk?version=4.0';
 
 import type {PrefsContext} from '../context.js';
-import {group, watch} from '../widgets.js';
+import {backupGroup} from '../backupRows.js';
+import {group, subpageRow, watch} from '../widgets.js';
+import {createImportPage} from './import.js';
 
 function linkRow(ctx: PrefsContext, title: string, url: string, subtitle?: string): Adw.ActionRow {
     const row = new Adw.ActionRow({title, activatable: true});
@@ -83,7 +86,7 @@ export function createShortcutsGroup(ctx: PrefsContext): Adw.PreferencesGroup {
             new Gtk.ShortcutLabel({accelerator: custom.join(' '), valign: Gtk.Align.CENTER}) :
             wordKeys(['Super']);
         open.add_suffix(openKeys);
-        open.set_subtitle(custom.length > 0 ? 'Your own shortcut, set under General' : 'Tap the Super key');
+        open.set_subtitle(custom.length > 0 ? 'Your own shortcut' : 'Tap the Super key');
     };
     showOpen();
 
@@ -145,7 +148,15 @@ export function createAboutPage(ctx: PrefsContext): Adw.PreferencesPage {
         infoRow('Extension UUID', String(meta['uuid'] ?? '')),
     ]));
 
-    page.add(createShortcutsGroup(ctx));
+    // Back up, restore and the ArcMenu import: everything that moves settings in or out, in one place.
+    const yours = backupGroup(ctx);
+    yours.set_title('Your settings');
+    yours.add(subpageRow(ctx, {
+        title: 'Import from ArcMenu',
+        subtitle: 'Bring over your ArcMenu pinned apps, folders and settings',
+        build: () => createImportPage(ctx),
+    }));
+    page.add(yours);
 
     page.add(group(ctx, 'Links', [
         linkRow(ctx, 'Source code', url),

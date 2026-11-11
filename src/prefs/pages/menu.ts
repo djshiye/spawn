@@ -1,4 +1,5 @@
-// Preferences page "Menu": views, sizes, search, display options and icon sizes.
+// Preferences page "Menu": what the menu opens on, search, what it shows, and rows that open the Quick links,
+// Hidden apps and Search sources sub-pages. Sizes, icons and scrollbars live on the Appearance page.
 //
 // Public API:
 //   createMenuPage(ctx: PrefsContext): Adw.PreferencesPage
@@ -11,19 +12,7 @@ import type {SettingKey} from '../../core/settings.js';
 import {hiddenAppsGroup} from '../hiddenApps.js';
 import type {PrefsContext} from '../context.js';
 import {toggleListGroup} from '../toggleList.js';
-import {
-    enumRow,
-    group,
-    type Option,
-    optionalSpinRow,
-    spinAdjustment,
-    showSpecialValues,
-    spinRow,
-    switchRow,
-    watch,
-} from '../widgets.js';
-
-const ICON_STYLE: readonly Option[] = [['Symbolic', 'Symbolic'], ['Full_Color', 'Full colour']];
+import {enumRow, group, spinRow, subpageGroup, subpageRow, switchRow, watch} from '../widgets.js';
 
 const LINKS: ReadonlyArray<readonly [number, string, string]> = [
     [CategoryLink.FAVORITES, 'Favourites', 'emote-love-symbolic'],
@@ -32,36 +21,6 @@ const LINKS: ReadonlyArray<readonly [number, string, string]> = [
     [CategoryLink.PINNED, 'Pinned Apps', 'view-pin-symbolic'],
     [CategoryLink.RECENT_FILES, 'Recent Files', 'document-open-recent-symbolic'],
 ];
-
-const GRID_PARTS = [
-    ['size', 'Icon size'],
-    ['width', 'Tile width'],
-    ['height', 'Tile height'],
-] as const;
-
-/** `icon-size-grid` is an a{si} dictionary: one SpinRow per entry, written back as a whole. */
-function gridRows(ctx: PrefsContext): Adw.SpinRow[] {
-    return GRID_PARTS.map(([part, title]) => {
-        const read = (): number => ctx.settings.get('icon-size-grid')[part] ?? -1;
-        const row = new Adw.SpinRow({
-            title,
-            subtitle: 'In pixels',
-            adjustment: spinAdjustment(read(), -1, 256),
-        });
-        showSpecialValues(row, [{value: -1, label: 'Default'}]);
-        row.connect('notify::value', () => {
-            const value = Math.round(row.value);
-            if (value === read())
-                return;
-            ctx.settings.set('icon-size-grid', {...ctx.settings.get('icon-size-grid'), [part]: value});
-        });
-        watch(ctx, row, ['icon-size-grid'], () => {
-            if (Math.round(row.value) !== read())
-                row.set_value(read());
-        });
-        return row;
-    });
-}
 
 /**
  * One switch for the two description keys (app lists and search results used to be separate switches that
@@ -88,91 +47,31 @@ function descriptionsRow(ctx: PrefsContext): Adw.SwitchRow {
     return row;
 }
 
-export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
-    const page = new Adw.PreferencesPage({
-        name: 'menu',
-        title: 'Menu',
-        icon_name: 'view-list-symbolic',
-    });
+/** "None" / "3 apps", for the Hidden apps row. */
+function hiddenSummary(ctx: PrefsContext): string {
+    const n = ctx.settings.get('hidden-apps').length;
+    return n === 0 ? 'None. Right-click an app in the menu to hide it' : `${n} ${n === 1 ? 'app' : 'apps'} hidden`;
+}
 
-    const viewKeys: SettingKey[] = ['default-menu-view', 'pinned-apps-display', 'pinned-item-size', 'all-apps-button-action', 'max-frequent-apps'];
-    page.add(group(ctx, 'Start view', [
-        enumRow(ctx, 'default-menu-view', 'Default view', [
-            ['Pinned_Apps', 'Pinned apps'],
-            ['Categories_List', 'Categories'],
-            ['Frequent_Apps', 'Frequent apps'],
-            ['All_Programs', 'All apps'],
-            ['Pinned_And_Frequent_Apps', 'Pinned and frequent apps'],
-        ]),
-        enumRow(ctx, 'pinned-apps-display', 'Pinned apps view', [
-            ['List', 'List'],
-            ['Grid', 'Grid'],
-        ], 'Pinned apps and folders as rows (like ArcMenu) or as an icon grid'),
-        enumRow(ctx, 'pinned-item-size', 'Pinned item size', [
-            ['Compact', 'Compact'],
-            ['Comfortable', 'Comfortable'],
-            ['Large', 'Large'],
-        ], 'Bigger rows and tiles are easier to click'),
-        enumRow(ctx, 'all-apps-button-action', '"All Apps" button shows', [
-            ['Categories_List', 'Categories'],
-            ['All_Programs', 'All apps in one list'],
-        ]),
-        spinRow(ctx, 'max-frequent-apps', 'Frequent apps to show', 1, 50),
-    ], {reset: viewKeys}));
+/** "Off" / "Favourites, All Apps", for the Quick links row. */
+function quickLinksSummary(ctx: PrefsContext): string {
+    const on = ctx.settings.get('arcmenu-extra-categories-links')
+        .filter(([, enabled]) => enabled)
+        .map(([id]) => LINKS.find(([linkId]) => linkId === id)?.[1])
+        .filter((name): name is string => name !== undefined);
+    return on.length === 0 ? 'Off' : on.join(', ');
+}
 
-    page.add(toggleListGroup(ctx, {
-        key: 'arcmenu-extra-categories-links',
-        title: 'Category quick links',
-        description: 'Shortcuts to other views on the start view. The link of the start view itself is never shown, and the category list has none.',
-        items: LINKS,
-        fallbackIcon: 'view-more-symbolic',
-        resetKeys: ['arcmenu-extra-categories-links', 'arcmenu-extra-categories-links-location'],
-        resetMessage: 'Category quick links reset to defaults',
-        extraRows: [
-            enumRow(ctx, 'arcmenu-extra-categories-links-location', 'Quick links position', [
-                ['Bottom', 'Below the list'],
-                ['Top', 'Above the list'],
-            ]),
-        ],
-    }));
-
-    page.add(hiddenAppsGroup(ctx));
-
-    const sizeKeys: SettingKey[] = ['menu-height', 'left-panel-width', 'right-panel-width', 'menu-width-adjustment'];
-    page.add(group(ctx, 'Size', [
-        spinRow(ctx, 'menu-height', 'Menu height', 360, 1600, {step: 10}),
-        spinRow(ctx, 'left-panel-width', 'Left pane width', 420, 1200, {step: 5}),
-        spinRow(ctx, 'right-panel-width', 'Right pane width', 180, 600, {step: 5}),
-        spinRow(ctx, 'menu-width-adjustment', 'Extra width', -350, 800, {
-            step: 5,
-            subtitle: 'Added on top of the pane widths',
-        }),
-    ], {reset: sizeKeys}));
-
-    const searchKeys: SettingKey[] = [
-        'search-hidden', 'search-entry-location', 'max-search-results', 'highlight-search-result-terms',
-        'show-search-result-details', 'apps-show-extra-details', 'search-entry-border-radius',
-    ];
-    page.add(group(ctx, 'Search', [
-        switchRow(ctx, 'search-hidden', 'Hide the search bar', 'It appears as soon as you start typing'),
-        enumRow(ctx, 'search-entry-location', 'Search bar position', [
-            ['Bottom', 'Bottom'],
-            ['Top', 'Top'],
-            ['Auto', 'Automatic'],
-        ], 'Automatic puts it nearest the panel the menu opens from'),
-        spinRow(ctx, 'max-search-results', 'Results per source', 1, 20),
-        switchRow(ctx, 'highlight-search-result-terms', 'Highlight matching text'),
-        descriptionsRow(ctx),
-        optionalSpinRow(ctx, 'search-entry-border-radius', 'Search bar corner radius', 0, 25, 'Radius'),
-    ], {reset: searchKeys}));
-
+function searchSourceGroups(ctx: PrefsContext): Adw.PreferencesGroup[] {
     const providerKeys: SettingKey[] = [
         'search-provider-open-windows', 'search-provider-recent-files', 'search-provider-shell', 'show-hidden-recent-files',
-        'search-calculator', 'search-unit-conversion', 'search-settings-panels', 'search-app-actions',
-        'apps-show-generic-names',
+        'search-calculator', 'search-unit-conversion', 'search-settings-panels', 'search-app-actions', 'max-search-results',
     ];
     const hiddenRecent = switchRow(ctx, 'show-hidden-recent-files', 'Include hidden recent files');
-    page.add(group(ctx, 'Search sources', [
+    const syncHiddenRecent = (): void => hiddenRecent.set_sensitive(ctx.settings.get('search-provider-recent-files'));
+    syncHiddenRecent();
+    watch(ctx, hiddenRecent, ['search-provider-recent-files'], syncHiddenRecent);
+    return [group(ctx, 'Search sources', [
         switchRow(ctx, 'search-provider-open-windows', 'Open windows'),
         switchRow(ctx, 'search-provider-recent-files', 'Recent files'),
         hiddenRecent,
@@ -181,56 +80,118 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
         switchRow(ctx, 'search-unit-conversion', 'Unit conversion', 'Type 5 km in miles or 100 f in c; Return copies the answer'),
         switchRow(ctx, 'search-settings-panels', 'Settings panels', 'Find Wi-Fi, Bluetooth, Display and other panels of GNOME Settings'),
         switchRow(ctx, 'search-app-actions', 'App actions', 'For example “firefox private” for New Private Window'),
-        switchRow(ctx, 'apps-show-generic-names', 'Show generic app names', 'For example "Web Browser" below Firefox'),
-    ], {reset: providerKeys}));
+        spinRow(ctx, 'max-search-results', 'Results per source', 1, 20),
+    ], {reset: providerKeys, description: 'Apps are always searched. Choose what else shows up.'})];
+}
 
-    const syncHiddenRecent = (): void => hiddenRecent.set_sensitive(ctx.settings.get('search-provider-recent-files'));
-    syncHiddenRecent();
-    watch(ctx, hiddenRecent, ['search-provider-recent-files'], syncHiddenRecent);
+function quickLinkGroups(ctx: PrefsContext): Adw.PreferencesGroup[] {
+    return [toggleListGroup(ctx, {
+        key: 'arcmenu-extra-categories-links',
+        title: 'Quick links',
+        description: 'Shortcuts to other views on the start view. The link of the start view itself is never shown, and the category list has none.',
+        items: LINKS,
+        fallbackIcon: 'view-more-symbolic',
+        resetKeys: ['arcmenu-extra-categories-links', 'arcmenu-extra-categories-links-location'],
+        resetMessage: 'Quick links reset to defaults',
+        extraRows: [
+            enumRow(ctx, 'arcmenu-extra-categories-links-location', 'Position', [
+                ['Bottom', 'Below the list'],
+                ['Top', 'Above the list'],
+            ]),
+        ],
+    })];
+}
+
+export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
+    const page = new Adw.PreferencesPage({
+        name: 'menu',
+        title: 'Menu',
+        icon_name: 'view-list-symbolic',
+    });
+
+    const viewKeys: SettingKey[] = ['default-menu-view', 'pinned-apps-display', 'pinned-item-size', 'all-apps-button-action', 'max-frequent-apps'];
+    const frequent = spinRow(ctx, 'max-frequent-apps', 'Frequent apps to show', 1, 50);
+    // Only matters where frequent apps appear: the start view, the runner or a Frequent quick link.
+    const syncFrequent = (): void => {
+        const view = ctx.settings.get('default-menu-view');
+        frequent.set_visible(view === 'Frequent_Apps' || view === 'Pinned_And_Frequent_Apps' ||
+            ctx.settings.get('runner-default-view') === 'Frequent_Apps' ||
+            ctx.settings.get('arcmenu-extra-categories-links').some(([id, on]) => on && id === CategoryLink.FREQUENT));
+    };
+    syncFrequent();
+    watch(ctx, frequent, ['default-menu-view', 'runner-default-view', 'arcmenu-extra-categories-links'], syncFrequent);
+    page.add(group(ctx, 'Start view', [
+        enumRow(ctx, 'default-menu-view', 'Opens on', [
+            ['Pinned_Apps', 'Pinned apps'],
+            ['Categories_List', 'Categories'],
+            ['Frequent_Apps', 'Frequent apps'],
+            ['All_Programs', 'All apps'],
+            ['Pinned_And_Frequent_Apps', 'Pinned and frequent apps'],
+        ]),
+        enumRow(ctx, 'pinned-apps-display', 'Pinned apps as', [
+            ['List', 'List'],
+            ['Grid', 'Grid'],
+        ]),
+        enumRow(ctx, 'pinned-item-size', 'Pinned item size', [
+            ['Compact', 'Compact'],
+            ['Comfortable', 'Comfortable'],
+            ['Large', 'Large'],
+        ], 'Bigger rows and tiles are easier to click'),
+        enumRow(ctx, 'all-apps-button-action', '“All Apps” button shows', [
+            ['Categories_List', 'Categories'],
+            ['All_Programs', 'All apps in one list'],
+        ]),
+        frequent,
+    ], {reset: viewKeys}));
+
+    const searchKeys: SettingKey[] = ['search-entry-location', 'search-hidden', 'highlight-search-result-terms'];
+    page.add(group(ctx, 'Search', [
+        enumRow(ctx, 'search-entry-location', 'Search bar position', [
+            ['Bottom', 'Bottom'],
+            ['Top', 'Top'],
+            ['Auto', 'Automatic'],
+        ], 'Automatic puts it nearest the panel the menu opens from'),
+        switchRow(ctx, 'search-hidden', 'Hide the search bar', 'It appears as soon as you start typing'),
+        switchRow(ctx, 'highlight-search-result-terms', 'Highlight matching text'),
+        subpageRow(ctx, {
+            title: 'Search sources',
+            subtitle: 'Calculator, unit conversion, settings panels, open windows, files and more',
+            build: () => searchSourceGroups(ctx),
+        }),
+    ], {reset: searchKeys}));
 
     const displayKeys: SettingKey[] = [
-        'show-user-avatar', 'avatar-style', 'vert-separator', 'multi-lined-labels', 'scrollbars-visible',
-        'scrollbars-overlay', 'scrollview-fade-effect', 'show-new-apps-badge',
+        'show-user-avatar', 'avatar-style', 'multi-lined-labels', 'show-new-apps-badge',
+        'apps-show-extra-details', 'show-search-result-details', 'apps-show-generic-names',
     ];
-    const avatarShape = enumRow(ctx, 'avatar-style', 'Avatar shape', [['Round', 'Round'], ['Square', 'Square']]);
-    const overlay = switchRow(ctx, 'scrollbars-overlay', 'Overlay scrollbars');
-    page.add(group(ctx, 'Display', [
-        switchRow(ctx, 'show-user-avatar', 'Show user avatar'),
+    const avatarShape = enumRow(ctx, 'avatar-style', 'Picture shape', [['Round', 'Round'], ['Square', 'Square']]);
+    const syncAvatar = (): void => avatarShape.set_visible(ctx.settings.get('show-user-avatar'));
+    syncAvatar();
+    watch(ctx, avatarShape, ['show-user-avatar'], syncAvatar);
+    page.add(group(ctx, 'Show in the menu', [
+        switchRow(ctx, 'show-user-avatar', 'Your picture', 'At the top of the right pane'),
         avatarShape,
-        switchRow(ctx, 'vert-separator', 'Separator between the panes'),
+        descriptionsRow(ctx),
         switchRow(ctx, 'multi-lined-labels', 'Wrap long app names'),
+        switchRow(ctx, 'apps-show-generic-names', 'Use generic app names', 'For example “Web Browser” instead of “Firefox”'),
         switchRow(ctx, 'show-new-apps-badge', 'Mark new apps', 'A “New” badge on apps installed in the last three days, until you open them'),
-        switchRow(ctx, 'scrollbars-visible', 'Show scrollbars'),
-        overlay,
-        switchRow(ctx, 'scrollview-fade-effect', 'Fade the edges of scrolled lists'),
     ], {reset: displayKeys}));
-    const syncDisplay = (): void => {
-        avatarShape.set_sensitive(ctx.settings.get('show-user-avatar'));
-        overlay.set_sensitive(ctx.settings.get('scrollbars-visible'));
-    };
-    syncDisplay();
-    watch(ctx, page, ['show-user-avatar', 'scrollbars-visible'], syncDisplay);
 
-    const iconKeys: SettingKey[] = [
-        'icon-size-apps', 'icon-size-shortcuts', 'icon-size-categories', 'icon-size-buttons', 'icon-size-misc',
-        'icon-size-grid',
-    ];
-    const hint = {subtitle: 'In pixels', special: [{value: -1, label: 'Default'}]};
-    const hintHide = {subtitle: 'In pixels', special: [{value: -1, label: 'Default'}, {value: 0, label: 'Hidden'}]};
-    page.add(group(ctx, 'Icon sizes', [
-        spinRow(ctx, 'icon-size-apps', 'App list icons', -1, 64, hint),
-        spinRow(ctx, 'icon-size-shortcuts', 'Shortcut icons', -1, 64, hintHide),
-        spinRow(ctx, 'icon-size-categories', 'Category icons', -1, 64, hintHide),
-        spinRow(ctx, 'icon-size-buttons', 'Power button icons', -1, 64, hint),
-        spinRow(ctx, 'icon-size-misc', 'Search and Back / All Apps icons', -1, 64, hint),
-        ...gridRows(ctx),
-    ], {reset: iconKeys, description: 'Pinned app tiles use the last three values.'}));
-
-    const styleKeys: SettingKey[] = ['icon-style-categories', 'icon-style-shortcuts', 'icon-style-buttons'];
-    page.add(group(ctx, 'Icon style', [
-        enumRow(ctx, 'icon-style-categories', 'Category icons', ICON_STYLE),
-        enumRow(ctx, 'icon-style-shortcuts', 'Shortcut icons', ICON_STYLE),
-        enumRow(ctx, 'icon-style-buttons', 'Power button icons', ICON_STYLE),
-    ], {reset: styleKeys}));
+    page.add(subpageGroup(ctx, 'More', [
+        {
+            title: 'Quick links',
+            subtitle: () => quickLinksSummary(ctx),
+            keys: ['arcmenu-extra-categories-links'],
+            icon: 'view-more-symbolic',
+            build: () => quickLinkGroups(ctx),
+        },
+        {
+            title: 'Hidden apps',
+            subtitle: () => hiddenSummary(ctx),
+            keys: ['hidden-apps'],
+            icon: 'view-conceal-symbolic',
+            build: () => [hiddenAppsGroup(ctx)],
+        },
+    ]));
     return page;
 }

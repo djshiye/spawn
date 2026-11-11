@@ -1,4 +1,4 @@
-// The "Back up and restore" group of the General page: two buttons with a file chooser each, a confirmation
+// The "Back up and restore" group (shown as "Your settings" on the About page): two buttons with a file chooser each, a confirmation
 // dialog before anything is replaced, and a toast with Undo afterwards. The logic and the file format live in
 // backup.ts.
 //

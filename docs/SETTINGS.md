@@ -137,7 +137,7 @@ Rows on the start view that open another view in one click (ArcMenu's "Category 
 Shown only on the start view (`default-menu-view`), never for the category list, never for the start view itself
 (Pinned for Pinned_Apps / Pinned_And_Frequent_Apps, Frequent for Frequent_Apps / Pinned_And_Frequent_Apps, All Apps
 for All_Programs), never All Apps on the Pinned / Frequent start views (the All Apps nav button right below already
-opens it), and the box is hidden when no link remains. Menu page: "Category quick links".
+opens it), and the box is hidden when no link remains. Menu page: "Quick links" (a sub-page).
 
 | Key | Type | Default | Migrates from (ArcMenu) |
 |---|---|---|---|
@@ -154,7 +154,7 @@ supported; the quick links are the way into these views.
 ## Hidden and new apps
 
 "Hide from Menu" in an app's context menu and the "New" badge on recently installed apps (Menu page of Preferences:
-"Hidden apps" group and "Mark new apps" in Display).
+"Hidden apps" sub-page and "Mark new apps" in "Show in the menu").
 
 | Key | Type | Default | Migrates from (ArcMenu) |
 |---|---|---|---|
@@ -232,7 +232,7 @@ was rebuilt after an install or removal, an app was launched), never when the me
 
 ## ArcMenu keys deliberately not migrated
 
-The bundled ArcMenu schema is from ArcMenu release 74 (`BUNDLED_ARCMENU_VERSION`); the Import page warns when the
+The bundled ArcMenu schema is from ArcMenu release 74 (`BUNDLED_ARCMENU_VERSION`); the Import from ArcMenu page (About page) warns when the
 installed ArcMenu is newer, because keys added since then are not read.
 
 Other layouts' keys (`*-layout-*`, `raven-*`, `default-menu-view-<layout>` except the runner's, ...), `menu-layout` (only read to derive `pinned-apps-display`),
