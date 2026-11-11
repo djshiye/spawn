@@ -179,6 +179,10 @@ was rebuilt after an install or removal, an app was launched), never when the me
 | `search-provider-open-windows` | b | `false` | `search-provider-open-windows` |
 | `search-provider-recent-files` | b | `false` | `search-provider-recent-files` |
 | `search-provider-shell` | b | `false` | new |
+| `search-calculator` | b | `true` | new |
+| `search-unit-conversion` | b | `true` | new |
+| `search-settings-panels` | b | `true` | new |
+| `search-app-actions` | b | `true` | new |
 | `show-hidden-recent-files` | b | `false` | `show-hidden-recent-files` |
 | `apps-show-extra-details` | b | `false` | `apps-show-extra-details` |
 | `apps-show-generic-names` | b | `false` | `apps-show-generic-names` |
