@@ -57,7 +57,8 @@ test('panelClickAction: a pinned app launches on left / middle click, its right 
     const k = {kind: 'launcher'};
     assert(panelClickAction(k, PRIMARY, true) === 'clicked');
     assert(panelClickAction(k, MIDDLE, true) === 'clicked');
-    assert(panelClickAction(k, SECONDARY, true) === null);
+    assert(panelClickAction(k, SECONDARY, true) === 'context');
+    assert(panelClickAction(k, SECONDARY, false) === 'context');
 });
 
 test('panelClickAction: Activities opens the Overview on a left click only', () => {

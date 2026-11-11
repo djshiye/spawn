@@ -28,6 +28,9 @@
 //                                      When that menu closes, `next(closed)` may name the menu that takes over
 //                                      (the pointer moved on to the next icon, or a click there was passed on):
 //                                      the panel is then held for that one instead of hiding under it.
+//   reveal.holdUntilMenu(find, next?)  like holdWhileOpen for a menu that does not exist yet (a Dash to Panel app
+//                                      icon's context menu is built when its right click is passed on): `find()`
+//                                      is asked on idle for the menu; none: the panel hides again
 //   reveal.shown: boolean              a panel is being shown by Spawn
 
 import type {Scope} from '../core/scope.js';
@@ -127,6 +130,32 @@ export class FullscreenReveal {
             });
             hold.timeout(HOLD_GRACE_MS, () => {
                 if (!opened && !m.isOpen)
+                    this._hideNow();
+            });
+        } catch (e) {
+            warn('fullscreen panel hold failed', e);
+            this._hideNow();
+        }
+    }
+
+    holdUntilMenu(find: () => unknown, next: ((closed: unknown) => unknown) | null = null): void {
+        this._dropHold();
+        if (!this._shown)
+            return;
+        try {
+            const hold = this._scope.child('hold');
+            this._hold = hold;
+            // After the passed-on click was activated (that is queued first on idle).
+            hold.idle(() => {
+                let menu: unknown = null;
+                try {
+                    menu = find();
+                } catch (e) {
+                    warn('fullscreen panel hold: no menu', e);
+                }
+                if (menu)
+                    this.holdWhileOpen(menu, next);
+                else
                     this._hideNow();
             });
         } catch (e) {

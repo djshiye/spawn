@@ -1,7 +1,7 @@
 // FullscreenReveal (build/panel/fullscreenReveal.js) against fake panel boxes.
 import {Scope} from '../build/core/scope.js';
 import {FullscreenReveal} from '../build/panel/fullscreenReveal.js';
-import {assert, assertEquals, run, test} from './harness.js';
+import {assert, assertEquals, run, sleep, test} from './harness.js';
 
 function fakePanel({visible = false, fullscreen = true} = {}) {
     const button = {};
@@ -167,6 +167,41 @@ test('reopening Spawn or closing it ends a hold; no panel shown means nothing to
     assertEquals(menu.handlerCount(), 0);
     assert(p.box.visible === true);
     reveal.holdWhileOpen({});             // not a menu: hide at once
+    assert(p.box.visible === false);
+    scope.dispose();
+});
+
+test('a menu that only exists after the passed-on click (an app icon\'s context menu) holds the panel once found', () => {
+    const p = fakePanel();
+    const {reveal, scope} = fixture([p]);
+    const menu = fakeMenu();
+    let created = false;
+    reveal.show(p.button);
+    reveal.holdUntilMenu(() => (created ? menu : null));
+    assert(p.box.visible === true, 'shown until the menu is looked up');
+    created = true;                       // the click was activated on idle, the menu now exists
+    menu.isOpen = true;
+    sleep(50);
+    assert(p.box.visible === true, 'shown while the context menu is open');
+    menu.set(false);
+    assert(p.box.visible === false, 'hidden when it closes');
+    assertEquals(menu.handlerCount(), 0);
+    scope.dispose();
+});
+
+test('no menu found after the passed-on click: the panel hides again', () => {
+    const p = fakePanel();
+    const {reveal, scope} = fixture([p]);
+    reveal.holdUntilMenu(() => null);     // nothing shown: no-op
+    reveal.show(p.button);
+    reveal.holdUntilMenu(() => null);
+    sleep(50);
+    assert(p.box.visible === false);
+    reveal.show(p.button);
+    reveal.holdUntilMenu(() => {
+        throw new Error('drift');
+    });
+    sleep(50);
     assert(p.box.visible === false);
     scope.dispose();
 });

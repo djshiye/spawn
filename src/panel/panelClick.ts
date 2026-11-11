@@ -8,7 +8,8 @@
 // a press on a button in ANY panel (the top bar, Dash to Panel's panel on every monitor, not only the one the
 // menu was opened from), that button gets the click, with the same mouse button (panelClickAction):
 //   - an St.Button (a Dash to Panel app icon) emits `clicked` with the primary or middle button (launch / new
-//     window); a right click on it is not passed on (its context menu is Dash to Panel's own business);
+//     window); a right click on it opens its own context menu (Dash to Panel's `popupMenu()`), as a right
+//     click on it does without Spawn in the way (an St.Button without one, like Show Apps, just gets nothing);
 //   - Activities (primary) opens the Overview;
 //   - a panel menu button that uses the shell's own click gesture (the clock, quick settings, the system
 //     status icons, most extension indicators) toggles its menu, with any button the gesture accepts (in
@@ -28,7 +29,7 @@
 //     anchor: the Spawn button the menu is open on (never a target)
 //     deps:  {panels(): unknown[] (every panel box), actorAt(x, y), isButton(actor)}
 //   panelClickAction(kind, button, canReplay)  what to do with that button: 'clicked' | 'overview' | 'toggle'
-//                                          | 'replay' | null (see PanelButtonKind)
+//                                          | 'replay' | 'context' | null (see PanelButtonKind)
 //   PRIMARY / MIDDLE / SECONDARY            the mouse buttons
 
 export const PRIMARY = 1;
@@ -102,7 +103,8 @@ export type PanelButtonKind =
     | {kind: 'raw'}
     | null;
 
-export type PanelClickAction = 'clicked' | 'overview' | 'toggle' | 'replay' | null;
+/** 'context': open the launcher's own context menu (targets.ts calls its `popupMenu()`). */
+export type PanelClickAction = 'clicked' | 'overview' | 'toggle' | 'replay' | 'context' | null;
 
 /**
  * What passing `button` on to a button of that kind means. `canReplay`: the closing event was a press that can
@@ -113,7 +115,7 @@ export function panelClickAction(kind: PanelButtonKind, button: number, canRepla
         return null;
     switch (kind.kind) {
     case 'launcher':
-        return button === SECONDARY ? null : 'clicked';
+        return button === SECONDARY ? 'context' : 'clicked';
     case 'activities':
         return button === PRIMARY ? 'overview' : null;
     case 'gesture':

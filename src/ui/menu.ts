@@ -59,8 +59,10 @@ import {
     createFullscreenReveal,
     createIntellihideHold,
     forwardNextRelease,
+    opensContextMenu,
     openShellMenu,
     panelButtonKind,
+    passedContextMenu,
     panelClickDeps,
     setPanelHover,
 } from '../panel/targets.js';
@@ -96,6 +98,8 @@ export class SpawnPopup {
     private _hovered: unknown = null;
     /** The panel menu the shell switched to under a held panel (pointer moved onto its icon), see _nextHeldMenu. */
     private _handedOver: unknown = null;
+    /** The mouse button of the click _passClickOn last passed on. */
+    private _passedButton = 0;
 
     constructor(scope: Scope, services: Services) {
         this._scope = scope;
@@ -402,6 +406,9 @@ export class SpawnPopup {
             const passedMenu = (passedTo as {menu?: unknown} | null)?.menu;
             if (passedMenu && this._fullscreen.shown)
                 this._fullscreen.holdWhileOpen(passedMenu, closed => this._nextHeldMenu(closed));
+            else if (passedTo && this._fullscreen.shown && opensContextMenu(passedTo, this._passedButton))
+                // A right click on a Dash to Panel app icon: its context menu is built once the click is activated.
+                this._fullscreen.holdUntilMenu(() => passedContextMenu(passedTo), closed => this._nextHeldMenu(closed));
             else
                 this._fullscreen.restore();
         }
@@ -499,6 +506,7 @@ export class SpawnPopup {
             const target = panelClickTarget(click, anchor, panelClickDeps());
             if (!target)
                 return null;
+            this._passedButton = click.button;
             // A tray icon that reads raw presses gets this very press again: keep a copy past this dispatch.
             let press: Clutter.Event | null = null;
             if (type === Clutter.EventType.BUTTON_PRESS) {
