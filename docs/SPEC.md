@@ -204,7 +204,10 @@ src/
   ui/button.ts            MenuButton (PanelMenu.Button subclass): icon/label/style
   ui/menu.ts              SpawnPopup: single popup shared by all buttons,
                           re-anchored to the clicked button; lazily builds layout
-  ui/layout.ts            the two-pane "spawn" layout
+  ui/layout.ts            the two-pane "spawn" layout (SpawnLayout: coordinator, public API)
+  ui/layout/*.ts          its modules: metrics, leftPane, rightPane, views, pinnedView, frequentView, folders,
+                          searchView, undo, navigation (Navigator), keys (KeyRouter), debug; see the header of layout.ts
+  ui/searchSession.ts     query running + Return-before-the-first-row, shared by the layout and the runner
   ui/widgets/*.ts         AppTile, AppRow (+ ActionRow), FolderTile (+ FolderRow), FolderView,
                           CategoryList, ShortcutRow, PowerBar, UserCard, SearchBox, ResultList
   ui/contextMenu.ts       app context menu
