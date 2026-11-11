@@ -274,7 +274,7 @@ export function readBackupFile(file: Gio.File): string {
         return new TextDecoder('utf-8', {fatal: true}).decode(bytes);
     } catch (e) {
         if (e instanceof TypeError)
-            throw new Error('The file is not text.');
+            throw new Error('The file is not text.', {cause: e});
         throw e;
     } finally {
         stream.close(null);
