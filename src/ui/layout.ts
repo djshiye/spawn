@@ -60,8 +60,9 @@ import type {FolderUndo, PinnedItem} from '../model/pinned.js';
 import {Places, type FakePlace, type Place} from '../model/places.js';
 import {nearestIndex, pageTarget, searchStep, type Pos} from '../model/listNav.js';
 import {reorderTarget, type ReorderKey} from '../model/reorder.js';
-import type {SearchHandle, SearchResult} from '../search/engine.js';
+import type {SearchResult} from '../search/engine.js';
 import {AppContextMenu} from './contextMenu.js';
+import {SearchSession} from './searchSession.js';
 import {acceptDrops, enableDrag, rejectDrops} from './dnd.js';
 import {bindReducedMotion, markList, nameItem} from './widgets/a11y.js';
 import {ActionRow, AppRow} from './widgets/appRow.js';
@@ -277,8 +278,7 @@ export class SpawnLayout implements ShortcutHost {
     /** Last keyboard-focused pinned tile and its index, to refocus a neighbour when it is destroyed. */
     private _lastTile: {widget: Clutter.Actor; index: number} | null = null;
     private _isOpen = false;
-    private _searchHandle: SearchHandle | null = null;
-    private _searchToken = 0;
+    private readonly _session: SearchSession;
     private _cols = 4;
     private _tileWidth = 96;
     private _tileIconSize = sizeMetrics('Compact').tileIcon;
@@ -288,11 +288,6 @@ export class SpawnLayout implements ShortcutHost {
     private _anchor: St.Widget | null = null;
     /** Where the search entry currently sits (resolved from `search-entry-location`, "Auto" included). */
     private _searchTop = false;
-    /** Return was pressed before the first batch of the query arrived: activate it when it does. */
-    private _activateWhenReady = false;
-    /** ... and it was Ctrl+Return. */
-    private _activateCtrl = false;
-    private _cancelActivateWait: (() => void) | null = null;
     /** cols|tile width|icon size of the last `_applyMetrics`: a change means the pinned tiles are stale. */
     private _metricsSig = '';
     private readonly _scrolls: St.ScrollView[] = [];
@@ -308,6 +303,7 @@ export class SpawnLayout implements ShortcutHost {
         this._services = services;
         this._host = host;
         const settings = services.settings;
+        this._session = new SearchSession(scope, services.search, {activateWaitMs: ACTIVATE_WAIT_MS, isDead: () => this._destroyed});
 
         this._tooltips = new TooltipManager(scope, settings);
         this.tooltips = this._tooltips;
@@ -384,7 +380,7 @@ export class SpawnLayout implements ShortcutHost {
         // actors are still alive, then the root actor takes the remaining children with it.
         scope.add(() => {
             this._destroyed = true;
-            this._searchHandle?.cancel();
+            this._session.cancel();
             this.actor.destroy();
         }, 'SpawnLayout actor');
 
@@ -494,7 +490,7 @@ export class SpawnLayout implements ShortcutHost {
             this._dismissUndo();
             this._context.close();
             this._search.setSilently('');
-            this._cancelSearch();
+            this._session.cancel();
             // The popup may open on another monitor / work area than last time: new columns or tile
             // widths make the cached pinned tiles stale.
             if (this._applyMetrics())
@@ -543,8 +539,8 @@ export class SpawnLayout implements ShortcutHost {
             this._dismissUndo();
             this._context.close();
             this._tooltips.hide();
-            this._cancelSearch();
-            this._setActivateWhenReady(false);
+            this._session.cancel();
+            this._session.arm(false);
             this._search.setSilently('');
             this._results?.reset();
             this._services.search.cancel();
@@ -1798,18 +1794,12 @@ export class SpawnLayout implements ShortcutHost {
 
     // ---- search ----
 
-    private _cancelSearch(): void {
-        this._searchToken++;
-        this._searchHandle?.cancel();
-        this._searchHandle = null;
-    }
-
     private _onSearchText(text: string): void {
         if (this._destroyed)
             return;
         const query = text.trim();
-        this._cancelSearch();
-        this._setActivateWhenReady(false);
+        this._session.cancel();
+        this._session.arm(false);
         // Typing: new rows appearing under a resting pointer must not take the highlight from the best match.
         this._highlight.keyMoved(null);
         if (query.length === 0) {
@@ -1830,21 +1820,7 @@ export class SpawnLayout implements ShortcutHost {
         // flash between keystrokes.
         results.beginQuery(query);
         results.setSelectionVisible(true);
-        const token = this._searchToken;
-        try {
-            this._searchHandle = this._services.search.search(query, batch => {
-                if (token !== this._searchToken || this._destroyed)
-                    return;
-                results.addBatch(batch);
-                if (this._activateWhenReady && results.first()) {
-                    const ctrl = this._activateCtrl;
-                    this._setActivateWhenReady(false);
-                    results.activateSelected(ctrl);
-                }
-            });
-        } catch (e) {
-            error('search failed', e);
-        }
+        this._session.start(query, results);
     }
 
     /**
@@ -1860,29 +1836,7 @@ export class SpawnLayout implements ShortcutHost {
         const results = this._results;
         if (!results)
             return;
-        try {
-            this._searchHandle?.flush();
-        } catch (e) {
-            error('search flush failed', e);
-        }
-        if (!results.activateSelected(ctrl))
-            this._setActivateWhenReady(true, ctrl);
-    }
-
-    /**
-     * "Return was pressed before the first row arrived". Expires after ACTIVATE_WAIT_MS: a provider
-     * answering long after "No results" showed must not launch something the user never saw.
-     */
-    private _setActivateWhenReady(on: boolean, ctrl = false): void {
-        this._cancelActivateWait?.();
-        this._cancelActivateWait = null;
-        this._activateWhenReady = on;
-        this._activateCtrl = on && ctrl;
-        if (on)
-            this._cancelActivateWait = this._scope.timeout(ACTIVATE_WAIT_MS, () => {
-                this._cancelActivateWait = null;
-                this._activateWhenReady = false;
-            });
+        this._session.activate(results, ctrl);
     }
 
     /**
@@ -1901,7 +1855,7 @@ export class SpawnLayout implements ShortcutHost {
             if (results) {
                 // Deliver the synchronous batches of the pending query first: the highlight must move
                 // over what the entry says now, not over the rows of the previous keystroke.
-                this._flushSearch();
+                this._session.flush();
                 this._showSelection(results.moveSelection(searchStep(down ? 'down' : 'up', this._searchTop), false));
             } else if (down || !this._searchTop) {
                 this._focusMain(!down);
@@ -1913,7 +1867,7 @@ export class SpawnLayout implements ShortcutHost {
         case Clutter.KEY_Page_Down:
             if (!results)
                 return false;
-            this._flushSearch();
+            this._session.flush();
             this._showSelection(this._pageTo(results.visualRows(), results.selected(), key === Clutter.KEY_Page_Down ? 1 : -1));
             return true;
         case Clutter.KEY_Return:
@@ -1926,20 +1880,12 @@ export class SpawnLayout implements ShortcutHost {
             return true;
         case Clutter.KEY_Tab:
         case Clutter.KEY_ISO_Left_Tab:
-            this._flushSearch();
+            this._session.flush();
             this._cyclePane(key === Clutter.KEY_ISO_Left_Tab || shift ? -1 : 1);
             this._highlight.keyMoved();
             return true;
         }
         return false;
-    }
-
-    private _flushSearch(): void {
-        try {
-            this._searchHandle?.flush();
-        } catch (e) {
-            error('search flush failed', e);
-        }
     }
 
     /** The search highlight moved to `row` by a key: the hover tint elsewhere goes, the row scrolls into view. */
