@@ -99,3 +99,32 @@ expect "the panel hides again over the game" "$(panel_shown)" 0
 kill "$game" 2>/dev/null
 for _ in $(seq 20); do [ "$(panel_shown)" = 1 ] && break; sleep 0.5; done
 expect "panel back after the game closed" "$(panel_shown)" 1
+
+echo "-- touchscreen taps (virtual touchscreen, Ui.Tap): a tap passes on like a primary click"
+tap_class() { # class [nth]
+    local c
+    c="$(center "$1" "${2:-0}")" || { echo "FAIL no visible '$1' to tap"; status=1; return 1; }
+    # shellcheck disable=SC2086
+    ui_call Tap $c >/dev/null
+    sleep 1
+}
+rm -f "$trace"
+open_menu 1.5
+tap_class clock-display 0
+expect "one tap closed Spawn" "$(hk popupOpen)" false
+expect "... and opened the calendar" "$(hk shellMenusOpen)" 1
+screenshot passthrough-tap-clock
+tap_class clock-display 0   # a tap on the open calendar's button closes it again
+sleep 0.5
+expect "the calendar closed" "$(hk shellMenusOpen)" 0
+
+open_menu 1.5
+tap_class spawn-test-dtp-launcher 0
+expect "one tap closed Spawn" "$(hk popupOpen)" false
+expect "... and clicked the app icon once (primary)" "$(traced dtp-launcher-clicked-1)" 1
+
+open_menu 1.5
+tap_class spawn-test-appindicator 0
+expect "one tap closed Spawn" "$(hk popupOpen)" false
+expect "... and opened the tray icon's menu" "$(hk shellMenusOpen)" 1
+key Escape 0.8

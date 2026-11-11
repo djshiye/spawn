@@ -14,6 +14,7 @@
 //   - a panel menu button that uses the shell's own click gesture (the clock, quick settings, the system
 //     status icons, most extension indicators) toggles its menu, with any button the gesture accepts (in
 //     GNOME 49+ that is any button: a right click on the clock opens the calendar too);
+//   - a touchscreen tap on any of these works like a primary click (a tray icon gets the touch event itself);
 //   - a panel button that handles raw presses itself (tray icons of the AppIndicator extension: Steam, Slack,
 //     Discord...; legacy tray icons) gets the press itself, replayed, so left (menu or activate), middle
 //     (secondary activate) and right click (menu) do exactly what that extension does for them.
@@ -30,11 +31,26 @@
 //     deps:  {panels(): unknown[] (every panel box), actorAt(x, y), isButton(actor)}
 //   panelClickAction(kind, button, canReplay)  what to do with that button: 'clicked' | 'overview' | 'toggle'
 //                                          | 'replay' | 'context' | null (see PanelButtonKind)
+//   closingClick(kind, x, y, button)       the ClickLike a closing event stands for: a mouse press / release as is,
+//                                          a touchscreen tap (touch begin / end) as a primary click
+//   canReplayEvent(kind)                   the closing event can be delivered to the button again (a press or a
+//                                          touch begin: tray icons read those themselves)
 //   PRIMARY / MIDDLE / SECONDARY            the mouse buttons
 
 export const PRIMARY = 1;
 export const MIDDLE = 2;
 export const SECONDARY = 3;
+
+/** The events that can close the popup: a mouse press or release, a touchscreen touch begin or end. */
+export type ClosingEventKind = 'press' | 'release' | 'touch-begin' | 'touch-end';
+
+export function closingClick(kind: ClosingEventKind, x: number, y: number, button: number): ClickLike {
+    return {x, y, button: kind === 'touch-begin' || kind === 'touch-end' ? PRIMARY : button};
+}
+
+export function canReplayEvent(kind: ClosingEventKind): boolean {
+    return kind === 'press' || kind === 'touch-begin';
+}
 
 export interface ClickLike {
     x: number;

@@ -10,6 +10,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Right click on a Dash to Panel app icon while the menu is open:** one right click now closes Spawn and opens that
   icon's own context menu, instead of only closing the menu. Over a fullscreen game the panel stays until that menu
   is closed.
+- **Touchscreen taps on panel icons while the menu is open:** a tap on a tray icon, the clock, quick settings or an
+  app icon now closes Spawn and does what a tap on it does, in one tap, like a left click.
 - **Hover look after Escape:** closing the menu with Escape (or a click elsewhere) while the pointer rests on a panel
   icon no longer takes the icon's hover highlight away until the mouse moves.
 

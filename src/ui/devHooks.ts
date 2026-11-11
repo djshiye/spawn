@@ -12,6 +12,7 @@
 //                            "Shift+F10" style modifiers: "Shift+Tab", "Ctrl+a"
 //   Click(i x, i y, i btn)   move there, then click (async, ~250 ms)
 //   Move(i x, i y)           move the virtual pointer
+//   Tap(i x, i y)            a touchscreen tap (touch begin, 80 ms, touch end) from a virtual touchscreen
 //   Drag(i x1, i y1, i x2, i y2)  press at 1, hold 300 ms, move in steps, release at 2 (async; ~1 s)
 //   Pick(i x, i y) -> s      class + style class of the actor at those stage coordinates
 //   State() -> s             JSON: view, focus, counts, popup state
@@ -87,6 +88,7 @@ const IFACE = `
     <method name="Key"><arg type="s" direction="in" name="name"/></method>
     <method name="Click"><arg type="i" direction="in" name="x"/><arg type="i" direction="in" name="y"/><arg type="i" direction="in" name="button"/></method>
     <method name="Move"><arg type="i" direction="in" name="x"/><arg type="i" direction="in" name="y"/></method>
+    <method name="Tap"><arg type="i" direction="in" name="x"/><arg type="i" direction="in" name="y"/></method>
     <method name="Drag"><arg type="i" direction="in" name="x1"/><arg type="i" direction="in" name="y1"/><arg type="i" direction="in" name="x2"/><arg type="i" direction="in" name="y2"/></method>
     <method name="Pick"><arg type="i" direction="in" name="x"/><arg type="i" direction="in" name="y"/><arg type="s" direction="out" name="actor"/></method>
     <method name="State"><arg type="s" direction="out" name="json"/></method>
@@ -120,6 +122,7 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
     let exported: Gio.DBusExportedObject | null = null;
     let keyboard: Clutter.VirtualInputDevice | null = null;
     let pointer: Clutter.VirtualInputDevice | null = null;
+    let touch: Clutter.VirtualInputDevice | null = null;
     let disposed = false;
 
     const seat = () => global.stage.get_context().get_backend().get_default_seat();
@@ -623,6 +626,12 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
                 scope.timeout(60, () => dev.notify_button(now(), button, Clutter.ButtonState.RELEASED));
             });
         }),
+        TapAsync: ([x, y]: [number, number], inv: Invocation) => reply(inv, () => {
+            touch ??= seat().create_virtual_device(Clutter.InputDeviceType.TOUCHSCREEN_DEVICE);
+            const dev = touch;
+            dev.notify_touch_down(now(), 0, x, y);
+            scope.timeout(80, () => dev.notify_touch_up(now(), 0));
+        }),
         DragAsync: ([x1, y1, x2, y2]: [number, number, number, number], inv: Invocation) => reply(inv, () => {
             pointer ??= seat().create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
             const dev = pointer;
@@ -677,5 +686,6 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
         exported = null;
         keyboard = null;
         pointer = null;
+        touch = null;
     }, 'ui dev hooks');
 }
