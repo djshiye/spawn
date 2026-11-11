@@ -68,7 +68,7 @@ function searchSourceGroups(ctx: PrefsContext): Adw.PreferencesGroup[] {
         'search-calculator', 'search-unit-conversion', 'search-settings-panels', 'search-app-actions', 'max-search-results',
     ];
     const hiddenRecent = switchRow(ctx, 'show-hidden-recent-files', 'Include hidden recent files');
-    const syncHiddenRecent = (): void => hiddenRecent.set_sensitive(ctx.settings.get('search-provider-recent-files'));
+    const syncHiddenRecent = (): void => hiddenRecent.set_visible(ctx.settings.get('search-provider-recent-files'));
     syncHiddenRecent();
     watch(ctx, hiddenRecent, ['search-provider-recent-files'], syncHiddenRecent);
     return [group(ctx, 'Search sources', [
