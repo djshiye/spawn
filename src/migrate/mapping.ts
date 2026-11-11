@@ -701,7 +701,7 @@ export function planMigration(snapshot: ArcMenuSnapshot, spawnDefaults?: Partial
 // ------------------------------------------------------------------------------------------
 // Presentation helpers.
 
-const POWER_NAMES = ['Log Out', 'Lock', 'Restart', 'Power Off', 'Suspend', 'Hybrid Sleep', 'Hibernate', 'Switch User'];
+const POWER_NAMES = ['Log Out', 'Lock', 'Restart', 'Power Off', 'Suspend', 'Hybrid Sleep', 'Hibernate', 'Switch User', 'Restart to Firmware Setup'];
 
 /** Short human-readable rendering of a setting value. */
 export function describeValue(value: unknown, key?: string): string {

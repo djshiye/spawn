@@ -24,6 +24,8 @@ export interface ToggleListSpec {
     fallbackIcon: string;
     resetKeys: readonly SettingKey[];
     resetMessage: string;
+    /** Items missing from the stored list (added by a later version) are listed too, switched off, at the end. */
+    appendMissing?: boolean;
     /** Extra rows appended to the group after the toggle rows (covered by the Reset button via resetKeys). */
     extraRows?: Gtk.Widget[];
 }
@@ -35,6 +37,13 @@ export function toggleListGroup(ctx: PrefsContext, spec: ToggleListSpec): Adw.Pr
     // Rows are rebuilt on every change; remember which button to focus again afterwards.
     const buttons = new Map<string, Gtk.Widget>();
     let pendingFocus: string[] | null = null;
+    const current = (): Array<[number, boolean]> => {
+        const stored = ctx.settings.get(key);
+        if (!spec.appendMissing)
+            return stored;
+        const missing = spec.items.filter(([id]) => !stored.some(([i]) => i === id)).map(([id]): [number, boolean] => [id, false]);
+        return [...stored, ...missing];
+    };
 
     const build = (): void => {
         for (const row of rows)
@@ -45,7 +54,7 @@ export function toggleListGroup(ctx: PrefsContext, spec: ToggleListSpec): Adw.Pr
         }
         rows = [];
         buttons.clear();
-        const list = ctx.settings.get(key);
+        const list = current();
         list.forEach(([id, enabled], index) => {
             const info = spec.items.find(p => p[0] === id);
             const row = new Adw.ActionRow({title: info?.[1] ?? `Option ${id}`});
@@ -53,14 +62,14 @@ export function toggleListGroup(ctx: PrefsContext, spec: ToggleListSpec): Adw.Pr
             const toggle = new Gtk.Switch({valign: Gtk.Align.CENTER, active: enabled});
             label(toggle, `Show ${row.title}`);
             toggle.connect('notify::active', () => {
-                const next = ctx.settings.get(key).map(([i, e]): [number, boolean] => (i === id ? [i, toggle.active] : [i, e]));
-                if (JSON.stringify(next) !== JSON.stringify(ctx.settings.get(key))) {
+                const next = current().map(([i, e]): [number, boolean] => (i === id ? [i, toggle.active] : [i, e]));
+                if (JSON.stringify(next) !== JSON.stringify(current())) {
                     pendingFocus = [`sw:${index}`]; // the rebuild below replaces this very switch
                     ctx.settings.set(key, next);
                 }
             });
             const move = (delta: number): void => {
-                const next = ctx.settings.get(key);
+                const next = current();
                 const [item] = next.splice(index, 1);
                 next.splice(index + delta, 0, item as [number, boolean]);
                 pendingFocus = delta < 0 ? [`up:${index + delta}`, `down:${index + delta}`] : [`down:${index + delta}`, `up:${index + delta}`];

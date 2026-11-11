@@ -191,6 +191,7 @@ export class PowerBar {
 
     /** `icon-style-buttons`: Symbolic uses the icon as is, Full_Color tries the colour variant first. */
     private _setIcon(icon: St.Icon, name: string): void {
+        icon.fallback_icon_name = 'system-reboot-symbolic'; // a theme without this glyph (the firmware chip)
         if (this._settings.get('icon-style-buttons') === 'Full_Color')
             icon.gicon = Gio.ThemedIcon.new_from_names([name.replace(/-symbolic$/, ''), name]);
         else

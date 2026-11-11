@@ -210,7 +210,7 @@ done
 
 if [ "$SPAWN_DIALOGS" = 1 ]; then
     # extensionDir for these standalone runs is the private build dir (it contains data/icons).
-    for d in icons icons-system apps folder shortcut prompt presets; do
+    for d in icons icons-system apps folder shortcut prompt presets backup backup-bad backup-done; do
         gjs -m "$root/tools/dev-prefs-dialog.js" "$dev/build" "$d" >>"$plog" 2>&1 &
         dpid=$!
         sleep 4

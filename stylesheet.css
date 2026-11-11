@@ -323,6 +323,22 @@
     box-shadow: inset 0 0 0 2px rgb(224, 27, 36);
 }
 
+/* The confirmation of "Restart to Firmware Setup": a modal dialog of the shell (outside .spawn-popup); the
+ * Restart button gets the destructive red of the shell's own "Restart" / "Power Off" confirmations. */
+.spawn-firmware-dialog .destructive-action {
+    background-color: #c01c28;
+    color: #ffffff;
+}
+
+.spawn-firmware-dialog .destructive-action:hover,
+.spawn-firmware-dialog .destructive-action:focus {
+    background-color: #e01b24;
+}
+
+.spawn-firmware-dialog .destructive-action:active {
+    background-color: #a51d2d;
+}
+
 /* ---- horizontal separators / section titles ---- */
 
 .spawn-separator {

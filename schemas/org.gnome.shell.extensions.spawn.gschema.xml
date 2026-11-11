@@ -86,7 +86,7 @@
   <schema id="org.gnome.shell.extensions.spawn" path="/org/gnome/shell/extensions/spawn/">
     <key name="dev-mode" type="b">
       <default>false</default>
-      <summary>Enable the in-process D-Bus Dev interface (headless testing only)</summary>
+      <summary>Enable the in-process D-Bus Dev interface (headless testing only) (internal)</summary>
     </key>
     <key name="multi-monitor" type="b">
       <default>false</default>
@@ -353,9 +353,9 @@
       <description>Application shortcuts in the right pane (Spawn_* ids, .desktop ids, separators)</description>
     </key>
     <key name="power-options" type="a(ib)">
-      <default>[(0, true), (1, true), (2, true), (3, true), (4, false), (5, false), (6, false), (7, false)]</default>
+      <default>[(0, true), (1, true), (2, true), (3, true), (4, false), (5, false), (6, false), (7, false), (8, false)]</default>
       <summary>Power buttons</summary>
-      <description>Power buttons: (id, enabled); ids 0 LogOut 1 Lock 2 Restart 3 PowerOff 4 Suspend 5 HybridSleep 6 Hibernate 7 SwitchUser</description>
+      <description>Power buttons: (id, enabled); ids 0 LogOut 1 Lock 2 Restart 3 PowerOff 4 Suspend 5 HybridSleep 6 Hibernate 7 SwitchUser 8 RestartToFirmwareSetup (off by default)</description>
     </key>
     <key name="power-display-style" enum="org.gnome.shell.extensions.spawn.power-display-style">
       <default>'Default'</default>

@@ -15,6 +15,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **App actions:** `firefox private` runs New Private Window, `chrome incognito` and so on.
 - Each has a switch under Search sources in the preferences (all on by default).
 
+- **Back up and restore settings:** General > Back Up and Restore writes your settings, pinned apps and folders to
+  one JSON file (mode 0600) and restores them from one. A restore validates every value against the schema, ignores
+  and reports unknown keys, asks for confirmation and offers Undo.
+- **Restart to Firmware Setup (UEFI):** an opt-in power button (Pinned > Power buttons, off by default), shown only
+  when logind reports support. It asks for confirmation, then sets logind's firmware flag and restarts; the flag is
+  cleared again if anything fails.
+
 ### Changed
 
 - Fuzzy search no longer matches a word cut off in the middle ("display" no longer finds Disk Player).
