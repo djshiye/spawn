@@ -86,7 +86,7 @@
   <schema id="org.gnome.shell.extensions.spawn" path="/org/gnome/shell/extensions/spawn/">
     <key name="dev-mode" type="b">
       <default>false</default>
-      <summary>Enable the in-process D-Bus Dev interface (headless testing only)</summary>
+      <summary>Enable the in-process D-Bus Dev interface (headless testing only) (internal)</summary>
     </key>
     <key name="multi-monitor" type="b">
       <default>false</default>
