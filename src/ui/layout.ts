@@ -45,16 +45,14 @@ import Shell from 'gi://Shell';
 import St from 'gi://St';
 
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
-import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {CategoryLink, ShortcutId} from '../core/constants.js';
 import {openSpawnPrefs} from '../core/openPrefs.js';
 import {debounce} from '../core/debounce.js';
-import {gridIconSize} from '../core/limits.js';
 import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
-import type {Entry, PinnedItemSize, SettingsSnapshot} from '../core/settings.js';
+import type {Entry, SettingsSnapshot} from '../core/settings.js';
 import {addHidden, removeHidden} from '../model/hiddenApps.js';
 import type {FolderUndo, PinnedItem} from '../model/pinned.js';
 import {Places, type FakePlace, type Place} from '../model/places.js';
@@ -62,6 +60,9 @@ import {nearestIndex, pageTarget, searchStep, type Pos} from '../model/listNav.j
 import {reorderTarget, type ReorderKey} from '../model/reorder.js';
 import type {SearchResult} from '../search/engine.js';
 import {AppContextMenu} from './contextMenu.js';
+import {type Dir, type Group, type LayoutHost, type TileEntry, type ViewId} from './layout/types.js';
+import {PaneMetrics} from './layout/metrics.js';
+import {ScrollFactory} from './layout/scrolls.js';
 import {SearchSession} from './searchSession.js';
 import {acceptDrops, enableDrag, rejectDrops} from './dnd.js';
 import {bindReducedMotion, markList, nameItem} from './widgets/a11y.js';
@@ -86,53 +87,8 @@ import {UndoBanner} from './widgets/undoBanner.js';
 import {UserCard} from './widgets/userCard.js';
 import {applyScrollSettings, displayName, iconSizeFor, iconSizeOrHidden, isPointerEvent, launchApp, lookupApp, ownedScope, scrollIntoView, showDescriptions} from './util.js';
 
-export interface LayoutHost {
-    /** Close the popup (e.g. after launching an app). */
-    close(): void;
-    /** Open a pinned folder (used by the folder context menu). */
-    openFolder?(uuid: string): void;
-    /** Open a pinned folder and start renaming it. */
-    renameFolder?(uuid: string): void;
-    /** Delete a pinned folder (its apps move to the top level) and offer Undo. */
-    deleteFolder?(uuid: string): void;
-    /** Hide an app from the generated lists (All Apps, categories, Frequent) and offer Undo. */
-    hideApp?(app: Shell.App): void;
-    /** Pin / unpin an app (or pinned command) and offer Undo. `name` is for the banner. */
-    pin?(id: string, name: string): void;
-    unpin?(id: string, name: string): void;
-    /** Take an app out of a pinned folder (back to the top level) and offer Undo. */
-    removeFromFolder?(uuid: string, id: string, name: string): void;
-    /** Remove a right-pane shortcut and offer Undo. */
-    removeShortcut?(entry: Entry, name: string): void;
-    /** Open Spawn's settings window, on the Pinned page when `shortcuts` is set. */
-    openSettings?(shortcuts: boolean): void;
-}
-
-export type ViewId = 'pinned' | 'frequent' | 'categories' | 'all' | 'folder' | 'results' | 'favorites' | 'recent';
-
-/**
- * Floors the code enforces whatever the settings say (the prefs spin rows use the same minimums):
- * left pane 420 px (4 tile columns need ~390), right pane 180 px (avatar + names + 3 power buttons).
- */
-export const MIN_LEFT_WIDTH = 420;
-export const MIN_RIGHT_WIDTH = 180;
-const MIN_COLUMNS = 3;
-/**
- * Horizontal space used inside the left pane that tiles cannot use: the 16 + 16 px gutter (the pane's 8 px
- * edge plus the grid's 8 px; the left pane has no padding of its own, both are the padding of the first /
- * last column's tiles, which also absorbs a classic scrollbar).
- */
-const LEFT_CHROME = 32;
-const MIN_HEIGHT = 360;
-/** Popup frame around the layout: the panes' 2x8 inset, shadow margins 3+3 / 14, arrow, breathing room. */
-const FRAME_W = 16 + 6;
-const FRAME_H = 16 + 14 + 14;
-/** The panes' margin inside the layout root (.spawn-panes): the folder scrim lies over the root, edge to edge, around it. */
-const PANES_INSET = 8;
-const SCREEN_MARGIN = 8;
-/** Right pane margin (4) + vertical separator with its margins (1 + 2 x 6). */
-const PANE_GAP = 4;
-const SEPARATOR_W = 13;
+export type {LayoutHost, ViewId} from './layout/types.js';
+export {MIN_LEFT_WIDTH, MIN_RIGHT_WIDTH} from './layout/metrics.js';
 
 /** Sizes and arrangement: re-derive the metrics and rebuild the pinned view. Disjoint from the other key sets (one handler per key). */
 const RELAYOUT_KEYS = [
@@ -170,21 +126,6 @@ const RIGHT_KEYS = [
 
 /** Category quick links (default-menu-view and icon-size-categories are handled by the relayout / view-settings handlers). */
 const LINK_KEYS = ['arcmenu-extra-categories-links', 'arcmenu-extra-categories-links-location'] as const;
-
-type Dir = 'up' | 'down' | 'left' | 'right';
-
-interface Group {
-    id: string;
-    items: Clutter.Actor[];
-    cols: number;
-}
-
-interface TileEntry {
-    widget: St.Widget;
-    scope: Scope;
-    release(): void;
-    folder?: FolderTile | FolderRow;
-}
 
 /** Centre of an actor on the stage. */
 function centreOf(actor: Clutter.Actor): Pos {
@@ -279,18 +220,14 @@ export class SpawnLayout implements ShortcutHost {
     private _lastTile: {widget: Clutter.Actor; index: number} | null = null;
     private _isOpen = false;
     private readonly _session: SearchSession;
-    private _cols = 4;
-    private _tileWidth = 96;
-    private _tileIconSize = sizeMetrics('Compact').tileIcon;
     /** Icon size / label mode / naming the cached tiles were built with; a change rebuilds them. */
     private _tileSignature = '';
     private _side: St.Side = St.Side.TOP;
     private _anchor: St.Widget | null = null;
     /** Where the search entry currently sits (resolved from `search-entry-location`, "Auto" included). */
     private _searchTop = false;
-    /** cols|tile width|icon size of the last `_applyMetrics`: a change means the pinned tiles are stale. */
-    private _metricsSig = '';
-    private readonly _scrolls: St.ScrollView[] = [];
+    private readonly _metrics: PaneMetrics;
+    private readonly _scrollFactory: ScrollFactory;
     private _destroyed = false;
 
     readonly tooltips: TooltipManager;
@@ -390,6 +327,11 @@ export class SpawnLayout implements ShortcutHost {
         this._panes.add_child(this._left);
         this._panes.add_child(this._vsep);
         this._panes.add_child(this._right);
+        this._metrics = new PaneMetrics({
+            settings, root: this.actor, panes: this._panes, left: this._left, right: this._right, vsep: this._vsep,
+            anchor: () => this._anchor,
+        });
+        this._scrollFactory = new ScrollFactory(settings);
 
         this._search = new SearchBox(scope, settings);
         this._stack = new St.BoxLayout({style_class: 'spawn-stack', orientation: Clutter.Orientation.VERTICAL, x_expand: true, y_expand: true});
@@ -413,7 +355,7 @@ export class SpawnLayout implements ShortcutHost {
         this._rightScope = scope.child('right pane');
         this._arrangeLeft();
         this._buildRight();
-        this._applyMetrics();
+        this._metrics.apply();
 
         // search wiring
         this._search.onTextChanged(scope, text => this._onSearchText(text));
@@ -493,7 +435,7 @@ export class SpawnLayout implements ShortcutHost {
             this._session.cancel();
             // The popup may open on another monitor / work area than last time: new columns or tile
             // widths make the cached pinned tiles stale.
-            if (this._applyMetrics())
+            if (this._metrics.apply())
                 this._pinnedDirty = true;
             if (this._searchOnTop() !== this._searchTop)
                 this._arrangeLeft();
@@ -520,7 +462,7 @@ export class SpawnLayout implements ShortcutHost {
         try {
             this._anchor = anchor;
             this._side = side;
-            if (this._applyMetrics())
+            if (this._metrics.apply())
                 this._pinnedDirty = true;
             if (this._searchOnTop() !== this._searchTop)
                 this._arrangeLeft();
@@ -614,7 +556,7 @@ export class SpawnLayout implements ShortcutHost {
             focusInLayout: Boolean(focus && this.actor.contains(focus)),
             focusIndex: this._locate(this._mainGroups(), focus)?.index ?? null,
             tiles: this._grid.tiles().length,
-            display: this._listMode() ? 'List' : 'Grid',
+            display: this._metrics.listMode() ? 'List' : 'Grid',
             folder: this._view === 'folder' ? this._folderView?.uuid ?? null : null,
             folderTiles: this._view === 'folder' ? this._folderView?.tiles().length ?? 0 : 0,
             folderColumns: this._view === 'folder' ? this._folderView?.columns ?? 0 : 0,
@@ -623,11 +565,11 @@ export class SpawnLayout implements ShortcutHost {
             extraRows: this._extraList?.rows().length ?? 0,
             places: [this._places.devices().length, this._places.network().length, this._places.bookmarks().length],
             tooltip: this._tooltips.debugText(),
-            columns: this._cols,
+            columns: this._metrics.cols,
             size: staged ? [this.actor.width, this.actor.height] : [0, 0],
             searchTop: this._searchTop,
             side: this._side,
-            tileWidth: this._tileWidth,
+            tileWidth: this._metrics.tileWidth,
             leftWidth: staged ? this._left.width : 0,
             rightWidth: staged ? this._right.width : 0,
             renaming: this._folderView?.renaming ?? false,
@@ -657,7 +599,6 @@ export class SpawnLayout implements ShortcutHost {
 
     // ---- sizes ----
 
-    /** Work area of the monitor the popup opens on (the anchor's, else the primary one). */
     /** Is the pinned grid on screen (its own view, or under an open folder popup)? */
     private _pinnedShowing(): boolean {
         if (!this._isOpen)
@@ -665,70 +606,10 @@ export class SpawnLayout implements ShortcutHost {
         return this._view === 'pinned' || (this._view === 'folder' && Boolean(this._pinnedScroll?.visible));
     }
 
-    /** Size of the menu content the folder popup is centred in (pane widths + separator, menu height). */
-    private _contentSize(): {width: number; height: number} {
-        // Fixed sizes from _applyMetrics: readable before the layout is staged or allocated.
-        const width = this._left.width + this._right.width + PANE_GAP + (this._vsep.visible ? SEPARATOR_W : 0);
-        return {width, height: this._panes.height};
-    }
-
-    private _workArea(): {width: number; height: number} | null {
-        try {
-            const lm = Main.layoutManager;
-            const index = this._anchor ? lm.findIndexForActor(this._anchor) : lm.primaryIndex;
-            const wa = lm.getWorkAreaForMonitor(index >= 0 ? index : lm.primaryIndex);
-            return wa ? {width: wa.width, height: wa.height} : null;
-        } catch {
-            return null;
-        }
-    }
-
-    /**
-     * Pane widths and menu height from the settings, clamped to the work area of the anchor's
-     * monitor: the left pane shrinks first (never below MIN_LEFT_WIDTH), then the right pane (never
-     * below MIN_RIGHT_WIDTH); the height never exceeds the work area minus the popup frame.
-     */
-    private _applyMetrics(): boolean {
-        const s = this._services.settings;
-        let left = Math.max(MIN_LEFT_WIDTH, s.get('left-panel-width') + s.get('menu-width-adjustment'));
-        let right = Math.max(MIN_RIGHT_WIDTH, s.get('right-panel-width'));
-        const sep = s.get('vert-separator');
-        const wa = this._workArea();
-
-        let maxH = Infinity;
-        if (wa) {
-            maxH = Math.max(0, wa.height - 2 * SCREEN_MARGIN - FRAME_H);
-            const maxW = wa.width - 2 * SCREEN_MARGIN - FRAME_W - PANE_GAP - (sep ? SEPARATOR_W : 0);
-            if (left + right > maxW) {
-                left = Math.max(MIN_LEFT_WIDTH, maxW - right);
-                if (left + right > maxW)
-                    right = Math.max(MIN_RIGHT_WIDTH, maxW - left);
-            }
-        }
-        const height = Math.max(Math.min(MIN_HEIGHT, maxH), Math.min(s.get('menu-height'), maxH));
-
-        this._left.set_width(left);
-        this._right.set_width(right);
-        this._vsep.visible = sep;
-        this.actor.set_height(height + 2 * PANES_INSET);
-
-        const avail = left - LEFT_CHROME;
-        const metrics = sizeMetrics(s.get('pinned-item-size'));
-        this._cols = Math.max(MIN_COLUMNS, Math.floor(avail / metrics.tileTargetWidth));
-        this._tileWidth = Math.floor(avail / this._cols);
-        const grid = s.get('icon-size-grid');
-        this._tileIconSize = gridIconSize(grid?.size, metrics.tileIcon);
-
-        const sig = `${this._cols}|${this._tileWidth}|${this._tileIconSize}`;
-        const changed = this._metricsSig !== '' && sig !== this._metricsSig;
-        this._metricsSig = sig;
-        return changed;
-    }
-
     private _relayout(): void {
         if (this._destroyed)
             return;
-        this._applyMetrics();
+        this._metrics.apply();
         this._arrangeLeft();
         this._pinnedDirty = true;
         if (this._isOpen)
@@ -757,7 +638,7 @@ export class SpawnLayout implements ShortcutHost {
             return;
         const s = this._services.settings;
         const scrolls = [
-            ...this._scrolls, this._shortcutScroll,
+            ...this._scrollFactory.tracked(), this._shortcutScroll,
             this._categories?.appScroll(), this._categories?.columnScroll(), this._folderView?.scroll,
         ];
         for (const scroll of scrolls) {
@@ -803,7 +684,7 @@ export class SpawnLayout implements ShortcutHost {
         const slot = new St.Bin({child: navIcon, x_expand: false, y_align: Clutter.ActorAlign.CENTER});
         const sync = (): void => {
             navIcon.icon_size = iconSizeFor(this._services.settings, 'icon-size-misc', 16);
-            slot.set_style(`width: ${Math.max(navIcon.icon_size, this._rowIconSize())}px;`); // CSS px: St scales them
+            slot.set_style(`width: ${Math.max(navIcon.icon_size, this._metrics.rowIconSize())}px;`); // CSS px: St scales them
         };
         sync();
         this._services.settings.onChanged(this._scope, ['icon-size-misc', 'icon-size-apps', 'pinned-item-size'], sync);
@@ -956,7 +837,7 @@ export class SpawnLayout implements ShortcutHost {
 
         const shortcutsBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-shortcuts-box'});
         markList(shortcutsBox, _('Shortcuts'));
-        const scroll = this._makeScroll(shortcutsBox, 'spawn-shortcuts', false);
+        const scroll = this._scrollFactory.make(shortcutsBox, 'spawn-shortcuts', false);
         this._shortcutScroll = scroll;
         this._shortcutsBox = shortcutsBox;
         this._fillShortcuts();
@@ -1051,22 +932,6 @@ export class SpawnLayout implements ShortcutHost {
         this._places.setFake(specs);
     }
 
-    /** `track`: remember it so scroll settings changes re-apply live (views built once, not the right pane). */
-    private _makeScroll(child: St.Widget, styleClass: string, track = true): St.ScrollView {
-        const settings = this._services.settings;
-        const scroll = new St.ScrollView({
-            style_class: styleClass,
-            hscrollbar_policy: St.PolicyType.NEVER,
-            x_expand: true,
-            y_expand: true,
-        });
-        applyScrollSettings(scroll, settings);
-        scroll.add_child(child);
-        if (track)
-            this._scrolls.push(scroll);
-        return scroll;
-    }
-
     // ---- views ----
 
     private _defaultView(): ViewId {
@@ -1159,7 +1024,7 @@ export class SpawnLayout implements ShortcutHost {
         case 'frequent': {
             if (!this._frequentScroll) {
                 this._frequentBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-list'});
-                this._frequentScroll = this._makeScroll(this._frequentBox, 'spawn-frequent');
+                this._frequentScroll = this._scrollFactory.make(this._frequentBox, 'spawn-frequent');
             }
             this._fillFrequent(this._frequentBox as St.BoxLayout);
             return [add(this._frequentScroll)];
@@ -1190,7 +1055,7 @@ export class SpawnLayout implements ShortcutHost {
                             this._focusMain();
                     },
                 });
-                this._extraScroll = this._makeScroll(this._extraList.actor, 'spawn-frequent');
+                this._extraScroll = this._scrollFactory.make(this._extraList.actor, 'spawn-frequent');
             }
             this._extraList.show(view);
             return [add(this._extraScroll)];
@@ -1199,7 +1064,7 @@ export class SpawnLayout implements ShortcutHost {
             if (!this._resultsScroll) {
                 const results = new ResultList(this._scope, this._services.settings, this._resultHost);
                 results.setReversed(!this._searchTop);
-                const scroll = this._makeScroll(results.actor, 'spawn-results');
+                const scroll = this._scrollFactory.make(results.actor, 'spawn-results');
                 // New rows (a batch, the reversed list growing upwards): keep the highlighted one in view.
                 scroll.vadjustment.connect('notify::upper', () => {
                     const row = this._view === 'results' ? results.selected() : null;
@@ -1222,7 +1087,7 @@ export class SpawnLayout implements ShortcutHost {
             markList(this._grid.actor, _('Pinned apps'));
             this._pinnedBox.add_child(this._grid.actor);
             this._pinnedBox.add_child(this._makePinnedEmpty());
-            this._pinnedScroll = this._makeScroll(this._pinnedBox, 'spawn-pinned');
+            this._pinnedScroll = this._scrollFactory.make(this._pinnedBox, 'spawn-pinned');
             acceptDrops(this._scope, this._pinnedScroll, this._services.pinned, {kind: 'grid', index: () => -1});
             if (!this._pinnedSubscribed) {
                 this._pinnedSubscribed = true;
@@ -1280,15 +1145,15 @@ export class SpawnLayout implements ShortcutHost {
                 ...this._tileHostWithTips(),
                 back: () => this._back(),
                 metrics: () => ({
-                    columns: this._cols,
-                    tileWidth: this._tileWidth,
-                    iconSize: this._tileIconSize,
+                    columns: this._metrics.cols,
+                    tileWidth: this._metrics.tileWidth,
+                    iconSize: this._metrics.tileIconSize,
                     // The popup is always a grid, so the grid's label setting applies in the list display too.
                     multiLine: this._services.settings.get('multi-lined-labels'),
-                    list: this._listMode(),
-                    rowIconSize: this._rowIconSize(),
-                    size: this._itemSize(),
-                    ...this._contentSize(),
+                    list: this._metrics.listMode(),
+                    rowIconSize: this._metrics.rowIconSize(),
+                    size: this._metrics.itemSize(),
+                    ...this._metrics.contentSize(),
                 }),
                 openMissingContext: (tile, id) => this._context.open(tile, {kind: 'custom', id}),
             });
@@ -1345,7 +1210,7 @@ export class SpawnLayout implements ShortcutHost {
         section.add_child(new St.Widget({style_class: 'spawn-separator', x_expand: true}));
         section.add_child(new St.Label({text: _('Frequent'), style_class: 'spawn-section-title'}));
         // Under the pinned LIST the frequent rows use the same pitch / inset as the pinned rows.
-        const rows = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: this._listMode() ? 'spawn-list' : ''});
+        const rows = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: this._metrics.listMode() ? 'spawn-list' : ''});
         section.add_child(rows);
         this._fillFrequent(rows);
         box.add_child(section);
@@ -1383,36 +1248,21 @@ export class SpawnLayout implements ShortcutHost {
         return this._services.pinned.folderApps(uuid).length;
     }
 
-    /** `pinned-apps-display`: pinned apps and folder contents as full-width rows instead of tiles. */
-    private _listMode(): boolean {
-        return this._services.settings.get('pinned-apps-display') === 'List';
-    }
-
-    /** `pinned-item-size`: Compact / Comfortable / Large (list row height, tile icon, folder plate). */
-    private _itemSize(): PinnedItemSize {
-        return this._services.settings.get('pinned-item-size');
-    }
-
-    /** Icon size of list rows: `icon-size-apps` when set, else the item size's default (28 at Compact, as the frequent / all-apps rows). */
-    private _rowIconSize(): number {
-        return iconSizeFor(this._services.settings, 'icon-size-apps', sizeMetrics(this._itemSize()).rowIcon);
-    }
-
     private _syncPinned(): void {
         this._tooltips.hide();
         const store = this._services.pinned;
         const settings = this._services.settings;
         const multiLine = settings.get('multi-lined-labels');
         const generic = settings.get('apps-show-generic-names');
-        const list = this._listMode();
-        const rowIconSize = this._rowIconSize();
+        const list = this._metrics.listMode();
+        const rowIconSize = this._metrics.rowIconSize();
 
         // Tiles keep their icon size / label mode / naming from when they were built: a change in
         // any of them (or list <-> grid, which swaps tiles for rows) rebuilds every entry
         // (otherwise old and new sizes mix in one grid).
         // List rows are always one line (multi-lined-labels is a grid setting).
-        const size = this._itemSize();
-        const signature = list ? `list${rowIconSize}|${generic}|${size}` : `grid${this._tileIconSize}|${multiLine}|${generic}|${size}`;
+        const size = this._metrics.itemSize();
+        const signature = list ? `list${rowIconSize}|${generic}|${size}` : `grid${this._metrics.tileIconSize}|${multiLine}|${generic}|${size}`;
         if (signature !== this._tileSignature) {
             this._tileSignature = signature;
             for (const [key, entry] of [...this._tileEntries]) {
@@ -1424,7 +1274,7 @@ export class SpawnLayout implements ShortcutHost {
 
         const keep = new Set<string>();
         const tiles: St.Widget[] = [];
-        const tileOpts = {iconSize: list ? rowIconSize : this._tileIconSize, multiLine: multiLine && !list};
+        const tileOpts = {iconSize: list ? rowIconSize : this._metrics.tileIconSize, multiLine: multiLine && !list};
         const dropOpts = {vertical: list};
 
         // A pinned app whose .desktop file is gone (uninstalled, unmounted Flatpak remote) stays in
@@ -1518,7 +1368,7 @@ export class SpawnLayout implements ShortcutHost {
                 entry.widget.destroy();
             }
         }
-        this._grid.setTiles(tiles, list ? 1 : this._cols, list ? -1 : this._tileWidth, size);
+        this._grid.setTiles(tiles, list ? 1 : this._metrics.cols, list ? -1 : this._metrics.tileWidth, size);
         const empty = tiles.length === 0;
         this._grid.actor.visible = !empty;
         if (this._pinnedTitle)
