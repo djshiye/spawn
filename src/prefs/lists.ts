@@ -127,7 +127,7 @@ export function describeEntry(entry: Entry, ctx?: PrefsContext): {title: string;
     const builtin = BUILTINS.get(entry.id);
     if (builtin) {
         const icon = builtin.icon === SPAWN_ICON || entry.icon === SPAWN_ICON ? spawnIcon(ctx) : builtin.icon;
-        return {title: entry.name || builtin.title, subtitle: builtin.id === ShortcutId.SEPARATOR ? undefined : 'Built-in', icon};
+        return {title: entry.name || builtin.title, icon};
     }
     if (entry.id.endsWith('.desktop')) {
         const info = GioUnix.DesktopAppInfo.new(entry.id);
