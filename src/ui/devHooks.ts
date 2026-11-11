@@ -18,6 +18,7 @@
 //   Rect(s cls, i nth) -> s  JSON [x, y, w, h] (stage coordinates) of the nth VISIBLE actor whose
 //                            style class list contains `cls` (popup, context menu, tooltip), or ""
 //                            Scenarios use it to find targets instead of hard-coded pixels.
+//   ClipboardText() -> s    the CLIPBOARD text ('' when empty): checks that a calculator / conversion result was copied
 //   Count(s cls) -> i        how many visible actors carry `cls`
 //   Pseudo(s cls, i nth) -> s  the style pseudo classes of that actor ("hover active ..."), '' when absent
 //   TextRect(s text, i nth) -> s   JSON [x, y, w, h] of the nth VISIBLE St.Label whose text is exactly `text`
@@ -92,6 +93,7 @@ const IFACE = `
     <method name="State"><arg type="s" direction="out" name="json"/></method>
     <method name="Rect"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/><arg type="s" direction="out" name="rect"/></method>
     <method name="Pseudo"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/><arg type="s" direction="out" name="pseudo"/></method>
+    <method name="ClipboardText"><arg type="s" direction="out" name="text"/></method>
     <method name="Count"><arg type="s" direction="in" name="cls"/><arg type="i" direction="out" name="count"/></method>
     <method name="TextRect"><arg type="s" direction="in" name="text"/><arg type="i" direction="in" name="nth"/><arg type="s" direction="out" name="rect"/></method>
     <method name="FocusActor"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/></method>
@@ -555,6 +557,14 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
             const a = findAll(cls)[nth] as unknown as {get_style_pseudo_class?: () => string | null} | undefined;
             return new GLib.Variant('(s)', [a?.get_style_pseudo_class?.() ?? '']);
         }),
+        ClipboardTextAsync: (_p: unknown[], inv: Invocation) => {
+            if (disposed) {
+                inv.return_dbus_error('org.freedesktop.DBus.Error.Failed', 'disabled');
+                return;
+            }
+            St.Clipboard.get_default().get_text(St.ClipboardType.CLIPBOARD, (_c: St.Clipboard, text: string | null) =>
+                inv.return_value(new GLib.Variant('(s)', [text ?? ''])));
+        },
         CountAsync: ([cls]: [string], inv: Invocation) => reply(inv, () => new GLib.Variant('(i)', [findAll(cls).length])),
         FocusActorAsync: ([cls, nth]: [string, number], inv: Invocation) => reply(inv, () => {
             const a = findAll(cls)[nth];

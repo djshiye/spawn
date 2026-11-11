@@ -5,6 +5,20 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **Calculator in the search box:** type `2+2`, `(3.5*4)/2`, `2^10`, `15% of 80`, `sqrt(16)` or `-3 + 4e2` (also × ÷ −)
+  and Return copies the answer. A plain number such as `2048` still finds apps. Decimal point is `.`.
+- **Unit conversion:** `5 km in miles`, `100 f in c`, `2 gb in mb`, `60 mph in km/h` (length, mass, temperature,
+  volume, data size, speed, time); Return copies the result.
+- **Settings panels:** `bluetooth`, `wifi`, `display`, `sound` and the other GNOME Settings panels open straight away.
+- **App actions:** `firefox private` runs New Private Window, `chrome incognito` and so on.
+- Each has a switch under Search sources in the preferences (all on by default).
+
+### Changed
+
+- Fuzzy search no longer matches a word cut off in the middle ("display" no longer finds Disk Player).
+
 ## [1.2.2] - 2026-11-10
 
 ### Fixed
