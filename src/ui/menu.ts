@@ -400,6 +400,8 @@ export class SpawnPopup {
             this._clearHover();
             // Resolve a closing click on a panel launcher BEFORE a fullscreen panel hides again.
             const passedTo = this._passClickOn(anchor);
+            if (!passedTo)
+                this._restoreHover(anchor);
             this._intellihide.release();
             // A tray icon / indicator clicked over a fullscreen game opens its menu on that panel: keep the panel
             // until that menu closes (or, if it never opens, hide it after a moment).
@@ -481,6 +483,27 @@ export class SpawnPopup {
         } catch (e) {
             error('panel hover relay failed', e);
         }
+    }
+
+    /**
+     * The menu closed without a click on a panel button (Escape, a click elsewhere): once the grab is gone, the
+     * button under the pointer gets its hover look back (the shell only restores it on the next pointer motion).
+     * It is cleared by the shell's own leave event when the pointer moves off; nothing is lit when the pointer is
+     * not on a button.
+     */
+    private _restoreHover(anchor: St.Widget | null): void {
+        this._scope.idle(() => {
+            try {
+                if (this._open)
+                    return;
+                const [x, y] = global.get_pointer();
+                const target = panelClickTarget({x, y, button: PRIMARY}, anchor, panelClickDeps());
+                if (target)
+                    setPanelHover(target, true);
+            } catch (e) {
+                error('panel hover restore failed', e);
+            }
+        });
     }
 
     private _clearHover(): void {
