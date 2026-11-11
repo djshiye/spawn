@@ -31,7 +31,7 @@ export interface PowerFit {
 
 /** Hidden first to last: the harmless, rarely used ones first; Power Off is never hidden before the rest. */
 export const OVERFLOW_ORDER: readonly number[] = [
-    PowerType.HYBRID_SLEEP, PowerType.HIBERNATE, PowerType.SWITCH_USER, PowerType.LOGOUT,
+    PowerType.FIRMWARE, PowerType.HYBRID_SLEEP, PowerType.HIBERNATE, PowerType.SWITCH_USER, PowerType.LOGOUT,
     PowerType.SUSPEND, PowerType.RESTART, PowerType.LOCK, PowerType.POWER_OFF,
 ];
 
