@@ -190,7 +190,7 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
     syncAvatar();
     watch(ctx, avatarShape, ['show-user-avatar'], syncAvatar);
     page.add(group(ctx, 'Show in the menu', [
-        switchRow(ctx, 'show-user-avatar', 'Your picture', 'At the top of the right pane'),
+        switchRow(ctx, 'show-user-avatar', 'Your picture', 'Next to your name'),
         avatarShape,
         descriptionsRow(ctx),
         switchRow(ctx, 'multi-lined-labels', 'Wrap long app names'),
