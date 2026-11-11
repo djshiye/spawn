@@ -74,6 +74,8 @@ export type ResultHost = ShortcutHost & {
     /** One-line "No results" without icon and hint (the runner, which sizes itself to its content). */
     compactEmpty?: boolean;
     openResultContext?(row: St.Widget, result: SearchResult): void;
+    /** Make a row of an app result a drag source that pins it (desktop id, display name). */
+    dragApp?(row: St.Widget, id: string, name: string): void;
     /** Is the app with this desktop id new (a "New" pill after its name in the results)? */
     isNewApp?(id: string): boolean;
 };
@@ -487,7 +489,7 @@ export class ResultList {
 
         const text = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, y_align: Clutter.ActorAlign.CENTER, x_expand: true});
         const title = new St.Label({style_class: 'spawn-row-label'});
-        if (this._settings.get('highlight-search-result-terms'))
+        if (this._settings.get('highlight-search-result-terms') && !result.plainTitle)
             title.clutter_text.set_markup(highlightMarkup(result.title, query));
         else
             title.text = result.title;
@@ -521,6 +523,8 @@ export class ResultList {
                     this._host.openResultContext?.(button, result);
             } : undefined,
         });
+        if (result.providerId === 'apps')
+            this._host.dragApp?.(button, result.id, result.title);
         return button;
     }
 }

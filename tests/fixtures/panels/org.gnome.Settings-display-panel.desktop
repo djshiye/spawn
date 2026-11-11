@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Displays
+Comment=Resolution
+Exec=true
+Icon=org.gnome.Settings-display-symbolic
+Keywords=Monitor;Resolution;Night Light;
+NoDisplay=true
+X-GNOME-Settings-Panel=display
+OnlyShowIn=GNOME;

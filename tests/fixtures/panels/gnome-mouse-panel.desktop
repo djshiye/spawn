@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Mouse & Touchpad
+Comment=Pointer
+Exec=true
+Icon=input-mouse-symbolic
+Keywords=Trackpad;
+NoDisplay=true
+X-GNOME-Settings-Panel=mouse
+OnlyShowIn=GNOME;

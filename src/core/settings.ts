@@ -12,6 +12,7 @@
 //                                      Pass [] for "any key".
 //   isValidFolderId(id)                true for ids usable as a dconf path element (no '/', not empty)
 //   s.folder(uuid)                     FolderSettings for folders/<uuid>/ (throws on an invalid id)
+//   s.folderSchema()                   Gio.SettingsSchema of the folder keys
 //   s.deleteFolder(uuid)               resets the folder's keys (removes dconf entries)
 //   s.snapshot(keys, folderIds?)       remembers the user values of keys / folders (for Undo)
 //   s.restore(snapshot)                writes a snapshot back (unset values are reset)
@@ -132,6 +133,10 @@ export interface SettingsMap {
     'search-provider-open-windows': boolean;
     'search-provider-recent-files': boolean;
     'search-provider-shell': boolean;
+    'search-calculator': boolean;
+    'search-unit-conversion': boolean;
+    'search-settings-panels': boolean;
+    'search-app-actions': boolean;
     'show-hidden-recent-files': boolean;
     'apps-show-extra-details': boolean;
     'apps-show-generic-names': boolean;
@@ -249,12 +254,13 @@ export class SettingsBatch {
         this._raw.reset(key);
     }
 
-    /** Puts a user value back (see snapshot()); null resets the key. */
-    setVariant(key: SettingKey, value: GLib.Variant | null): void {
-        if (value === null)
+    /** Puts a user value back (see snapshot()); null resets the key. Returns false when GSettings rejects the value. */
+    setVariant(key: SettingKey, value: GLib.Variant | null): boolean {
+        if (value === null) {
             this._raw.reset(key);
-        else
-            this._raw.set_value(key, value);
+            return true;
+        }
+        return this._raw.set_value(key, value);
     }
 }
 
@@ -294,6 +300,14 @@ export class SpawnSettings {
             throw new Error(`schema ${FOLDER_SCHEMA_ID} not found`);
         const path = `${this.raw.path}folders/${uuid}/`;
         return new FolderSettings(uuid, Gio.Settings.new_full(schema, this.raw.backend, path));
+    }
+
+    /** The schema of the folder keys (name, pinned-apps), for validating values before they are written. */
+    folderSchema(): Gio.SettingsSchema {
+        const schema = this._schemaSource.lookup(FOLDER_SCHEMA_ID, true);
+        if (!schema)
+            throw new Error(`schema ${FOLDER_SCHEMA_ID} not found`);
+        return schema;
     }
 
     deleteFolder(uuid: string): void {

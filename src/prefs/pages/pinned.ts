@@ -22,6 +22,7 @@ const POWER: ReadonlyArray<readonly [number, string, string]> = [
     [PowerType.HYBRID_SLEEP, 'Hybrid Sleep', 'weather-clear-night-symbolic'],
     [PowerType.HIBERNATE, 'Hibernate', 'document-save-symbolic'],
     [PowerType.SWITCH_USER, 'Switch User', 'system-switch-user-symbolic'],
+    [PowerType.FIRMWARE, 'Restart to Firmware Setup', 'application-x-firmware-symbolic'],
 ];
 
 export function createPinnedPage(ctx: PrefsContext): Adw.PreferencesPage {
@@ -67,7 +68,8 @@ export function createPinnedPage(ctx: PrefsContext): Adw.PreferencesPage {
     page.add(toggleListGroup(ctx, {
         key: 'power-options',
         title: 'Power buttons',
-        description: 'Choose which buttons appear and in which order.',
+        description: 'Choose which buttons appear and in which order. Restart to Firmware Setup (UEFI) is off by default and only appears on computers that support it.',
+        appendMissing: true,
         items: POWER,
         fallbackIcon: 'system-shutdown-symbolic',
         resetKeys: ['power-options', 'power-display-style'],

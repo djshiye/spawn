@@ -14,6 +14,7 @@
 //   "<name>, new" (widgets/newBadge.ts).
 //   Every row is an outer transparent button (`spawn-pinned-row`, or `spawn-list-row` for a plain list) around a
 //   `spawn-row-surface` that draws it (see interact.ts).
+//   A plain list row (not `pinned`, not in a folder) is a drag source when the host offers TileHost.dragApp (drag to pin).
 //   new ActionRow(name, icon, activate, host?, opts?)   arbitrary action; opts: {iconSize?, context?}
 
 import Clutter from 'gi://Clutter';
@@ -112,6 +113,9 @@ export class AppRow {
             activate: ctrl => host.launch(app, ctrl),
             context: () => host.openContext(button, app, opts.folderUuid),
         });
+        // Rows of the pinned view wire their own drag & drop; every other list drags to pin.
+        if (!opts.pinned && !opts.folderUuid)
+            host.dragApp?.(button, app, name);
     }
 
     get app(): Shell.App {

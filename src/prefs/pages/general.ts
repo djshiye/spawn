@@ -8,6 +8,7 @@ import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk?version=4.0';
 
+import {backupGroup} from '../backupRows.js';
 import type {PrefsContext} from '../context.js';
 import {captureShortcut} from '../shortcutDialog.js';
 import {enumRow, group, label, resetWithUndo, spinRow, switchRow, toast, watch} from '../widgets.js';
@@ -202,6 +203,8 @@ export function createGeneralPage(ctx: PrefsContext): Adw.PreferencesPage {
     ], {
         reset: ['activate-on-launch', 'keep-open-on-ctrl-click', 'show-tooltips'],
     }));
+
+    page.add(backupGroup(ctx));
 
     const resetAll = new Gtk.Button({label: 'Reset General Settings', halign: Gtk.Align.CENTER, css_classes: ['destructive-action', 'pill']});
     resetAll.connect('clicked', () => {

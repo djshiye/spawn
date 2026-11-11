@@ -5,6 +5,43 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-11
+
+### Added
+
+- **Calculator in the search box:** type `2+2`, `(3.5*4)/2`, `2^10`, `15% of 80`, `sqrt(16)` or `-3 + 4e2` (also × ÷ −)
+  and Return copies the answer. A plain number such as `2048` still finds apps. Decimal point is `.`.
+- **Unit conversion:** `5 km in miles`, `100 f in c`, `2 gb in mb`, `60 mph in km/h` (length, mass, temperature,
+  volume, data size, speed, time); Return copies the result.
+- **Settings panels:** `bluetooth`, `wifi`, `display`, `sound` and the other GNOME Settings panels open straight away.
+- **App actions:** `firefox private` runs New Private Window, `chrome incognito` and so on.
+- Each has a switch under Search sources in the preferences (all on by default).
+- **Drag from All Apps to Pinned:** drag an app from All Apps, a category, Frequent or search results onto the
+  Back button ("Drop to pin") to pin it at the end, or rest on it for half a second to jump into Pinned and drop it
+  exactly where you want it, or onto a folder. Undo works as usual.
+- **Back up and restore settings:** General > Back Up and Restore writes your settings, pinned apps and folders to
+  one JSON file (mode 0600) and restores them from one. A restore validates every value against the schema, ignores
+  and reports unknown keys, asks for confirmation and offers Undo.
+- **Restart to Firmware Setup (UEFI):** an opt-in power button (Pinned > Power buttons, off by default), shown only
+  when logind reports support. It asks for confirmation, then sets logind's firmware flag and restarts; the flag is
+  cleared again if anything fails.
+
+### Changed
+
+- The menu layout code is split into smaller per-view modules (no visible change).
+- Developer tools: ESLint 10; the panel click, hover and fullscreen scenarios now run in CI.
+- Fuzzy search no longer matches a word cut off in the middle ("display" no longer finds Disk Player).
+
+### Fixed
+
+- **Right click on a Dash to Panel app icon while the menu is open:** one right click now closes Spawn and opens that
+  icon's own context menu, instead of only closing the menu. Over a fullscreen game the panel stays until that menu
+  is closed.
+- **Touchscreen taps on panel icons while the menu is open:** a tap on a tray icon, the clock, quick settings or an
+  app icon now closes Spawn and does what a tap on it does, in one tap, like a left click.
+- **Hover look after Escape:** closing the menu with Escape (or a click elsewhere) while the pointer rests on a panel
+  icon no longer takes the icon's hover highlight away until the mouse moves.
+
 ## [1.2.2] - 2026-11-10
 
 ### Fixed

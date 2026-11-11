@@ -35,6 +35,8 @@ import {Theme} from './theme/theme.js';
 import {MenuButton} from './ui/button.js';
 import {SpawnPopup} from './ui/menu.js';
 import {SpawnRunner} from './ui/runner.js';
+import {setFirmwareDevCheck} from './ui/widgets/powerActions.js';
+import {isDevMode} from './core/flavour.js';
 
 export default class SpawnExtension extends Extension {
     private _root: Scope | null = null;
@@ -110,6 +112,7 @@ export default class SpawnExtension extends Extension {
         this._startMs = {};
 
         const settings = this._loadSettings();
+        setFirmwareDevCheck(() => isDevMode(settings)); // the sandbox has no logind: dev builds simulate the firmware restart
         const info: ExtensionInfo = {
             uuid: this.uuid,
             path: this.path,
@@ -162,7 +165,7 @@ export default class SpawnExtension extends Extension {
         // The button a toggle should open on: the one on the monitor under the pointer, else the first.
         const anchorButton = (): MenuButton | null => {
             const buttons = attacher?.buttons() ?? [];
-            let pointer = -1;
+            let pointer: number;
             try {
                 pointer = global.display.get_current_monitor();
             } catch {

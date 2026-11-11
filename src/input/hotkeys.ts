@@ -133,13 +133,13 @@ export class Hotkeys {
     }
 
     status(): HotkeyStatus {
-        let firstUnblocked = 0;
+        let firstUnblocked: number;
         try {
             firstUnblocked = findHandler(true);
         } catch {
             firstUnblocked = 0;
         }
-        let accelerators: string[] = [];
+        let accelerators: string[];
         try {
             accelerators = this._settings.get(ACCEL_KEY);
         } catch {

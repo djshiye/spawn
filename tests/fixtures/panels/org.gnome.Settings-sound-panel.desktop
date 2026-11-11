@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Sound
+Comment=Volume
+Exec=true
+Icon=org.gnome.Settings-sound-symbolic
+Keywords=Audio;Speakers;
+NoDisplay=true
+X-GNOME-Settings-Panel=sound
+OnlyShowIn=GNOME;

@@ -23,6 +23,8 @@
 //   forwardNextRelease(scope, actor, button)  a tray icon that got the closing press replayed also gets the
 //                                        matching release (legacy tray icons click on release), unless the
 //                                        shell delivers it there itself
+//   passedContextMenu(actor)            the context menu a passed-on right click opened on a Dash to Panel app icon
+//                                        (read once the click was activated), or null
 //   openShellMenu(except?)              the shell / panel menu that is open right now (not `except`), or null
 //   setPanelHover(actor, hover)          show / clear a panel button's hover look (HoverRelay in ui/menu.ts)
 //   closeOtherShellPopups(keep?)         close the calendar / quick settings / any other open shell menu
@@ -162,6 +164,14 @@ export function activatePanelButton(actor: unknown, button: number, press: Clutt
         menu.toggle();
         return true;
     }
+    case 'context': {
+        // A Dash to Panel app icon: the same call its own right-click handler makes.
+        const popup = (actor as {popupMenu?: () => void} | null)?.popupMenu;
+        if (typeof popup !== 'function')
+            return false;
+        popup.call(actor);
+        return true;
+    }
     case 'replay':
         // Delivered like the real press (the `event` signal, then `button-press-event`), so the tray icon's own
         // handler decides: open its menu, activate the app, secondary-activate on a middle click.
@@ -170,6 +180,18 @@ export function activatePanelButton(actor: unknown, button: number, press: Clutt
     default:
         return false;
     }
+}
+
+/** The context menu a passed-on right click opened on an app icon (its `_menu`, or the shell menu now open). */
+export function passedContextMenu(actor: unknown): unknown {
+    const own = (actor as {_menu?: {isOpen?: boolean}} | null)?._menu;
+    return own?.isOpen ? own : openShellMenu();
+}
+
+/** True when passing `button` on to `actor` opens its own context menu (it has one, see activatePanelButton). */
+export function opensContextMenu(actor: unknown, button: number): boolean {
+    return panelClickAction(panelButtonKind(actor), button, false) === 'context'
+        && typeof (actor as {popupMenu?: unknown} | null)?.popupMenu === 'function';
 }
 
 /** How long after the closing press its release is still forwarded (a long press is not a click anymore). */
@@ -345,7 +367,7 @@ export class PanelTargets {
             emitter: globals[p.global],
         }));
 
-        let primaryMonitorIndex = 0;
+        let primaryMonitorIndex: number;
         try {
             primaryMonitorIndex = Main.layoutManager.primaryIndex;
         } catch {

@@ -147,7 +147,7 @@ export class Theme {
 
     private _input(): ThemeInput {
         const s = this._settings;
-        let accent = 'blue';
+        let accent: string;
         try {
             accent = this._interface?.get_string('accent-color') ?? 'blue';
         } catch {

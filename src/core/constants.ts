@@ -18,6 +18,8 @@ export const PowerType = {
     HYBRID_SLEEP: 5,
     HIBERNATE: 6,
     SWITCH_USER: 7,
+    /** Restart into the UEFI firmware setup (not an ArcMenu id). */
+    FIRMWARE: 8,
 } as const;
 
 /** Ids stored in `arcmenu-extra-categories-links` (a(ib)); identical to ArcMenu's CategoryType (0..4). */

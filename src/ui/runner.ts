@@ -280,7 +280,7 @@ export class SpawnRunner {
     /** Size from the settings; position on the monitor under the pointer. */
     private _applyGeometry(ui: Ui): void {
         const s = this._services.settings;
-        let monitor = -1;
+        let monitor: number;
         try {
             monitor = global.display.get_current_monitor();
         } catch {

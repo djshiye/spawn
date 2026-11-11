@@ -168,6 +168,7 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
 
     const providerKeys: SettingKey[] = [
         'search-provider-open-windows', 'search-provider-recent-files', 'search-provider-shell', 'show-hidden-recent-files',
+        'search-calculator', 'search-unit-conversion', 'search-settings-panels', 'search-app-actions',
         'apps-show-generic-names',
     ];
     const hiddenRecent = switchRow(ctx, 'show-hidden-recent-files', 'Include hidden recent files');
@@ -176,6 +177,10 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
         switchRow(ctx, 'search-provider-recent-files', 'Recent files'),
         hiddenRecent,
         switchRow(ctx, 'search-provider-shell', 'GNOME Shell search providers', 'Results from Calculator, Settings, Characters and other providers'),
+        switchRow(ctx, 'search-calculator', 'Calculator', 'Type a sum such as 2+2 or 15% of 80; Return copies the answer'),
+        switchRow(ctx, 'search-unit-conversion', 'Unit conversion', 'Type 5 km in miles or 100 f in c; Return copies the answer'),
+        switchRow(ctx, 'search-settings-panels', 'Settings panels', 'Find Wi-Fi, Bluetooth, Display and other panels of GNOME Settings'),
+        switchRow(ctx, 'search-app-actions', 'App actions', 'For example “firefox private” for New Private Window'),
         switchRow(ctx, 'apps-show-generic-names', 'Show generic app names', 'For example "Web Browser" below Firefox'),
     ], {reset: providerKeys}));
 

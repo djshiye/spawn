@@ -10,7 +10,7 @@
 export function pickAnchor<T>(buttons: readonly T[], monitorOf: (button: T) => number, pointerMonitor: number): T | null {
     if (pointerMonitor >= 0) {
         for (const button of buttons) {
-            let index = -1;
+            let index: number;
             try {
                 index = monitorOf(button);
             } catch {

@@ -130,7 +130,7 @@ function isExpected(state: number | undefined): boolean {
 
 function wrapperTargets(ext: ExtensionSnapshot): PanelTarget[] {
     const out: PanelTarget[] = [];
-    let wrappers: PanelWrapperLike[] = [];
+    let wrappers: PanelWrapperLike[];
     try {
         const panels = ext.emitter?.panels;
         wrappers = Array.isArray(panels) ? panels : [];
