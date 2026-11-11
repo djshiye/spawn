@@ -16,7 +16,7 @@ import {ModalDialog} from 'resource:///org/gnome/shell/ui/modalDialog.js';
 export function confirmFirmwareRestart(onConfirm: () => void): void {
     const dialog = new ModalDialog({destroyOnClose: true, styleClass: 'spawn-firmware-dialog'});
     dialog.contentLayout.add_child(new Dialog.MessageDialogContent({
-        title: _('Restart into firmware setup?'),
+        title: _('Restart to Firmware Setup?'),
         description: _('Your computer will restart into its firmware (UEFI) settings.'),
     }));
     dialog.addButton({label: _('Cancel'), action: () => dialog.close(), key: Clutter.KEY_Escape});
