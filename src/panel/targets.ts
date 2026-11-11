@@ -367,7 +367,7 @@ export class PanelTargets {
             emitter: globals[p.global],
         }));
 
-        let primaryMonitorIndex = 0;
+        let primaryMonitorIndex: number;
         try {
             primaryMonitorIndex = Main.layoutManager.primaryIndex;
         } catch {

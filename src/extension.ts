@@ -162,7 +162,7 @@ export default class SpawnExtension extends Extension {
         // The button a toggle should open on: the one on the monitor under the pointer, else the first.
         const anchorButton = (): MenuButton | null => {
             const buttons = attacher?.buttons() ?? [];
-            let pointer = -1;
+            let pointer: number;
             try {
                 pointer = global.display.get_current_monitor();
             } catch {

@@ -426,7 +426,7 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
             if (a instanceof St.Widget && !(a instanceof St.ScrollView) && !(a instanceof St.ScrollBar) && !inScrollBar(a) &&
                 (a.can_focus || (a instanceof St.Button && a.reactive))) {
                 const label = a.label_actor as unknown as {text?: string} | null;
-                let atkName: string | null = null;
+                let atkName: string | null;
                 try {
                     atkName = a.get_accessible()?.get_name() ?? null;
                 } catch {

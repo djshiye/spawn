@@ -476,13 +476,13 @@ export class AppIndex {
         const info = appInfoOf(app);
         const id = app.get_id() ?? '';
         const name = app.get_name() ?? '';
-        let keywords: string[] = [];
+        let keywords: string[];
         try {
             keywords = info?.get_keywords() ?? [];
         } catch {
             keywords = [];
         }
-        let fullName: string | null = null;
+        let fullName: string | null;
         try {
             fullName = info?.has_key('X-GNOME-FullName') ? info.get_string('X-GNOME-FullName') : null;
         } catch {
