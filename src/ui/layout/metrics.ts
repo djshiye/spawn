@@ -11,6 +11,8 @@
 //   metrics.cols / tileWidth / tileIconSize   the current pinned-grid metrics
 //   metrics.contentSize()             pane widths + separator, menu height (what the folder popup centres in)
 //   metrics.listMode() / itemSize() / rowIconSize()   `pinned-apps-display`, `pinned-item-size`, list icon size
+//   metrics.grid                      the Grid layout style is on (`layout-style`): one column, no right pane
+//   metrics.setTrim(px)               Grid: take `px` off the menu height (the pager fits whole rows)
 
 import type St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -27,6 +29,8 @@ import {sizeMetrics} from '../widgets/pinnedSize.js';
  */
 export const MIN_LEFT_WIDTH = 420;
 export const MIN_RIGHT_WIDTH = 180;
+/** Grid layout: one column this wide at `menu-width-adjustment` 0 (six tile columns at Compact / Comfortable). */
+export const GRID_WIDTH = 640;
 const MIN_COLUMNS = 3;
 /**
  * Horizontal space used inside the left pane that tiles cannot use: the 16 + 16 px gutter (the pane's 8 px
@@ -64,6 +68,12 @@ export class PaneMetrics {
     private readonly _d: PaneMetricsDeps;
     /** cols|tile width|icon size of the last `apply`: a change means the pinned tiles are stale. */
     private _sig = '';
+    /** Grid: the menu height the settings ask for, before the pager's trim. */
+    private _baseHeight = 0;
+    /** Grid: the tallest the panes may be on this work area (the pager may grow the menu up to it). */
+    private _maxHeight = Infinity;
+    private _trim = 0;
+    grid = false;
 
     constructor(deps: PaneMetricsDeps) {
         this._d = deps;
@@ -72,6 +82,8 @@ export class PaneMetrics {
     /** Size of the menu content the folder popup is centred in (pane widths + separator, menu height). */
     contentSize(): {width: number; height: number} {
         // Fixed sizes from apply(): readable before the layout is staged or allocated.
+        if (this.grid)
+            return {width: this._d.left.width, height: this._d.panes.height};
         const width = this._d.left.width + this._d.right.width + PANE_GAP + (this._d.vsep.visible ? SEPARATOR_W : 0);
         return {width, height: this._d.panes.height};
     }
@@ -96,16 +108,20 @@ export class PaneMetrics {
      */
     apply(): boolean {
         const s = this._d.settings;
-        let left = Math.max(MIN_LEFT_WIDTH, s.get('left-panel-width') + s.get('menu-width-adjustment'));
-        let right = Math.max(MIN_RIGHT_WIDTH, s.get('right-panel-width'));
-        const sep = s.get('vert-separator');
+        const grid = s.get('layout-style') === 'Grid';
+        this.grid = grid;
+        let left = Math.max(MIN_LEFT_WIDTH, (grid ? GRID_WIDTH : s.get('left-panel-width')) + s.get('menu-width-adjustment'));
+        let right = grid ? 0 : Math.max(MIN_RIGHT_WIDTH, s.get('right-panel-width'));
+        const sep = !grid && s.get('vert-separator');
         const wa = this._workArea();
 
         let maxH = Infinity;
         if (wa) {
             maxH = Math.max(0, wa.height - 2 * SCREEN_MARGIN - FRAME_H);
-            const maxW = wa.width - 2 * SCREEN_MARGIN - FRAME_W - PANE_GAP - (sep ? SEPARATOR_W : 0);
-            if (left + right > maxW) {
+            const maxW = wa.width - 2 * SCREEN_MARGIN - FRAME_W - (grid ? 0 : PANE_GAP) - (sep ? SEPARATOR_W : 0);
+            if (grid)
+                left = Math.max(MIN_LEFT_WIDTH, Math.min(left, maxW));
+            else if (left + right > maxW) {
                 left = Math.max(MIN_LEFT_WIDTH, maxW - right);
                 if (left + right > maxW)
                     right = Math.max(MIN_RIGHT_WIDTH, maxW - left);
@@ -115,15 +131,20 @@ export class PaneMetrics {
 
         this._d.left.set_width(left);
         this._d.right.set_width(right);
+        this._d.right.visible = !grid;
         this._d.vsep.visible = sep;
-        this._d.root.set_height(height + 2 * PANES_INSET);
+        this._baseHeight = height;
+        this._maxHeight = Math.max(height, maxH);
+        if (!grid)
+            this._trim = 0;
+        this._d.root.set_height(this._baseHeight - this._trim + 2 * PANES_INSET);
 
         const avail = left - LEFT_CHROME;
         const metrics = sizeMetrics(s.get('pinned-item-size'));
         this.cols = Math.max(MIN_COLUMNS, Math.floor(avail / metrics.tileTargetWidth));
         this.tileWidth = Math.floor(avail / this.cols);
-        const grid = s.get('icon-size-grid');
-        this.tileIconSize = gridIconSize(grid?.size, metrics.tileIcon);
+        const gridSizes = s.get('icon-size-grid');
+        this.tileIconSize = gridIconSize(gridSizes?.size, metrics.tileIcon);
 
         const sig = `${this.cols}|${this.tileWidth}|${this.tileIconSize}`;
         const changed = this._sig !== '' && sig !== this._sig;
@@ -131,8 +152,30 @@ export class PaneMetrics {
         return changed;
     }
 
-    /** `pinned-apps-display`: pinned apps and folder contents as full-width rows instead of tiles. */
+    /** The pane height the settings ask for (before the Grid pager's trim). */
+    get baseHeight(): number {
+        return this._baseHeight;
+    }
+
+    /** The tallest the panes may be on the popup's work area (Infinity when unknown). */
+    get maxHeight(): number {
+        return this._maxHeight;
+    }
+
+    /** Grid: take `px` off the menu height (absolute; 0 = the height the settings ask for; negative = taller, up to the work area). */
+    setTrim(px: number): void {
+        const trim = this.grid ? Math.max(this._baseHeight - this._maxHeight, Math.round(px)) : 0;
+        if (trim === this._trim)
+            return;
+        this._trim = trim;
+        if (this._baseHeight > 0)
+            this._d.root.set_height(this._baseHeight - this._trim + 2 * PANES_INSET);
+    }
+
+    /** `pinned-apps-display`: pinned apps and folder contents as full-width rows instead of tiles (never in the Grid layout). */
     listMode(): boolean {
+        if (this.grid)
+            return false;
         return this._d.settings.get('pinned-apps-display') === 'List';
     }
 

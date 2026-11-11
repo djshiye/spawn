@@ -95,32 +95,46 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
         icon_name: 'view-list-symbolic',
     });
 
+    // Rows that only the Classic layout uses: insensitive while Grid is chosen (their values are kept).
+    const classicOnly: Array<{set_sensitive(on: boolean): void}> = [];
+    const classic = <T extends {set_sensitive(on: boolean): void}>(w: T): T => {
+        classicOnly.push(w);
+        return w;
+    };
+
+    page.add(group(ctx, 'Layout', [
+        enumRow(ctx, 'layout-style', 'Menu layout', [
+            ['Classic', 'Classic'],
+            ['Grid', 'Grid'],
+        ], 'Classic: apps on the left, your folders and power buttons on the right. Grid: one column with your pinned apps as large icons, a page at a time'),
+    ], {reset: ['layout-style']}));
+
     const viewKeys: SettingKey[] = ['default-menu-view', 'pinned-apps-display', 'pinned-item-size', 'all-apps-button-action', 'max-frequent-apps'];
     page.add(group(ctx, 'Start view', [
-        enumRow(ctx, 'default-menu-view', 'Default view', [
+        classic(enumRow(ctx, 'default-menu-view', 'Default view', [
             ['Pinned_Apps', 'Pinned apps'],
             ['Categories_List', 'Categories'],
             ['Frequent_Apps', 'Frequent apps'],
             ['All_Programs', 'All apps'],
             ['Pinned_And_Frequent_Apps', 'Pinned and frequent apps'],
-        ]),
-        enumRow(ctx, 'pinned-apps-display', 'Pinned apps view', [
+        ])),
+        classic(enumRow(ctx, 'pinned-apps-display', 'Pinned apps view', [
             ['List', 'List'],
             ['Grid', 'Grid'],
-        ], 'Pinned apps and folders as rows (like ArcMenu) or as an icon grid'),
+        ], 'Pinned apps and folders as rows (like ArcMenu) or as an icon grid')),
         enumRow(ctx, 'pinned-item-size', 'Pinned item size', [
             ['Compact', 'Compact'],
             ['Comfortable', 'Comfortable'],
             ['Large', 'Large'],
         ], 'Bigger rows and tiles are easier to click'),
-        enumRow(ctx, 'all-apps-button-action', '"All Apps" button shows', [
+        classic(enumRow(ctx, 'all-apps-button-action', '"All Apps" button shows', [
             ['Categories_List', 'Categories'],
             ['All_Programs', 'All apps in one list'],
-        ]),
-        spinRow(ctx, 'max-frequent-apps', 'Frequent apps to show', 1, 50),
+        ])),
+        classic(spinRow(ctx, 'max-frequent-apps', 'Frequent apps to show', 1, 50)),
     ], {reset: viewKeys}));
 
-    page.add(toggleListGroup(ctx, {
+    page.add(classic(toggleListGroup(ctx, {
         key: 'arcmenu-extra-categories-links',
         title: 'Category quick links',
         description: 'Shortcuts to other views on the start view. The link of the start view itself is never shown, and the category list has none.',
@@ -134,15 +148,15 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
                 ['Top', 'Above the list'],
             ]),
         ],
-    }));
+    })));
 
     page.add(hiddenAppsGroup(ctx));
 
     const sizeKeys: SettingKey[] = ['menu-height', 'left-panel-width', 'right-panel-width', 'menu-width-adjustment'];
     page.add(group(ctx, 'Size', [
         spinRow(ctx, 'menu-height', 'Menu height', 360, 1600, {step: 10}),
-        spinRow(ctx, 'left-panel-width', 'Left pane width', 420, 1200, {step: 5}),
-        spinRow(ctx, 'right-panel-width', 'Right pane width', 180, 600, {step: 5}),
+        classic(spinRow(ctx, 'left-panel-width', 'Left pane width', 420, 1200, {step: 5})),
+        classic(spinRow(ctx, 'right-panel-width', 'Right pane width', 180, 600, {step: 5})),
         spinRow(ctx, 'menu-width-adjustment', 'Extra width', -350, 800, {
             step: 5,
             subtitle: 'Added on top of the pane widths',
@@ -155,11 +169,11 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
     ];
     page.add(group(ctx, 'Search', [
         switchRow(ctx, 'search-hidden', 'Hide the search bar', 'It appears as soon as you start typing'),
-        enumRow(ctx, 'search-entry-location', 'Search bar position', [
+        classic(enumRow(ctx, 'search-entry-location', 'Search bar position', [
             ['Bottom', 'Bottom'],
             ['Top', 'Top'],
             ['Auto', 'Automatic'],
-        ], 'Automatic puts it nearest the panel the menu opens from'),
+        ], 'Automatic puts it nearest the panel the menu opens from')),
         spinRow(ctx, 'max-search-results', 'Results per source', 1, 20),
         switchRow(ctx, 'highlight-search-result-terms', 'Highlight matching text'),
         descriptionsRow(ctx),
@@ -179,6 +193,14 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
         switchRow(ctx, 'apps-show-generic-names', 'Show generic app names', 'For example "Web Browser" below Firefox'),
     ], {reset: providerKeys}));
 
+    const syncClassic = (): void => {
+        const on = ctx.settings.get('layout-style') !== 'Grid';
+        for (const w of classicOnly)
+            w.set_sensitive(on);
+    };
+    syncClassic();
+    watch(ctx, page, ['layout-style'], syncClassic);
+
     const syncHiddenRecent = (): void => hiddenRecent.set_sensitive(ctx.settings.get('search-provider-recent-files'));
     syncHiddenRecent();
     watch(ctx, hiddenRecent, ['search-provider-recent-files'], syncHiddenRecent);
@@ -192,7 +214,7 @@ export function createMenuPage(ctx: PrefsContext): Adw.PreferencesPage {
     page.add(group(ctx, 'Display', [
         switchRow(ctx, 'show-user-avatar', 'Show user avatar'),
         avatarShape,
-        switchRow(ctx, 'vert-separator', 'Separator between the panes'),
+        classic(switchRow(ctx, 'vert-separator', 'Separator between the panes')),
         switchRow(ctx, 'multi-lined-labels', 'Wrap long app names'),
         switchRow(ctx, 'show-new-apps-badge', 'Mark new apps', 'A “New” badge on apps installed in the last three days, until you open them'),
         switchRow(ctx, 'scrollbars-visible', 'Show scrollbars'),

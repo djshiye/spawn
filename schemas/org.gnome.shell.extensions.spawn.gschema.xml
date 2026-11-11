@@ -16,6 +16,10 @@
     <value value="0" nick="List"/>
     <value value="1" nick="Grid"/>
   </enum>
+  <enum id="org.gnome.shell.extensions.spawn.layout-style">
+    <value value="0" nick="Classic"/>
+    <value value="1" nick="Grid"/>
+  </enum>
   <enum id="org.gnome.shell.extensions.spawn.pinned-item-size">
     <value value="0" nick="Compact"/>
     <value value="1" nick="Comfortable"/>
@@ -192,6 +196,11 @@
     <key name="menu-button-middle-click-action" enum="org.gnome.shell.extensions.spawn.menu-button-click-action">
       <default>'Menu'</default>
       <summary>Middle click action</summary>
+    </key>
+    <key name="layout-style" enum="org.gnome.shell.extensions.spawn.layout-style">
+      <default>'Classic'</default>
+      <summary>Menu layout</summary>
+      <description>Classic: two panes (apps on the left; user, folders and power on the right). Grid: one column with the search entry, the pinned apps as an icon grid in pages, and the user, folders and power buttons in a row at the bottom</description>
     </key>
     <key name="pinned-apps-display" enum="org.gnome.shell.extensions.spawn.pinned-apps-display">
       <default>'List'</default>

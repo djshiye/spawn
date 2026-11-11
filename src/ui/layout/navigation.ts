@@ -25,6 +25,9 @@ import {nearestIndex} from '../../model/listNav.js';
 import {centreOf, inView, pageTo} from './geometry.js';
 import type {Dir, Group, LayoutState} from './types.js';
 
+/** Groups that are one row of buttons (Up / Down leave them), not a grid. */
+const ROW_GROUPS = new Set(['nav', 'power', 'header', 'footer']);
+
 export interface NavSources {
     /** Groups of the main view of the left pane (one per list / grid in it). */
     mainGroups(): Group[];
@@ -34,6 +37,12 @@ export interface NavSources {
     /** The quick links sit above the main view. */
     linksTop(): boolean;
     navGroup(): Group | null;
+    /** The nav group sits above the main view (Grid layout: the header's pill), not under it. */
+    navTop(): boolean;
+    /** Grid layout: the footer row (user card, folders, power) under everything else. */
+    footerGroup(): Group | null;
+    /** Rows per page when `group` is shown in pages (Grid layout's pinned grid), else 0. */
+    pageRows(group: Group): number;
     undoGroup(): Group | null;
     searchGroup(): Group | null;
     /** Groups of the right pane (empty ones included). */
@@ -65,6 +74,10 @@ export class Navigator {
             out.push(search);
         const links = this._src.linksGroup();
         const linksTop = this._src.linksTop();
+        const nav = this._src.navGroup();
+        const navTop = this._src.navTop();
+        if (nav && navTop)
+            out.push(nav);
         if (links && linksTop)
             out.push(links);
         out.push(...this._src.mainGroups().filter(g => g.items.length > 0));
@@ -73,11 +86,13 @@ export class Navigator {
         const undo = this._src.undoGroup();
         if (undo)
             out.push(undo);
-        const nav = this._src.navGroup();
-        if (nav)
+        if (nav && !navTop)
             out.push(nav);
         if (search && !top)
             out.push(search);
+        const footer = this._src.footerGroup();
+        if (footer)
+            out.push(footer);
         return out;
     }
 
@@ -159,9 +174,9 @@ export class Navigator {
         const vertical = (delta: number): boolean => {
             const row = Math.floor(index / cols);
             const target = index + delta * cols;
-            if (cols > 1 && Math.floor(target / cols) >= 0 && target >= 0 && target < n && (cols > 1 && group.id !== 'nav' && group.id !== 'power' && group.id !== 'header'))
+            if (cols > 1 && Math.floor(target / cols) >= 0 && target >= 0 && target < n && (cols > 1 && !ROW_GROUPS.has(group.id)))
                 return this.focusItem(group, target);
-            if (cols > 1 && delta > 0 && group.id !== 'nav' && group.id !== 'power' && group.id !== 'header') {
+            if (cols > 1 && delta > 0 && !ROW_GROUPS.has(group.id)) {
                 const lastRow = Math.floor((n - 1) / cols);
                 if (row < lastRow)
                     return this.focusItem(group, n - 1);
@@ -251,8 +266,18 @@ export class Navigator {
             target = items[0];
         else if (sym === Clutter.KEY_End || sym === Clutter.KEY_KP_End)
             target = items[items.length - 1];
-        else
-            target = pageTo(items, current, sym === Clutter.KEY_Page_Down || sym === Clutter.KEY_KP_Page_Down ? 1 : -1);
+        else {
+            const dir = sym === Clutter.KEY_Page_Down || sym === Clutter.KEY_KP_Page_Down ? 1 : -1;
+            const rows = this._src.pageRows(loc.group);
+            if (rows > 0) {
+                // A paged grid: the same place on the next / previous page (the last item when that page is shorter).
+                const step = rows * Math.max(1, loc.group.cols);
+                const t = loc.index + dir * step;
+                target = t < 0 ? null : items[Math.min(items.length - 1, t)];
+            } else {
+                target = pageTo(items, current, dir);
+            }
+        }
         if (target && target !== current)
             target.grab_key_focus();
         return true;
@@ -275,6 +300,8 @@ export class Navigator {
         const cats = this._src.categoryGroup();
         const main = this._src.mainGroups().filter(g => g.items.length > 0);
         const nav = this._src.navGroup();
+        const navTop = this._src.navTop();
+        const footer = this._src.footerGroup();
         const right = this._src.rightGroups().filter(g => g.items.length > 0);
         const focus = global.stage.key_focus as Clutter.Actor | null;
 
@@ -289,6 +316,8 @@ export class Navigator {
         const linksTop = this._src.linksTop();
         // Reading order wherever the entry sits: search, the list (and what is below it), right pane, power buttons.
         add(search);
+        if (navTop)
+            add(nav);
         if (linksTop)
             add(links);
         add(cats, 'first');
@@ -298,12 +327,15 @@ export class Navigator {
             add(links);
         const undo = this._src.undoGroup();
         add(undo);
-        add(nav);
+        if (!navTop)
+            add(nav);
+        add(footer);
         for (const g of right)
             add(g);
 
         // Which pane holds the focus?
-        const all: Array<Group | null> = [search, linksTop ? links : null, cats, ...main, linksTop ? null : links, undo, nav, ...right];
+        const all: Array<Group | null> = [search, navTop ? nav : null, linksTop ? links : null, cats, ...main, linksTop ? null : links, undo,
+            navTop ? null : nav, footer, ...right];
         const groups = all.filter((g): g is Group => Boolean(g && g.items.length));
         const loc = this.locate(groups, focus);
         const current = loc ? groups.indexOf(loc.group) : -1;
