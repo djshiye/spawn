@@ -5,10 +5,9 @@
 // Responsibility: a compact popup (search box on top, results below) that opens on the monitor
 // under the pointer, Top or Centered (`runner-position`), `runner-menu-width` wide and at most
 // `runner-menu-height` tall. It reuses the menu's search pipeline and widgets unchanged:
-// `Services.search` (SearchEngine), `SearchBox`, `ResultList`, `AppRow`. The glue between them (debounced
-// query, stale-batch guard, "Return before the first row arrived", flush on Return / Down) follows
-// SpawnLayout._onSearchText / _onSearchActivate / _onSearchKey; it is repeated here in a few lines
-// instead of being extracted, so the main layout stays untouched.
+// `Services.search` (SearchEngine), `SearchBox`, `ResultList`, `AppRow`. The glue between them (stale-batch
+// guard, "Return before the first row arrived", flush on Return / Down) is ui/searchSession.ts, shared with
+// the menu layout; the key handling around it differs and stays here.
 //
 // `runner-font-size` (pt; 0 = the menu font) sets the font of the whole popup content and of the entry.
 //
@@ -51,8 +50,8 @@ import {error} from '../core/log.js';
 import {pageTarget} from '../model/listNav.js';
 import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
-import type {SearchHandle} from '../search/engine.js';
 import {closeMenu, openMenu, silenceSourceKeys} from './menuParams.js';
+import {SearchSession} from './searchSession.js';
 import {
     applyScrollSettings, applyTone, displayName, iconSizeFor, launchApp, lookupApp, scrollIntoView, showDescriptions,
 } from './util.js';
@@ -70,7 +69,7 @@ export interface RunnerHost {
 
 type OpenListener = (open: boolean) => void;
 
-/** How long a Return pressed before the first row arrived stays armed (as in SpawnLayout). */
+/** How long a Return pressed before the first row arrived stays armed (the menu layout waits 1 s). */
 const ACTIVATE_WAIT_MS = 1500;
 /** Distance from the top of the work area for the `Top` position. */
 const TOP_MARGIN = 16;
@@ -102,17 +101,18 @@ export class SpawnRunner {
     private _ui: Ui | null = null;
     private _open = false;
     private _disposed = false;
-    private _searchHandle: SearchHandle | null = null;
-    private _searchToken = 0;
-    private _activateWhenReady = false;
-    private _activateCtrl = false;
-    private _cancelActivateWait: (() => void) | null = null;
+    private readonly _session: SearchSession;
     private _defaultRows: St.Button[] = [];
 
     constructor(scope: Scope, services: Services, host: RunnerHost) {
         this._scope = scope;
         this._services = services;
         this._host = host;
+        this._session = new SearchSession(scope, services.search, {
+            activateWaitMs: ACTIVATE_WAIT_MS,
+            isDead: () => this._disposed,
+            logPrefix: 'runner ',
+        });
         scope.add(() => this._teardown(), 'SpawnRunner');
     }
 
@@ -265,8 +265,8 @@ export class SpawnRunner {
             scope.connect(menu, 'open-state-changed', (_m: unknown, open: boolean) => this._onOpenState(ui, open));
             scope.connect(global.stage, 'notify::key-focus', () => this._onFocusChanged(ui));
             scope.add(() => {
-                this._cancelSearch();
-                this._setActivateWhenReady(false);
+                this._session.cancel();
+                this._session.arm(false);
                 this._defaultRows = [];
             }, 'runner search state');
             return ui;
@@ -335,8 +335,8 @@ export class SpawnRunner {
     }
 
     private _reset(ui: Ui): void {
-        this._cancelSearch();
-        this._setActivateWhenReady(false);
+        this._session.cancel();
+        this._session.arm(false);
         ui.search.setSilently('');
         ui.results.reset();
         this._showView(ui, false);
@@ -401,20 +401,14 @@ export class SpawnRunner {
             this.close();
     }
 
-    // ---- search (same flow as SpawnLayout) ----
-
-    private _cancelSearch(): void {
-        this._searchToken++;
-        this._searchHandle?.cancel();
-        this._searchHandle = null;
-    }
+    // ---- search (the shared flow is SearchSession) ----
 
     private _onText(ui: Ui, text: string): void {
         if (this._disposed)
             return;
         const query = text.trim();
-        this._cancelSearch();
-        this._setActivateWhenReady(false);
+        this._session.cancel();
+        this._session.arm(false);
         // New rows under a resting pointer must not take the highlight from the best match.
         ui.highlight.keyMoved(null);
         if (query.length === 0) {
@@ -425,21 +419,7 @@ export class SpawnRunner {
         this._showView(ui, true);
         ui.results.beginQuery(query);
         ui.results.setSelectionVisible(true);
-        const token = this._searchToken;
-        try {
-            this._searchHandle = this._services.search.search(query, batch => {
-                if (token !== this._searchToken || this._disposed)
-                    return;
-                ui.results.addBatch(batch);
-                if (this._activateWhenReady && ui.results.first()) {
-                    const ctrl = this._activateCtrl;
-                    this._setActivateWhenReady(false);
-                    ui.results.activateSelected(ctrl);
-                }
-            });
-        } catch (e) {
-            error('runner search failed', e);
-        }
+        this._session.start(query, ui.results);
     }
 
     /**
@@ -451,31 +431,7 @@ export class SpawnRunner {
             this._defaultRows[0]?.emit('clicked', ctrl ? 2 : 1);
             return;
         }
-        this._flush();
-        if (!ui.results.activateSelected(ctrl))
-            this._setActivateWhenReady(true, ctrl);
-    }
-
-    private _flush(): void {
-        try {
-            this._searchHandle?.flush();
-        } catch (e) {
-            error('runner search flush failed', e);
-        }
-    }
-
-    /** "Return was pressed before the first row arrived"; expires so a late provider cannot launch unseen. */
-    private _setActivateWhenReady(on: boolean, ctrl = false): void {
-        this._cancelActivateWait?.();
-        this._cancelActivateWait = null;
-        this._activateWhenReady = on;
-        this._activateCtrl = on && ctrl;
-        if (on) {
-            this._cancelActivateWait = this._scope.timeout(ACTIVATE_WAIT_MS, () => {
-                this._cancelActivateWait = null;
-                this._activateWhenReady = false;
-            });
-        }
+        this._session.activate(ui.results, ctrl);
     }
 
     // ---- keyboard ----
@@ -515,7 +471,7 @@ export class SpawnRunner {
         switch (key) {
         case Clutter.KEY_Down:
         case Clutter.KEY_Up:
-            this._flush();
+            this._session.flush();
             if (searching)
                 this._showSelection(ui, ui.results.moveSelection(key === Clutter.KEY_Down ? 1 : -1, false));
             else if (key === Clutter.KEY_Down)
@@ -525,7 +481,7 @@ export class SpawnRunner {
         case Clutter.KEY_Page_Down: {
             if (!searching)
                 return false;
-            this._flush();
+            this._session.flush();
             const rows = ui.results.rows();
             const from = ui.results.selected();
             const index = from ? rows.indexOf(from) : -1;
@@ -549,7 +505,7 @@ export class SpawnRunner {
             return true;
         case Clutter.KEY_Tab:
         case Clutter.KEY_ISO_Left_Tab:
-            this._flush();
+            this._session.flush();
             this._navigate(ui, key === Clutter.KEY_ISO_Left_Tab || shift ? -1 : 1, true);
             ui.highlight.keyMoved();
             return true;
