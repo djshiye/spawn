@@ -47,6 +47,19 @@ test('queries find the panel by name, keyword and synonym', () => {
     assertEquals(ids('Bluetoth')[0], 'bluetooth'); // one typo
 });
 
+test('results are best first: a name match beats a keyword match, a name prefix beats a substring', () => {
+    const color = {id: 'color', name: 'Color Management', icon: null, description: '', keys: ['color management', 'display', 'color']};
+    const all = [color, ...panels];
+    const order = q => matchPanels(q, all).map(r => r.item.id);
+    assertEquals(order('display')[0], 'display'); // name "Displays" before a "display" keyword
+    assertEquals(order('display')[1], 'color');
+    const r = matchPanels('display', all);
+    assert(r[0].score > r[1].score, JSON.stringify(r.map(x => x.score)));
+    const a = {id: 'a', name: 'Sound Mixer', icon: null, description: '', keys: ['sound mixer']};
+    const b = {id: 'b', name: 'Surround Sound', icon: null, description: '', keys: ['surround sound']};
+    assertEquals(matchPanels('sound', [b, a]).map(x => x.item.id), ['a', 'b']);
+});
+
 test('no loose matches and a minimum length', () => {
     assertEquals(ids('wi'), []);
     assertEquals(ids(''), []);
