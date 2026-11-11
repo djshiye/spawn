@@ -248,6 +248,9 @@ export class ButtonMenu {
     private _powerAvailable(type: number): boolean {
         if (this._logind === null && (type === PowerType.HIBERNATE || type === PowerType.HYBRID_SLEEP))
             return true;
+        // Restart to Firmware Setup is opt-in: only when its switch in the power buttons list is on
+        if (type === PowerType.FIRMWARE && !this._deps.settings.get('power-options').some(([id, on]) => id === type && on))
+            return false;
         return isPowerAvailable(type, this._logind);
     }
 

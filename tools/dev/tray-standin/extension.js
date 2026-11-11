@@ -5,6 +5,9 @@
 //   spawn-test-appindicator  IndicatorStatusIcon: click gesture OFF, vfunc_button_press_event: right = menu,
 //                            middle = secondary activate, left = menu after the double-click time
 //   spawn-test-legacytray    IndicatorTrayIcon (XEmbed): no menu, clicks the app on button RELEASE
+//   spawn-test-dtp-launcher  a stand-in for a Dash to Panel app icon (the real extension cannot be installed in the
+//                            sandbox offline): an St.Button taking every mouse button, with Dash to Panel's
+//                            popupMenu() (its own PopupMenuManager, menu kept in `_menu`) that a right click calls
 // Every action is appended to $XDG_RUNTIME_DIR/spawn-tray-standin.log ("appindicator-menu-open", ...).
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
@@ -81,15 +84,58 @@ class FakeLegacyTray extends PanelMenu.Button {
     }
 });
 
+const FakeDtpLauncher = GObject.registerClass(
+class FakeDtpLauncher extends St.Button {
+    _init() {
+        super._init({
+            style_class: 'spawn-test-dtp-launcher',
+            style: 'padding: 2px 10px;',
+            reactive: true,
+            can_focus: true,
+            track_hover: true,
+            button_mask: St.ButtonMask.ONE | St.ButtonMask.TWO | St.ButtonMask.THREE,
+            child: new St.Icon({icon_name: 'face-angel-symbolic', icon_size: 16}),
+        });
+        this._menuManager = new PopupMenu.PopupMenuManager(this);
+        this.connect('button-press-event', (_a, event) => {
+            if (event.get_button() === Clutter.BUTTON_SECONDARY) {
+                this.popupMenu();
+                return Clutter.EVENT_STOP;
+            }
+            return Clutter.EVENT_PROPAGATE;
+        });
+        this.connect('clicked', (_a, button) => note(`dtp-launcher-clicked-${button}`));
+    }
+
+    // Dash to Panel's TaskbarAppIcon.popupMenu(): build the menu once, open it under the manager.
+    popupMenu() {
+        if (!this._menu) {
+            this._menu = new PopupMenu.PopupMenu(this, 0.5, St.Side.TOP);
+            this._menu.addMenuItem(new PopupMenu.PopupMenuItem('Fake app menu item'));
+            this._menu.connect('open-state-changed', (_m, open) => note(`dtp-launcher-menu-${open ? 'open' : 'closed'}`));
+            Main.uiGroup.add_child(this._menu.actor);
+            this._menu.actor.hide();
+            this._menuManager.addMenu(this._menu);
+        }
+        this._menu.open(false);
+        return false;
+    }
+});
+
 export default class TrayStandin extends Extension {
     enable() {
         this._icons = [new FakeAppIndicator(), new FakeLegacyTray()];
         Main.panel.addToStatusArea('spawn-test-appindicator', this._icons[0], 0, 'right');
         Main.panel.addToStatusArea('spawn-test-legacytray', this._icons[1], 1, 'right');
+        this._launcher = new FakeDtpLauncher();
+        Main.panel._centerBox.add_child(this._launcher);
     }
 
     disable() {
         this._icons?.forEach(i => i.destroy());
         this._icons = null;
+        this._launcher?._menu?.destroy();
+        this._launcher?.destroy();
+        this._launcher = null;
     }
 }

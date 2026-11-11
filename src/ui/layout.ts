@@ -45,6 +45,8 @@
 //   frequentView.ts FrequentView: the Frequent list
 //   folders.ts      FolderController: the folder popup
 //   searchView.ts   SearchController: results view, entry text / Return / keys (query running: ui/searchSession.ts)
+//   listDrag.ts     ListDrag: rows of All Apps / categories / results / Frequent as drag sources (drop on Back or
+//                   spring-load to Pinned to pin them)
 //   undo.ts         UndoController: the Undo banner and the actions it undoes
 //   navigation.ts   Navigator: arrows / Tab / Home / End / Page keys over keyboard groups (NavSources)
 //   keys.ts         KeyRouter: key-press handler (reorder, Ctrl+Z, F2, Delete, typing) and focus changes
@@ -79,6 +81,7 @@ import {FrequentView} from './layout/frequentView.js';
 import {GridFooter, GridHeader, GridPager} from './layout/gridChrome.js';
 import {KeyRouter} from './layout/keys.js';
 import {LeftPane} from './layout/leftPane.js';
+import {ListDrag} from './layout/listDrag.js';
 import {Navigator} from './layout/navigation.js';
 import {PinnedView} from './layout/pinnedView.js';
 import {RightPane} from './layout/rightPane.js';
@@ -165,6 +168,7 @@ export class SpawnLayout implements ShortcutHost {
     private readonly _frequent: FrequentView;
     private readonly _folders: FolderController;
     private readonly _views: ViewManager;
+    private readonly _listDrag: ListDrag;
     private readonly _searchCtl: SearchController;
 
     // state
@@ -195,6 +199,7 @@ export class SpawnLayout implements ShortcutHost {
                 folderUuid: folderUuid ?? (this._state.view === 'folder' ? this._folders.view?.uuid ?? undefined : undefined),
             }),
             isNew: app => this._services.newApps.showBadge(app.get_id() ?? ''),
+            dragApp: (row, app, name) => this._listDrag.attach(row, app.get_id() ?? '', name),
             tooltips: this._tooltips,
         };
         this._folderHost = {
@@ -207,6 +212,7 @@ export class SpawnLayout implements ShortcutHost {
             showAllApps: () => this.showAllApps(),
             tooltips: this._tooltips,
             isNewApp: id => this._services.newApps.showBadge(id),
+            dragApp: (row, id, name) => this._listDrag.attach(row, id, name),
             openResultContext: (row, result: SearchResult) => {
                 const app = result.providerId === 'apps' ? lookupApp(this._services, result.id) : null;
                 if (app)
@@ -391,6 +397,9 @@ export class SpawnLayout implements ShortcutHost {
             leftPane: this._leftPane,
             nav: this._nav,
             host: {close: () => this._host.close()},
+        });
+        this._listDrag = new ListDrag(scope, services, this._state, {
+            leftPane: this._leftPane, views: this._views, undo: this._undo, searching: () => this._search.text.length > 0,
         });
 
         this._rightPane = new RightPane(scope, services, this._state, {

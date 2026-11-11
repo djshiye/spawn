@@ -6,7 +6,7 @@
 # The one source of truth for the version is package.json; this line, metadata.json "version-name" and the
 # Changelog are kept equal by tools/bump-version.sh (publish.sh and %%check refuse a mismatch).
 Name:           spawn
-Version:        1.2.2
+Version:        1.3.1
 # tools/publish.sh appends .<commit count> so every build from main is a newer release.
 Release:        1%{?release_suffix}%{?dist}
 Summary:        Fast, resilient application menu for GNOME Shell (ArcMenu replacement)
@@ -89,6 +89,12 @@ test ! -e dev/benchmark.js
 %{_datadir}/glib-2.0/schemas/org.gnome.shell.extensions.spawn.gschema.xml
 
 %changelog
+* Wed Nov 11 2026 Dino Klisura <115914552+djshiye@users.noreply.github.com> - 1.3.1-1
+- Simpler settings window: five pages, less-used options in sub-pages
+
+* Wed Nov 11 2026 Dino Klisura <115914552+djshiye@users.noreply.github.com> - 1.3.0-1
+- Search: calculator, unit conversion, Settings panels and app actions; drag from All Apps to Pinned; Restart to Firmware Setup; settings backup and restore; Dash to Panel right click, touch taps and hover fixes
+
 * Tue Nov 10 2026 Dino Klisura <115914552+djshiye@users.noreply.github.com> - 1.2.2-1
 - Over fullscreen games the panel stays while you move between tray icons and the calendar; panel icons light up under the pointer while the menu is open
 

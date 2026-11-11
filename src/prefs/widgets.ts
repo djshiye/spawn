@@ -17,6 +17,8 @@
 //   resetKeys(ctx, keys)               resets keys (one SpawnSettings.batch(); ctx.settings.raw is never delayed)
 //   resetWithUndo(ctx, keys, message)  resetKeys + a toast whose Undo button restores the old values
 //   toast(ctx, message, undo?)         plain-text toast; with `undo` it shows an Undo button (8 s)
+//   subpageRow(ctx, spec)              a row with a chevron that slides in a sub-page (built fresh on every open);
+//                                      the less-used settings live there so each main page stays short
 
 import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk?version=4.0';
@@ -393,4 +395,53 @@ export function optionalSpinRow(ctx: PrefsContext, key: SettingKey, title: strin
         subtitle();
     });
     return row;
+}
+
+export interface SubpageSpec {
+    title: string;
+    /** Shown under the row's title; a function is re-read whenever one of `keys` changes. */
+    subtitle?: string | (() => string);
+    keys?: readonly SettingKey[];
+    icon?: string;
+    /** Builds the sub-page's content. Called on every open, so the page always shows the current values. */
+    build: () => Adw.PreferencesPage | readonly Adw.PreferencesGroup[];
+}
+
+/** A row with a chevron that slides in a sub-page with its own header bar and Back button. */
+export function subpageRow(ctx: PrefsContext, spec: SubpageSpec): Adw.ActionRow {
+    const row = new Adw.ActionRow({title: spec.title, activatable: true});
+    if (spec.icon)
+        row.add_prefix(new Gtk.Image({icon_name: spec.icon}));
+    row.add_suffix(new Gtk.Image({icon_name: 'go-next-symbolic', accessible_role: Gtk.AccessibleRole.PRESENTATION}));
+    const subtitle = spec.subtitle;
+    if (typeof subtitle === 'function') {
+        const refresh = (): void => row.set_subtitle(subtitle());
+        refresh();
+        watch(ctx, row, spec.keys ?? [], refresh);
+    } else if (subtitle) {
+        row.set_subtitle(subtitle);
+    }
+    row.connect('activated', () => {
+        const built = spec.build();
+        let content: Adw.PreferencesPage;
+        if (built instanceof Adw.PreferencesPage) {
+            content = built;
+        } else {
+            content = new Adw.PreferencesPage();
+            for (const g of built)
+                content.add(g);
+        }
+        const view = new Adw.ToolbarView({content});
+        view.add_top_bar(new Adw.HeaderBar());
+        ctx.window.push_subpage(new Adw.NavigationPage({title: spec.title, child: view}));
+    });
+    return row;
+}
+
+/** A group of sub-page rows with no title (the "more settings" block at the end of a page). */
+export function subpageGroup(ctx: PrefsContext, title: string, specs: readonly SubpageSpec[]): Adw.PreferencesGroup {
+    const g = new Adw.PreferencesGroup({title});
+    for (const spec of specs)
+        g.add(subpageRow(ctx, spec));
+    return g;
 }

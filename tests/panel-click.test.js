@@ -1,6 +1,6 @@
 // panelClickTarget (build/panel/panelClick.js) against a fake panel actor tree.
-import {MIDDLE, PRIMARY, SECONDARY, panelClickAction, panelClickTarget} from '../build/panel/panelClick.js';
-import {assert, run, test} from './harness.js';
+import {MIDDLE, PRIMARY, SECONDARY, canReplayEvent, closingClick, panelClickAction, panelClickTarget} from '../build/panel/panelClick.js';
+import {assert, assertEquals, run, test} from './harness.js';
 
 // A tiny actor tree: node(name, children) with contains / get_parent like Clutter.Actor.
 function node(name, children = [], button = false) {
@@ -57,7 +57,32 @@ test('panelClickAction: a pinned app launches on left / middle click, its right 
     const k = {kind: 'launcher'};
     assert(panelClickAction(k, PRIMARY, true) === 'clicked');
     assert(panelClickAction(k, MIDDLE, true) === 'clicked');
-    assert(panelClickAction(k, SECONDARY, true) === null);
+    assert(panelClickAction(k, SECONDARY, true) === 'context');
+    assert(panelClickAction(k, SECONDARY, false) === 'context');
+});
+
+test('a touchscreen tap closes like a primary click and is passed on to the button under it', () => {
+    const w = world();
+    w.at['10,5'] = w.appIcon;
+    w.at['1,1'] = w.spawnIcon;
+    for (const kind of ['touch-begin', 'touch-end']) {
+        // a touch event carries no mouse button (Clutter reports 0 or garbage): it counts as PRIMARY
+        for (const raw of [0, 7, SECONDARY]) {
+            const click = closingClick(kind, 10, 5, raw);
+            assertEquals(click, {x: 10, y: 5, button: PRIMARY});
+            assert(panelClickTarget(click, w.anchor, w.deps) === w.appButton);
+        }
+        assert(panelClickTarget(closingClick(kind, 1, 1, 0), w.anchor, w.deps) === null);   // the Spawn button
+    }
+    assert(panelClickAction({kind: 'launcher'}, closingClick('touch-begin', 0, 0, 0).button, false) === 'clicked');
+    assert(panelClickAction({kind: 'gesture', gestureButton: PRIMARY}, closingClick('touch-end', 0, 0, 0).button, false) === 'toggle');
+});
+
+test('closingClick keeps the mouse button of a press / release; a press and a touch begin can be replayed', () => {
+    assertEquals(closingClick('press', 3, 4, SECONDARY), {x: 3, y: 4, button: SECONDARY});
+    assertEquals(closingClick('release', 3, 4, MIDDLE), {x: 3, y: 4, button: MIDDLE});
+    assert(canReplayEvent('press') && canReplayEvent('touch-begin'));
+    assert(!canReplayEvent('release') && !canReplayEvent('touch-end'));
 });
 
 test('panelClickAction: Activities opens the Overview on a left click only', () => {

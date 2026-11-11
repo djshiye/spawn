@@ -13,6 +13,7 @@
 //   left.searchOnTop(): boolean        where the entry should sit now (`Auto` follows the popup side)
 //   left.syncLinks()                   create / refill the quick links box
 //   left.updateNav()                   Back / All Apps / links visibility for the current view
+//   left.setPinDrag(on) / isBackTarget(actor) / pinnedViaBack()   Back as the "Drop to pin" target of a drag from a list
 //   left.linksGroup() / navGroup()     keyboard groups
 //   LeftPaneHost                       what the pane asks of the layout (view switching, focus, Back)
 //
@@ -80,6 +81,8 @@ export class LeftPane {
     private readonly _grid: LeftPaneDeps['grid'];
     private readonly _nav: St.BoxLayout;
     private readonly _backButton: St.Button;
+    private readonly _backLabel: St.Label;
+    private readonly _backIcon: St.Icon;
     private readonly _allAppsButton: St.Button;
     private _backDropRegistered = false;
 
@@ -96,15 +99,18 @@ export class LeftPane {
         this._grid = deps.grid;
         this.stack = new St.BoxLayout({style_class: 'spawn-stack', orientation: Clutter.Orientation.VERTICAL, x_expand: true, y_expand: true});
         this._nav = new St.BoxLayout({style_class: 'spawn-nav'});
-        this._backButton = this._navButton('go-previous-symbolic', _('Back'), () => this._host.back());
-        this._allAppsButton = this._navButton('view-app-grid-symbolic', _('All Apps'), () => this._host.openAllApps());
+        const back = this._navButton('go-previous-symbolic', _('Back'), () => this._host.back());
+        this._backButton = back.button;
+        this._backLabel = back.label;
+        this._backIcon = back.icon;
+        this._allAppsButton = this._navButton('view-app-grid-symbolic', _('All Apps'), () => this._host.openAllApps()).button;
         this._nav.add_child(this._backButton);
         this._nav.add_child(this._allAppsButton);
     }
 
     // ---- chrome ----
 
-    private _navButton(iconName: string, text: string, cb: () => void): St.Button {
+    private _navButton(iconName: string, text: string, cb: () => void): {button: St.Button; label: St.Label; icon: St.Icon} {
         // Full pane width like every other row: only one of Back / All Apps shows at a time (updateNav), so the
         // whole row highlights on hover and takes the click, not just the icon + label.
         const button = makeItemButton('spawn-nav-button');
@@ -126,7 +132,7 @@ export class LeftPane {
         nameItem(button, text, {label: navLabel});
         button.set_child(makeFace('spawn-nav-surface', box));
         wireItem(button, {activate: () => cb()});
-        return button;
+        return {button, label: navLabel, icon: navIcon};
     }
 
     /**
@@ -274,11 +280,41 @@ export class LeftPane {
         this._allAppsButton.visible = !back && isDefaultViewPinnedish(dv);
         this._nav.visible = this._backButton.visible || this._allAppsButton.visible;
         this._updateLinksVisible();
-        // dragging out of a folder onto Back removes the app from the folder
+        // dragging out of a folder onto Back removes the app from the folder; an app dragged from a list pins it
         if (!this._backDropRegistered) {
             this._backDropRegistered = true;
-            acceptDrops(this._scope, this._backButton, this._services.pinned, {kind: 'unfolder', folderUuid: ''});
+            acceptDrops(this._scope, this._backButton, this._services.pinned, {kind: 'back'});
         }
+    }
+
+    // ---- drag to pin ----
+
+    /** Is `target` the Back button or inside it (the spring-loaded hover target of a drag from a list)? */
+    isBackTarget(target: Clutter.Actor | null): boolean {
+        for (let a = target; a; a = a.get_parent()) {
+            if (a === this._backButton)
+                return true;
+        }
+        return false;
+    }
+
+    /**
+     * An app is dragged out of a list: Back is the way to Pinned, so it turns into a drop target that
+     * says so ("Drop to pin"). Reverted when the drag ends.
+     */
+    setPinDrag(on: boolean): void {
+        this._backLabel.text = on ? _('Drop to pin') : _('Back');
+        this._backIcon.icon_name = on ? 'view-pin-symbolic' : 'go-previous-symbolic';
+        this._backButton.accessible_name = this._backLabel.text;
+        if (on)
+            this._backButton.add_style_class_name('spawn-drop-ready');
+        else
+            this._backButton.remove_style_class_name('spawn-drop-ready');
+    }
+
+    /** Can a drag from a list reach Pinned through Back (the start view is a pinned one)? */
+    pinnedViaBack(): boolean {
+        return isDefaultViewPinnedish(this._services.settings.get('default-menu-view'));
     }
 
     // ---- keyboard ----

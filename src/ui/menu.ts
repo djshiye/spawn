@@ -13,7 +13,7 @@
 // open on it and hidden again on close (panel/fullscreenReveal.ts), so Super in a fullscreen game opens the
 // menu attached to its panel instead of floating at the screen edge. A click that closes the popup on a
 // button in a panel (a Dash to Panel pinned app, the clock, a tray icon, with the left, middle or right
-// button) is passed on to that button (panel/panelClick.ts), so it works in one click, also over a
+// button, or a touchscreen tap) is passed on to that button (panel/panelClick.ts), so it works in one click, also over a
 // fullscreen game, where the panel then stays until a menu that click opened is closed again.
 // The popup actor carries `spawn-popup spawn-menu-popup` (the theme's `menu-arrow-rise` targets
 // .spawn-menu-popup only; the runner shares .spawn-popup). `menu-position-alignment` moves a popup under
@@ -52,15 +52,17 @@ import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {FullscreenReveal} from '../panel/fullscreenReveal.js';
 import type {IntellihideHold} from '../panel/intellihide.js';
-import {type ClickLike, PRIMARY, panelClickTarget} from '../panel/panelClick.js';
+import {type ClosingEventKind, PRIMARY, canReplayEvent, closingClick, panelClickTarget} from '../panel/panelClick.js';
 import {
     activatePanelButton,
     closeOtherShellPopups,
     createFullscreenReveal,
     createIntellihideHold,
     forwardNextRelease,
+    opensContextMenu,
     openShellMenu,
     panelButtonKind,
+    passedContextMenu,
     panelClickDeps,
     setPanelHover,
 } from '../panel/targets.js';
@@ -70,6 +72,22 @@ import {installUiDevHooks} from './devHooks.js';
 import {SpawnLayout} from './layout.js';
 import {closeMenu, openMenu, silenceSourceKeys} from './menuParams.js';
 import {applyTone, ownedScope, warmStyles} from './util.js';
+
+/** Which kind of pointer / touch event this is, when it can close the popup (a mouse press / release, a touch). */
+function closingEventKind(event: Clutter.Event): ClosingEventKind | null {
+    switch (event.type()) {
+    case Clutter.EventType.BUTTON_PRESS:
+        return 'press';
+    case Clutter.EventType.BUTTON_RELEASE:
+        return 'release';
+    case Clutter.EventType.TOUCH_BEGIN:
+        return 'touch-begin';
+    case Clutter.EventType.TOUCH_END:
+        return 'touch-end';
+    default:
+        return null;
+    }
+}
 
 type OpenListener = (open: boolean, anchor: St.Widget | null) => void;
 
@@ -96,6 +114,8 @@ export class SpawnPopup {
     private _hovered: unknown = null;
     /** The panel menu the shell switched to under a held panel (pointer moved onto its icon), see _nextHeldMenu. */
     private _handedOver: unknown = null;
+    /** The mouse button of the click _passClickOn last passed on. */
+    private _passedButton = 0;
 
     constructor(scope: Scope, services: Services) {
         this._scope = scope;
@@ -396,12 +416,17 @@ export class SpawnPopup {
             this._clearHover();
             // Resolve a closing click on a panel launcher BEFORE a fullscreen panel hides again.
             const passedTo = this._passClickOn(anchor);
+            if (!passedTo)
+                this._restoreHover(anchor);
             this._intellihide.release();
             // A tray icon / indicator clicked over a fullscreen game opens its menu on that panel: keep the panel
             // until that menu closes (or, if it never opens, hide it after a moment).
             const passedMenu = (passedTo as {menu?: unknown} | null)?.menu;
             if (passedMenu && this._fullscreen.shown)
                 this._fullscreen.holdWhileOpen(passedMenu, closed => this._nextHeldMenu(closed));
+            else if (passedTo && this._fullscreen.shown && opensContextMenu(passedTo, this._passedButton))
+                // A right click on a Dash to Panel app icon: its context menu is built once the click is activated.
+                this._fullscreen.holdUntilMenu(() => passedContextMenu(passedTo), closed => this._nextHeldMenu(closed));
             else
                 this._fullscreen.restore();
         }
@@ -446,8 +471,7 @@ export class SpawnPopup {
     private _clickLandsOn(actor: St.Widget): boolean {
         try {
             const event = Clutter.get_current_event();
-            const type = event?.type();
-            if (!event || (type !== Clutter.EventType.BUTTON_PRESS && type !== Clutter.EventType.BUTTON_RELEASE))
+            if (!event || !closingEventKind(event))
                 return false;
             const [x, y] = event.get_coords();
             const hit = panelClickDeps().actorAt(x, y);
@@ -476,6 +500,27 @@ export class SpawnPopup {
         }
     }
 
+    /**
+     * The menu closed without a click on a panel button (Escape, a click elsewhere): once the grab is gone, the
+     * button under the pointer gets its hover look back (the shell only restores it on the next pointer motion).
+     * It is cleared by the shell's own leave event when the pointer moves off; nothing is lit when the pointer is
+     * not on a button.
+     */
+    private _restoreHover(anchor: St.Widget | null): void {
+        this._scope.idle(() => {
+            try {
+                if (this._open)
+                    return;
+                const [x, y] = global.get_pointer();
+                const target = panelClickTarget({x, y, button: PRIMARY}, anchor, panelClickDeps());
+                if (target)
+                    setPanelHover(target, true);
+            } catch (e) {
+                error('panel hover restore failed', e);
+            }
+        });
+    }
+
     private _clearHover(): void {
         const hovered = this._hovered;
         this._hovered = null;
@@ -491,24 +536,25 @@ export class SpawnPopup {
     private _passClickOn(anchor: St.Widget | null): unknown {
         try {
             const event = Clutter.get_current_event();
-            const type = event?.type();
-            if (!event || (type !== Clutter.EventType.BUTTON_PRESS && type !== Clutter.EventType.BUTTON_RELEASE))
+            const kind = event ? closingEventKind(event) : null;
+            if (!event || !kind)
                 return null;
             const [x, y] = event.get_coords();
-            const click: ClickLike = {x, y, button: event.get_button()};
+            const click = closingClick(kind, x, y, kind === 'press' || kind === 'release' ? event.get_button() : PRIMARY);
             const target = panelClickTarget(click, anchor, panelClickDeps());
             if (!target)
                 return null;
+            this._passedButton = click.button;
             // A tray icon that reads raw presses gets this very press again: keep a copy past this dispatch.
             let press: Clutter.Event | null = null;
-            if (type === Clutter.EventType.BUTTON_PRESS) {
+            if (canReplayEvent(kind)) {
                 try {
                     press = typeof event.copy === 'function' ? event.copy() : event;
                 } catch {
                     press = null;
                 }
                 // ... and the release that follows it (a legacy tray icon clicks its app on release).
-                if (press && panelButtonKind(target)?.kind === 'raw')
+                if (press && kind === 'press' && panelButtonKind(target)?.kind === 'raw')
                     forwardNextRelease(this._scope, target, click.button);
             }
             this._scope.idle(() => {

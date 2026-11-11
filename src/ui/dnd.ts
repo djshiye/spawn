@@ -13,9 +13,12 @@
 //   acceptDrops(scope, target: St.Widget, store: PinnedStore, drop: DropTarget, opts?: {vertical?}): void
 //        vertical: the target is a row of a vertical list, so before / onto / after are the
 //        top / middle / bottom bands (default: left / middle / right bands of a grid tile)
-//   DragPayload: {id, folderUuid?, isFolder?, isCustom?, onDragBegin?(), onDragEnd?()}
+//   DragPayload: {id, folderUuid?, isFolder?, isCustom?, fromList?, name?, apply?, onDragBegin?(), onDragEnd?()}
 //        id = desktop id (or folder uuid when isFolder); folderUuid = folder the app is dragged from;
-//        isCustom = a pinned command (it can be reordered but never goes into a folder)
+//        isCustom = a pinned command (it can be reordered but never goes into a folder);
+//        dragActor = an actor of its own instead of a clone of the source (drags that outlive the source),
+//        fromList = dragged out of All Apps / a category / results (not pinned yet, or pinned: then it moves),
+//        apply wraps the store change (Undo banner). The rules live in model/pinnedDrop.ts (unit-tested).
 //   DropTarget:
 //     {kind: 'grid'; index: () => number; folderUuid?}   background of a grid (append; index ignored
 //                                                         when below 0)
@@ -24,6 +27,8 @@
 //     {kind: 'folder'; uuid}                              a folder tile
 //     {kind: 'unfolder'; folderUuid}                      "take the app out of its folder" zone
 //                                                         (folderUuid '' = whichever folder the app came from)
+//     {kind: 'back'}                                      the Back button: takes the app out of its folder, or
+//                                                         pins an app dragged from a list at the end
 //   rejectDrops(scope, target: St.Widget): void
 //        the target (a ghost row / tile of a missing app) shows "no drop" and swallows a drop on it
 //        (does nothing), so it does not bubble to the list's append-at-end target
@@ -42,24 +47,8 @@ import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {PinnedStore} from '../model/pinned.js';
+import {canDrop, performDrop, uniqueName, type DragPayload, type DropTarget, type Zone} from '../model/pinnedDrop.js';
 import {surfaceOf} from './widgets/interact.js';
-
-export interface DragPayload {
-    id: string;
-    folderUuid?: string;
-    isFolder?: boolean;
-    isCustom?: boolean;
-    onDragBegin?(): void;
-    onDragEnd?(): void;
-}
-
-export type DropTarget =
-    | {kind: 'grid'; index: () => number; folderUuid?: string}
-    | {kind: 'app'; id: string; folderUuid?: string; isCustom?: boolean}
-    | {kind: 'folder'; uuid: string}
-    | {kind: 'unfolder'; folderUuid: string};
-
-type Zone = 'before' | 'onto' | 'after';
 
 interface Delegate {
     spawnPayload?: DragPayload;
@@ -104,27 +93,10 @@ function clearDropClasses(widget: St.Widget | null): void {
 }
 
 export function uniqueFolderName(store: PinnedStore): string {
-    const taken = new Set(store.items().filter(i => i.kind === 'folder').map(i => (i as {name: string}).name));
-    const base = _('New Folder');
-    if (!taken.has(base))
-        return base;
-    for (let n = 2; ; n++) {
-        if (!taken.has(`${base} ${n}`))
-            return `${base} ${n}`;
-    }
+    return uniqueName(store, _('New Folder'));
 }
 
-function topIndexOf(store: PinnedStore, id: string): number {
-    return store.items().findIndex(i =>
-        (i.kind === 'app' && i.id === id) ||
-        (i.kind === 'folder' && i.uuid === id) ||
-        (i.kind === 'custom' && i.entry.id === id));
-}
-
-/** Index in the folder's FULL list (missing apps included: the folder view shows them as ghosts). */
-function folderIndexOf(store: PinnedStore, uuid: string, id: string): number {
-    return store.folderApps(uuid, true).findIndex(e => e.id === id);
-}
+export type {DragPayload, DropTarget};
 
 export function enableDrag(scope: Scope, tile: St.Widget, payload: DragPayload): void {
     const delegate = delegateOf(tile);
@@ -132,6 +104,11 @@ export function enableDrag(scope: Scope, tile: St.Widget, payload: DragPayload):
     delegate.getDragActorSource = () => tile;
     delegate.getDragActor = () => {
         const [w, h] = tile.get_transformed_size();
+        // A drag out of a list can outlive its source (spring-loaded navigation hides the list, and a Clone of a
+        // hidden actor paints distorted): those drags bring their own actor.
+        const own = payload.dragActor?.() as Clutter.Actor | undefined;
+        if (own)
+            return own;
         const clone = new Clutter.Clone({source: tile, opacity: 215});
         clone.set_size(w, h);
         return clone;
@@ -238,10 +215,12 @@ export function enableDrag(scope: Scope, tile: St.Widget, payload: DragPayload):
         }
         return undefined;
     });
-    scope.add(() => {
+    const release = scope.add(() => {
         dead = true;
         stop();
     }, 'drag monitor');
+    // A row of a list that is rebuilt (All Apps, results) goes away long before the layout's scope does.
+    tile.connect('destroy', () => release());
 }
 
 /**
@@ -272,37 +251,12 @@ export function acceptDrops(scope: Scope, target: St.Widget, store: PinnedStore,
 
     const canAccept = (source: Delegate | undefined, zone: Zone): boolean => {
         const p = source?.spawnPayload;
-        if (!p)
-            return false;
-        switch (drop.kind) {
-        case 'grid':
-            // a pinned command cannot live inside a folder (the folder view only shows apps)
-            return !(drop.folderUuid && p.isCustom);
-        case 'unfolder':
-            return Boolean(p.folderUuid) && !p.isFolder && (!drop.folderUuid || p.folderUuid === drop.folderUuid);
-        case 'app':
-            if (p.id === drop.id)
-                return false;
-            // commands are reordered, never merged into a folder (onto) or dropped into one
-            if ((drop.isCustom || p.isCustom) && (zone === 'onto' || drop.folderUuid))
-                return false;
-            if (drop.folderUuid)
-                return !p.isFolder;
-            return zone !== 'onto' || !p.isFolder;
-        case 'folder':
-            if (p.isFolder && p.id === drop.uuid)
-                return false;
-            if (p.isCustom && zone === 'onto')
-                return false;
-            if (!p.isFolder && p.folderUuid === drop.uuid && zone === 'onto')
-                return false;
-            return zone !== 'onto' || !p.isFolder;
-        }
+        return Boolean(p) && canDrop(p as DragPayload, drop, zone);
     };
 
     let last: {zone: Zone; at: number} | null = null;
     const toZone = (x: number, y: number, remember: boolean): Zone => {
-        if (drop.kind === 'grid' || drop.kind === 'unfolder')
+        if (drop.kind === 'grid' || drop.kind === 'unfolder' || drop.kind === 'back')
             return 'onto';
         const now = GLib.get_monotonic_time() / 1000;
         const prev = last && now - last.at <= ZONE_MEMORY_MS ? last.zone : null;
@@ -319,7 +273,7 @@ export function acceptDrops(scope: Scope, target: St.Widget, store: PinnedStore,
         if (drop.kind === 'grid')
             return DND.DragMotionResult.MOVE_DROP;
         const face = surfaceOf(target);
-        if (drop.kind === 'unfolder' || zone === 'onto')
+        if (drop.kind === 'unfolder' || drop.kind === 'back' || zone === 'onto')
             face.add_style_class_name('spawn-drop-target');
         else
             face.add_style_class_name(zone === 'before' ? 'spawn-drop-before' : 'spawn-drop-after');
@@ -336,7 +290,7 @@ export function acceptDrops(scope: Scope, target: St.Widget, store: PinnedStore,
         }
         const p = source.spawnPayload as DragPayload;
         try {
-            return perform(store, drop, p, zone);
+            return performDrop(store, drop, p, zone, () => _('New Folder'));
         } catch (e) {
             error('drop failed', e);
             return false;
@@ -370,78 +324,4 @@ export function rejectDrops(scope: Scope, target: St.Widget): void {
         delegate.handleDragOver = undefined;
         delegate.acceptDrop = undefined;
     }, 'reject drops');
-}
-
-/** Index in the (visible) top-level list to insert at for a drop next to `refIndex`. */
-function slotFor(zone: Zone, refIndex: number): number {
-    return zone === 'after' ? refIndex + 1 : refIndex;
-}
-
-function reorderTop(store: PinnedStore, p: DragPayload, slot: number): boolean {
-    if (p.folderUuid) {
-        store.removeFromFolder(p.folderUuid, p.id, slot);
-        return true;
-    }
-    const from = topIndexOf(store, p.id);
-    if (from < 0) {
-        store.pin(p.id, slot);
-        return true;
-    }
-    const to = from < slot ? slot - 1 : slot;
-    if (to !== from)
-        store.move(from, to);
-    return true;
-}
-
-function perform(store: PinnedStore, drop: DropTarget, p: DragPayload, zone: Zone): boolean {
-    switch (drop.kind) {
-    case 'unfolder':
-        store.removeFromFolder(drop.folderUuid || (p.folderUuid as string), p.id);
-        return true;
-
-    case 'grid': {
-        if (drop.folderUuid) {
-            // Append to the folder (or move to its end).
-            store.addToFolder(drop.folderUuid, p.id);
-            return true;
-        }
-        const wanted = drop.index();
-        if (p.folderUuid) {
-            store.removeFromFolder(p.folderUuid, p.id, wanted >= 0 ? wanted : undefined);
-            return true;
-        }
-        const len = store.items().length;
-        return reorderTop(store, p, wanted >= 0 ? wanted : len);
-    }
-
-    case 'app': {
-        if (drop.folderUuid) {
-            const ref = folderIndexOf(store, drop.folderUuid, drop.id);
-            if (ref < 0)
-                return false;
-            // Inside a folder "onto" counts as "before".
-            store.addToFolder(drop.folderUuid, p.id, slotFor(zone === 'after' ? 'after' : 'before', ref));
-            return true;
-        }
-        const ref = topIndexOf(store, drop.id);
-        if (ref < 0)
-            return false;
-        if (zone === 'onto') {
-            store.createFolder(uniqueFolderName(store), [drop.id, p.id], ref);
-            return true;
-        }
-        return reorderTop(store, p, slotFor(zone, ref));
-    }
-
-    case 'folder': {
-        if (zone === 'onto') {
-            store.addToFolder(drop.uuid, p.id);
-            return true;
-        }
-        const ref = topIndexOf(store, drop.uuid);
-        if (ref < 0)
-            return false;
-        return reorderTop(store, p, slotFor(zone, ref));
-    }
-    }
 }

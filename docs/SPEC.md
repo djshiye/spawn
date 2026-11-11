@@ -68,7 +68,7 @@ your area before writing code.
     rows and the "New" markers). Pinning is explicit, so a pinned app stays pinned. An in-menu banner
     "“X” hidden [Undo]" (the folder-delete banner; Ctrl+Z too) shows for 8 s. `search-hidden-apps` (default
     on) lets search still find hidden apps. A category left empty disappears. Preferences, Menu page,
-    "Hidden apps": icon + name + Restore per app, an empty state, the search switch; an id whose app is
+    "Hidden apps" sub-page: icon + name + Restore per app, an empty state, the search switch; an id whose app is
     uninstalled is greyed, says "Not installed" and can only be removed.
   - "New" badge (`show-new-apps-badge`, default on): the first time the app catalogue is built `known-apps`
     is filled with every installed app, so nothing is new when Spawn is enabled. Apps that appear later get

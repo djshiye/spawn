@@ -126,13 +126,19 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         run: docker build --build-arg UID="$(id -u)" -f tools/container/Dockerfile.ubuntu -t spawn-dev:ubuntu tools/container
 
+      # One image, the scenarios run one after the other, each in a fresh shell; a failed expectation makes
+      # tools/dev-shell.sh exit non-zero and so fails the step. The --with-dtp variants are not run here: they copy
+      # the real Dash to Panel from the user's extensions directory, which a CI runner does not have (and the
+      # scenarios must not download code). core-panel-passthrough / core-tray-passthrough stand in for a Dash to
+      # Panel app icon and for AppIndicator tray icons (tools/dev/tray-standin), so they cover those code paths;
+      # run core-fullscreen / core-panel-passthrough with --with-dtp locally for the real extension.
       # No network: nothing in the scenarios needs it. The container runs as the runner's user so that .dev/ (logs,
       # screenshots) belongs to it: the image's `dev` user has the runner's UID (dbus-daemon needs a passwd entry).
       - name: Scenarios
         if: steps.changes.outputs.run == 'true'
         run: |
           mkdir -p .dev
-          for scenario in smoke lifecycle; do
+          for scenario in smoke lifecycle core-panel-passthrough core-tray-passthrough core-panel-hover core-fullscreen; do
             echo "::group::$scenario"
             docker run --rm --network none --shm-size=1g \
               --user dev \

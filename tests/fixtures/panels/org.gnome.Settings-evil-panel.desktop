@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Evil
+Exec=true
+NoDisplay=true
+X-GNOME-Settings-Panel=../x y

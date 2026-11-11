@@ -101,6 +101,17 @@ test('fuzzy subsequence matches only compact enough hits', () => {
     assertEquals(scoreMatch('abc', 'axxxxxxxxxxxxxxxxxxxxbxxxxxxxxxxxxxxxxxxxxc'), 0);
 });
 
+test('"display" does not find "Disk Player" (cut-off word pieces are no abbreviation)', () => {
+    assertEquals(scoreMatch('display', 'Disk Player'), 0);
+    assertEquals(scoreMatch('dis play', 'Disk Player') > 0, true); // typed as two terms it is still found
+    assertEquals(scoreMatch('diskplay', 'Disk Player') > 0, true); // whole first word + prefix
+    assert(scoreMatch('sysmon', 'System Monitor') >= 540); // real abbreviations stay
+    assert(scoreMatch('vscode', 'Visual Studio Code') >= 540);
+    assert(scoreMatch('frfx', 'Firefox') > 0);
+    const r = rankItems('display', ['Disk Player', 'Displays', 'Disks'], k => [k]);
+    assertEquals(r.map(x => x.item), ['Displays']);
+});
+
 test('doubled-initial tier ("ff" -> Firefox) sits between substring and acronym, and is opt-in', () => {
     assertEquals(scoreMatch('ff', 'Firefox'), 0); // windows / files do not use it
     const ff = scoreNormalized('ff', 'Firefox', true);

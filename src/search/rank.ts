@@ -11,7 +11,9 @@
 //   doubled initial (2 letters)   470..497   ("ff" -> Firefox; display names only, see scoreInitials)
 //   substring                     400..460
 //   typo (one edit, apps only)    382..398   ("chorme" -> Chrome, "calculater" -> Calculator; see below)
-//   subsequence (fuzzy)           100..300
+//   subsequence (fuzzy)           100..300   (a run of 2+ letters cut off mid-word that jumps to the start
+//                                             of a later word is rejected: "display" is not Disk Player;
+//                                             acronym pieces that stop inside a word must drop 2+ letters)
 // Score 0 means "no match". Within a tier shorter candidates (higher query/candidate
 // length ratio) and earlier matches score slightly higher.
 //
@@ -172,6 +174,8 @@ function wordsOf(lower: string, boundary: boolean[]): string[] {
 }
 
 /** Can `q` be consumed as non-empty prefixes of consecutive words (skip = may skip words)? */
+const ABBREVIATION_DROP = 2;
+
 function acronymMatch(q: string, words: string[], skip: boolean): boolean {
     const failed = new Set<number>();
     const walk = (qi: number, wi: number): boolean => {
@@ -186,6 +190,11 @@ function acronymMatch(q: string, words: string[], skip: boolean): boolean {
         let k = 0;
         while (k < w.length && qi + k < q.length && q[qi + k] === w[k]) {
             k++;
+            // A piece that stops inside its word must drop at least two letters ("sys" of System,
+            // not "dis" of Disk): shaving one letter off a short word is not an abbreviation.
+            // The last piece may stop anywhere (a plain prefix).
+            if (qi + k < q.length && k < w.length && w.length - k < ABBREVIATION_DROP)
+                continue;
             if (walk(qi + k, wi + 1))
                 return true;
         }
@@ -197,19 +206,45 @@ function acronymMatch(q: string, words: string[], skip: boolean): boolean {
     return walk(0, 0);
 }
 
-function subsequenceSpan(q: string, c: string): number {
+/**
+ * Length of the stretch of `c` a greedy subsequence match of `q` covers, 0 when there is none or it is
+ * cut off in the middle of a word: a run of two or more letters that stops short of its word's end and
+ * jumps to the start of a later word is no deliberate abbreviation ("display" is not "Disk Player":
+ * dis|k play|er).
+ */
+/** Does c[from, to) contain a letter or digit (as opposed to only separators)? */
+function skipsLetter(c: string, from: number, to: number): boolean {
+    for (let i = from; i < to; i++) {
+        if (isAlnum(c[i]))
+            return true;
+    }
+    return false;
+}
+
+function subsequenceSpan(q: string, c: string, boundary: boolean[]): number {
     let qi = 0;
     let first = -1;
     let last = -1;
+    let run = 0;
+    let cut = false;
     for (let i = 0; i < c.length && qi < q.length; i++) {
         if (c[i] === q[qi]) {
             if (first < 0)
                 first = i;
+            else if (i === last + 1)
+                run++;
+            else {
+                if (run >= 2 && boundary[i] && skipsLetter(c, last + 1, i))
+                    cut = true;
+                run = 1;
+            }
+            if (first === i)
+                run = 1;
             last = i;
             qi++;
         }
     }
-    return qi === q.length ? last - first + 1 : 0;
+    return qi === q.length && !cut ? last - first + 1 : 0;
 }
 
 const INITIALS_BAND = 470;
@@ -438,7 +473,7 @@ function scoreExact(q: string, p: Prepared, phrase: boolean, initials: boolean):
         return Math.round(400 + 50 * ratio + Math.max(0, 10 - firstSub));
 
     if (!phrase && q.length >= 3) {
-        const span = subsequenceSpan(q, lower);
+        const span = subsequenceSpan(q, lower, boundary);
         if (span > 0) {
             const compact = q.length / span;
             if (compact >= 0.3)

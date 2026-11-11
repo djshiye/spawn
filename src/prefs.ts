@@ -18,20 +18,16 @@ import {parseMetadataVersion, versionOf} from './core/updateNotice.js';
 import type {PrefsContext} from './prefs/context.js';
 import {createAboutPage} from './prefs/pages/about.js';
 import {createAppearancePage} from './prefs/pages/appearance.js';
-import {createButtonPage} from './prefs/pages/button.js';
 import {createGeneralPage} from './prefs/pages/general.js';
-import {createImportPage} from './prefs/pages/import.js';
 import {createMenuPage} from './prefs/pages/menu.js';
 import {createPinnedPage} from './prefs/pages/pinned.js';
 import {showUpdateNoticeIfNeeded} from './prefs/updateToast.js';
 
 const PAGE_BUILDERS: Record<PrefsPageName, readonly [title: string, create: (ctx: PrefsContext) => Adw.PreferencesPage]> = {
     general: ['General', createGeneralPage],
-    button: ['Button', createButtonPage],
     menu: ['Menu', createMenuPage],
     pinned: ['Pinned', createPinnedPage],
     appearance: ['Appearance', createAppearancePage],
-    import: ['Import', createImportPage],
     about: ['About', createAboutPage],
 };
 

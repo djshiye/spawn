@@ -1,16 +1,18 @@
-// Preferences page "General": panel position, Activities button, hotkeys, runner, behaviour.
+// Preferences page "General": the panel button, the shortcuts that open the menu, behaviour, and rows that open
+// the Runner and "Keys in the menu" sub-pages.
 //
 // Public API:
 //   createGeneralPage(ctx: PrefsContext): Adw.PreferencesPage
 //   PrefsContext (prefs/context.ts): {settings, extensionDir, window, metadata}
 
 import Adw from 'gi://Adw';
-import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk?version=4.0';
 
 import type {PrefsContext} from '../context.js';
 import {captureShortcut} from '../shortcutDialog.js';
-import {enumRow, group, label, resetWithUndo, spinRow, switchRow, toast, watch} from '../widgets.js';
+import {enumRow, group, label, spinRow, subpageGroup, switchRow, toast, watch} from '../widgets.js';
+import {createShortcutsGroup} from './about.js';
+import {panelButtonGroup} from './button.js';
 
 interface AcceleratorOptions {
     key: 'spawn-hotkey' | 'runner-hotkey';
@@ -112,7 +114,7 @@ function acceleratorRows(ctx: PrefsContext, g: Adw.PreferencesGroup, opts: Accel
 
 /** Hotkeys group: the Super key switch plus the custom accelerators of the menu. */
 function hotkeyGroup(ctx: PrefsContext): Adw.PreferencesGroup {
-    const g = new Adw.PreferencesGroup({title: 'Hotkeys'});
+    const g = new Adw.PreferencesGroup({title: 'Opening the menu'});
     g.add(switchRow(ctx, 'super-key-toggle', 'Super key opens the menu', 'Pressing and releasing the Super key toggles the menu instead of the Activities overview'));
     acceleratorRows(ctx, g, {
         key: 'spawn-hotkey',
@@ -125,8 +127,8 @@ function hotkeyGroup(ctx: PrefsContext): Adw.PreferencesGroup {
 /** Runner shortcut(s): the runner is a search-only popup that does not need the panel button. */
 function runnerHotkeyGroup(ctx: PrefsContext): Adw.PreferencesGroup {
     const g = new Adw.PreferencesGroup({
-        title: 'Runner',
-        description: 'A search-only popup that opens on the monitor under the pointer.',
+        title: 'Shortcut',
+        description: 'The runner is a search-only popup that opens on the monitor under the pointer.',
     });
     acceleratorRows(ctx, g, {
         key: 'runner-hotkey',
@@ -136,34 +138,25 @@ function runnerHotkeyGroup(ctx: PrefsContext): Adw.PreferencesGroup {
     return g;
 }
 
-/** `menu-position-alignment`: a 0..100 slider (Left - Center - Right), shown only while the button is centred in the panel. */
-function alignmentRow(ctx: PrefsContext): Adw.ActionRow {
-    const scale = new Gtk.Scale({
-        orientation: Gtk.Orientation.HORIZONTAL,
-        adjustment: new Gtk.Adjustment({lower: 0, upper: 100, step_increment: 1, page_increment: 10, value: ctx.settings.get('menu-position-alignment')}),
-        digits: 0,
-        draw_value: false,
-        hexpand: true,
-        valign: Gtk.Align.CENTER,
-        width_request: 220,
-    });
-    scale.add_mark(0, Gtk.PositionType.BOTTOM, 'Left');
-    scale.add_mark(50, Gtk.PositionType.BOTTOM, 'Centre');
-    scale.add_mark(100, Gtk.PositionType.BOTTOM, 'Right');
-    label(scale, 'Menu alignment');
-    ctx.settings.raw.bind('menu-position-alignment', scale.adjustment, 'value', Gio.SettingsBindFlags.DEFAULT);
-    const row = new Adw.ActionRow({
-        title: 'Menu alignment',
-        subtitle: 'Where the menu sits relative to a button centred in the panel',
-        activatable_widget: scale,
-    });
-    row.add_suffix(scale);
-    const refresh = (): void => {
-        row.visible = ctx.settings.get('position-in-panel') === 'Center';
-    };
-    refresh();
-    watch(ctx, row, ['position-in-panel'], refresh);
-    return row;
+/** "Not set" or the runner's shortcut(s), for the Runner row's subtitle. */
+function runnerSummary(ctx: PrefsContext): string {
+    const keys = ctx.settings.get('runner-hotkey').filter(k => k.trim() !== '');
+    return keys.length === 0 ? 'Off until you give it a shortcut' : `Opens with ${keys.map(accelLabel).join(' or ')}`;
+}
+
+function runnerGroups(ctx: PrefsContext): Adw.PreferencesGroup[] {
+    return [
+        runnerHotkeyGroup(ctx),
+        group(ctx, 'Runner layout', [
+            enumRow(ctx, 'runner-position', 'Position', [['Top', 'Top'], ['Centered', 'Centred']], 'Where the runner opens on the monitor'),
+            spinRow(ctx, 'runner-menu-width', 'Width', 300, 2000, {step: 10, subtitle: 'In pixels'}),
+            spinRow(ctx, 'runner-menu-height', 'Maximum height', 300, 1000, {step: 10, subtitle: 'The runner grows with its results up to this height'}),
+            spinRow(ctx, 'runner-font-size', 'Font size', 0, 30, {subtitle: 'In points', special: [{value: 0, label: 'Menu font'}]}),
+            enumRow(ctx, 'runner-default-view', 'Before typing', [['Default', 'Nothing'], ['Pinned_Apps', 'Pinned apps'], ['Frequent_Apps', 'Frequent apps']]),
+        ], {
+            reset: ['runner-position', 'runner-menu-width', 'runner-menu-height', 'runner-font-size', 'runner-default-view'],
+        }),
+    ];
 }
 
 export function createGeneralPage(ctx: PrefsContext): Adw.PreferencesPage {
@@ -173,27 +166,9 @@ export function createGeneralPage(ctx: PrefsContext): Adw.PreferencesPage {
         icon_name: 'preferences-system-symbolic',
     });
 
-    page.add(group(ctx, 'Panel', [
-        enumRow(ctx, 'position-in-panel', 'Button position', [['Left', 'Left'], ['Center', 'Centre'], ['Right', 'Right']]),
-        alignmentRow(ctx),
-        spinRow(ctx, 'menu-button-position-offset', 'Position offset', 0, 20, {
-            subtitle: 'Number of panel items to skip from the chosen edge',
-        }),
-        switchRow(ctx, 'multi-monitor', 'Show on every monitor', 'Add the menu button to the panel of each monitor (Dash to Panel)'),
-        switchRow(ctx, 'hide-activities-button', 'Hide the Activities button', 'Restored to its previous state when the extension is disabled'),
-    ]));
+    page.add(panelButtonGroup(ctx));
 
     page.add(hotkeyGroup(ctx));
-    page.add(runnerHotkeyGroup(ctx));
-    page.add(group(ctx, 'Runner layout', [
-        enumRow(ctx, 'runner-position', 'Position', [['Top', 'Top'], ['Centered', 'Centred']], 'Where the runner opens on the monitor'),
-        spinRow(ctx, 'runner-menu-width', 'Width', 300, 2000, {step: 10, subtitle: 'In pixels'}),
-        spinRow(ctx, 'runner-menu-height', 'Maximum height', 300, 1000, {step: 10, subtitle: 'The runner grows with its results up to this height'}),
-        spinRow(ctx, 'runner-font-size', 'Font size', 0, 30, {subtitle: 'In points', special: [{value: 0, label: 'Menu font'}]}),
-        enumRow(ctx, 'runner-default-view', 'Before typing', [['Default', 'Nothing'], ['Pinned_Apps', 'Pinned apps'], ['Frequent_Apps', 'Frequent apps']]),
-    ], {
-        reset: ['runner-position', 'runner-menu-width', 'runner-menu-height', 'runner-font-size', 'runner-default-view'],
-    }));
 
     page.add(group(ctx, 'Behaviour', [
         switchRow(ctx, 'activate-on-launch', 'Switch to the app when it is already running', 'Activate the existing window instead of opening a new one'),
@@ -203,16 +178,20 @@ export function createGeneralPage(ctx: PrefsContext): Adw.PreferencesPage {
         reset: ['activate-on-launch', 'keep-open-on-ctrl-click', 'show-tooltips'],
     }));
 
-    const resetAll = new Gtk.Button({label: 'Reset General Settings', halign: Gtk.Align.CENTER, css_classes: ['destructive-action', 'pill']});
-    resetAll.connect('clicked', () => {
-        resetWithUndo(ctx, [
-            'position-in-panel', 'menu-position-alignment', 'menu-button-position-offset', 'multi-monitor', 'hide-activities-button',
-            'super-key-toggle', 'spawn-hotkey', 'runner-hotkey', 'runner-position', 'runner-menu-width',
-            'runner-menu-height', 'runner-font-size', 'runner-default-view', 'activate-on-launch', 'keep-open-on-ctrl-click', 'show-tooltips',
-        ], 'General settings reset to defaults');
-    });
-    const tail = new Adw.PreferencesGroup();
-    tail.add(resetAll);
-    page.add(tail);
+    page.add(subpageGroup(ctx, 'More', [
+        {
+            title: 'Runner',
+            subtitle: () => runnerSummary(ctx),
+            keys: ['runner-hotkey'],
+            icon: 'system-search-symbolic',
+            build: () => runnerGroups(ctx),
+        },
+        {
+            title: 'Keys in the menu',
+            subtitle: 'Every key the open menu answers to',
+            icon: 'input-keyboard-symbolic',
+            build: () => [createShortcutsGroup(ctx)],
+        },
+    ]));
     return page;
 }

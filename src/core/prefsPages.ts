@@ -3,11 +3,11 @@
 // index (an `i` key, unchanged) and both sides translate through here.
 //
 // Public API:
-//   PREFS_PAGE_NAMES                      ['general', 'button', 'menu', 'pinned', ...]
+//   PREFS_PAGE_NAMES                      ['general', 'menu', 'pinned', 'appearance', 'about']
 //   type PrefsPageName
 //   prefsPageIndex(name): number
 
-export const PREFS_PAGE_NAMES = ['general', 'button', 'menu', 'pinned', 'appearance', 'import', 'about'] as const;
+export const PREFS_PAGE_NAMES = ['general', 'menu', 'pinned', 'appearance', 'about'] as const;
 
 export type PrefsPageName = (typeof PREFS_PAGE_NAMES)[number];
 

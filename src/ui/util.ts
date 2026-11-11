@@ -172,7 +172,7 @@ function luminance(c: {red: number; green: number; blue: number}): number {
  * (default `actor`). Dark themes (Orchis Dark, the default look) get no class.
  */
 export function applyTone(actor: St.Widget, probe: St.Widget = actor): void {
-    let light = false;
+    let light: boolean;
     try {
         light = luminance(probe.get_theme_node().get_foreground_color()) < 128;
     } catch {
