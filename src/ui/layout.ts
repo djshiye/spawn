@@ -54,11 +54,12 @@ import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
 import type {Entry} from '../core/settings.js';
 import type {PinnedItem} from '../model/pinned.js';
-import {Places, type FakePlace, type Place} from '../model/places.js';
+import type {FakePlace} from '../model/places.js';
 import {nearestIndex, pageTarget, searchStep, type Pos} from '../model/listNav.js';
 import {reorderTarget, type ReorderKey} from '../model/reorder.js';
 import type {SearchResult} from '../search/engine.js';
 import {AppContextMenu} from './contextMenu.js';
+import {RightPane} from './layout/rightPane.js';
 import {UndoController} from './layout/undo.js';
 import {LayoutState, type Dir, type Group, type LayoutHost, type TileEntry, type ViewId} from './layout/types.js';
 import {PaneMetrics} from './layout/metrics.js';
@@ -76,14 +77,11 @@ import {FolderView} from './widgets/folderView.js';
 import {PointerHighlight} from './widgets/highlight.js';
 import {makeFace, makeItemButton, wireItem} from './widgets/interact.js';
 import {sizeMetrics} from './widgets/pinnedSize.js';
-import {PlaceRow} from './widgets/placeRow.js';
-import {PowerBar} from './widgets/powerBar.js';
 import {ResultList, type ResultHost} from './widgets/resultList.js';
 import {SearchBox} from './widgets/searchBox.js';
-import {resolveShortcut, ShortcutRow, type ShortcutHost} from './widgets/shortcutRow.js';
+import {resolveShortcut, type ShortcutHost} from './widgets/shortcutRow.js';
 import {TileGrid} from './widgets/tileGrid.js';
 import {TooltipManager} from './widgets/tooltip.js';
-import {UserCard} from './widgets/userCard.js';
 import {applyScrollSettings, displayName, iconSizeFor, iconSizeOrHidden, isPointerEvent, launchApp, lookupApp, ownedScope, scrollIntoView, showDescriptions} from './util.js';
 
 export type {LayoutHost, ViewId} from './layout/types.js';
@@ -173,13 +171,7 @@ export class SpawnLayout implements ShortcutHost {
     private readonly _highlight: PointerHighlight;
 
     // right pane (rebuilt as a unit)
-    private _rightScope: Scope;
-    private _userCard: UserCard | null = null;
-    private _shortcutRows: Array<ShortcutRow | PlaceRow> = [];
-    private _shortcutsBox: St.BoxLayout | null = null;
-    private readonly _places: Places;
-    private _powerBar: PowerBar | null = null;
-    private _shortcutScroll: St.ScrollView | null = null;
+    private readonly _rightPane: RightPane;
 
     // lazily built views
     private _pinnedScroll: St.ScrollView | null = null;
@@ -329,11 +321,15 @@ export class SpawnLayout implements ShortcutHost {
             pinnedTile: key => this._tileEntries.get(key)?.widget ?? null,
         });
 
-        this._places = new Places(scope.child('places'), settings);
-        this._places.onChanged(scope, () => this._fillShortcuts());
-        this._rightScope = scope.child('right pane');
+        this._rightPane = new RightPane(scope, services, this._state, {
+            pane: this._right,
+            host: {close: () => this.close(), showAllApps: () => this.showAllApps(), tooltips: this._tooltips},
+            tooltips: this._tooltips,
+            context: this._context,
+            scrolls: this._scrollFactory,
+        });
         this._arrangeLeft();
-        this._buildRight();
+        this._rightPane.build();
         this._metrics.apply();
 
         // search wiring
@@ -371,7 +367,7 @@ export class SpawnLayout implements ShortcutHost {
         scope.connect(global.stage, 'notify::key-focus', () => this._onFocusChanged());
 
         settings.onChanged(scope, [...RELAYOUT_KEYS], () => this._relayout());
-        settings.onChanged(scope, [...RIGHT_KEYS], () => this._buildRight());
+        settings.onChanged(scope, [...RIGHT_KEYS], () => this._rightPane.build());
         settings.onChanged(scope, [...LINK_KEYS], () => this._relink());
         settings.onChanged(scope, [...SCROLL_KEYS], () => this._onScrollSettings());
         settings.onChanged(scope, [...VIEW_KEYS], () => this._onViewSettings());
@@ -419,7 +415,7 @@ export class SpawnLayout implements ShortcutHost {
             if (this._searchOnTop() !== this._state.searchTop)
                 this._arrangeLeft();
             this._setView(this._defaultView());
-            for (const s of [this._pinnedScroll, this._frequentScroll, this._extraScroll, this._resultsScroll, this._shortcutScroll])
+            for (const s of [this._pinnedScroll, this._frequentScroll, this._extraScroll, this._resultsScroll, this._rightPane.scroll])
                 s?.vadjustment.set_value(0);
             this._search.actor.visible = !this._services.settings.get('search-hidden');
             if (this._search.actor.visible)
@@ -520,6 +516,11 @@ export class SpawnLayout implements ShortcutHost {
         this._showFolder(uuid);
     }
 
+    /** Dev hook (Ui.SetPlaces): show fake devices / network locations / bookmarks, null = the real ones. */
+    setFakePlaces(specs: FakePlace[] | null): void {
+        this._rightPane.setFakePlaces(specs);
+    }
+
     debugState(): Record<string, unknown> {
         const focus = global.stage.key_focus as Clutter.Actor | null;
         // Reading sizes of a layout that is not parented to the stage yet (prebuilt, never opened)
@@ -542,7 +543,7 @@ export class SpawnLayout implements ShortcutHost {
             results: this._results?.rows().length ?? 0,
             links: this._links?.actor.visible ? this._links.buttons().length : 0,
             extraRows: this._extraList?.rows().length ?? 0,
-            places: [this._places.devices().length, this._places.network().length, this._places.bookmarks().length],
+            places: [this._rightPane.places.devices().length, this._rightPane.places.network().length, this._rightPane.places.bookmarks().length],
             tooltip: this._tooltips.debugText(),
             columns: this._metrics.cols,
             size: staged ? [this.actor.width, this.actor.height] : [0, 0],
@@ -617,7 +618,7 @@ export class SpawnLayout implements ShortcutHost {
             return;
         const s = this._services.settings;
         const scrolls = [
-            ...this._scrollFactory.tracked(), this._shortcutScroll,
+            ...this._scrollFactory.tracked(), this._rightPane.scroll,
             this._categories?.appScroll(), this._categories?.columnScroll(), this._folderView?.scroll,
         ];
         for (const scroll of scrolls) {
@@ -788,127 +789,6 @@ export class SpawnLayout implements ShortcutHost {
         if (this._state.destroyed)
             return;
         this._arrangeLeft();
-    }
-
-    private _buildRight(): void {
-        if (this._state.destroyed)
-            return;
-        this._tooltips.hide();
-        this._rightScope.dispose();
-        this._userCard = null;
-        this._shortcutRows = [];
-        this._powerBar = null;
-        this._shortcutScroll = null;
-        this._shortcutsBox = null;
-        for (const c of this._right.get_children())
-            c.destroy();
-
-        const s = this._services.settings;
-        const scope = this._rightScope;
-        const hostWithTips: ShortcutHost = {close: () => this.close(), showAllApps: () => this.showAllApps(), tooltips: this._tooltips};
-
-        this._userCard = new UserCard(scope, s, hostWithTips, card => this._context.open(card, {kind: 'usercard'}));
-        this._right.add_child(this._userCard.actor);
-        if (s.get('show-user-avatar'))
-            this._right.remove_style_class_name('spawn-no-card');
-        else
-            this._right.add_style_class_name('spawn-no-card');
-
-        const shortcutsBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-shortcuts-box'});
-        markList(shortcutsBox, _('Shortcuts'));
-        const scroll = this._scrollFactory.make(shortcutsBox, 'spawn-shortcuts', false);
-        this._shortcutScroll = scroll;
-        this._shortcutsBox = shortcutsBox;
-        this._fillShortcuts();
-        this._right.add_child(scroll);
-
-        this._powerBar = new PowerBar(scope, s, hostWithTips);
-        this._right.add_child(this._powerBar.actor);
-    }
-
-    /**
-     * (Re)build the rows of the shortcuts list: folder shortcuts, then external devices + network locations,
-     * then bookmarks, then application shortcuts, a rule between non-empty groups. Runs again when a drive
-     * is mounted / ejected or the bookmarks change.
-     */
-    private _fillShortcuts(): void {
-        const box = this._shortcutsBox;
-        if (this._state.destroyed || !box)
-            return;
-        this._tooltips.hide();
-        for (const c of box.get_children())
-            c.destroy();
-        this._shortcutRows = [];
-
-        const s = this._services.settings;
-        const scope = this._rightScope;
-        const host: ShortcutHost = {close: () => this.close(), showAllApps: () => this.showAllApps(), tooltips: this._tooltips};
-        const iconSize = iconSizeOrHidden(s, 'icon-size-shortcuts', 16);
-        const symbolic = s.get('icon-style-shortcuts') === 'Symbolic';
-
-        const places: Place[] = [];
-        if (s.get('show-external-devices'))
-            places.push(...this._places.devices(), ...this._places.network());
-        const bookmarks: Place[] = s.get('show-bookmarks') ? this._places.bookmarks() : [];
-        const groups: Array<Array<Entry | Place>> = [s.get('directory-shortcuts'), places, bookmarks, s.get('application-shortcuts')]
-            .filter(g => g.length > 0);
-        const list: Array<Entry | Place> = [];
-        groups.forEach((g, i) => {
-            if (i > 0)
-                list.push({id: ShortcutId.SEPARATOR});
-            list.push(...g);
-        });
-
-        let lastWasSeparator = true;
-        for (const item of list) {
-            // One damaged shortcut must not take the others down with it.
-            try {
-                if (!('id' in item)) {
-                    const row = new PlaceRow(item, host, {iconSize});
-                    lastWasSeparator = false;
-                    this._shortcutRows.push(row);
-                    box.add_child(row.actor);
-                    continue;
-                }
-                const row = new ShortcutRow(item, host, {iconSize, symbolic, scope, context: button => this._openShortcutContext(button, item, host)});
-                if (row.isSeparator) {
-                    if (lastWasSeparator) {
-                        row.destroy();
-                        continue;
-                    }
-                    lastWasSeparator = true;
-                } else {
-                    if (!ShortcutRow.resolve(item)) {
-                        row.destroy();
-                        continue;
-                    }
-                    lastWasSeparator = false;
-                }
-                this._shortcutRows.push(row);
-                box.add_child(row.actor);
-            } catch (e) {
-                error(`shortcut ${JSON.stringify(item)} skipped`, e);
-            }
-        }
-        const last = this._shortcutRows[this._shortcutRows.length - 1];
-        if (last?.isSeparator) {
-            last.destroy();
-            this._shortcutRows.pop();
-        }
-    }
-
-    /** Right click / Menu key on a right-pane shortcut: Open, New Window, Remove from Menu, Edit Shortcuts…. */
-    private _openShortcutContext(row: St.Widget, entry: Entry, host: ShortcutHost): void {
-        const resolved = resolveShortcut(entry);
-        if (!resolved)
-            return;
-        const app = entry.id.endsWith('.desktop') ? lookupApp(this._services, entry.id) : null;
-        this._context.open(row, {kind: 'shortcut', entry, name: resolved.name, app, open: () => resolved.run(host, this._rightScope)});
-    }
-
-    /** Dev hook (Ui.SetPlaces): show fake devices / network locations / bookmarks, null = the real ones. */
-    setFakePlaces(specs: FakePlace[] | null): void {
-        this._places.setFake(specs);
     }
 
     // ---- views ----
@@ -1668,21 +1548,6 @@ export class SpawnLayout implements ShortcutHost {
         return this._undo.banner.visible ? {id: 'undo', items: [this._undo.banner.button], cols: 1} : null;
     }
 
-    private _rightGroups(): Group[] {
-        const items: Clutter.Actor[] = [];
-        if (this._userCard?.actor.visible)
-            items.push(this._userCard.actor);
-        for (const r of this._shortcutRows) {
-            if (!r.isSeparator)
-                items.push(r.actor);
-        }
-        const groups: Group[] = [{id: 'shortcuts', items, cols: 1}];
-        const power = this._powerBar?.buttons() ?? [];
-        if (power.length)
-            groups.push({id: 'power', items: power, cols: power.length});
-        return groups;
-    }
-
     private _searchGroup(): Group | null {
         return this._search.actor.visible ? {id: 'search', items: [this._search.actor.clutter_text], cols: 1} : null;
     }
@@ -1760,21 +1625,11 @@ export class SpawnLayout implements ShortcutHost {
 
     private _move(dir: Dir): boolean {
         const focus = global.stage.key_focus as Clutter.Actor | null;
-        // A removable place has a second stop at the right end of its row: Right reaches the eject button, Left returns.
-        const place = this._shortcutRows.find((r): r is PlaceRow => r instanceof PlaceRow && r.ejectButton !== null && (r.actor === focus || r.ejectButton === focus));
-        if (place?.ejectButton) {
-            if (dir === 'right' && focus === place.actor) {
-                place.ejectButton.grab_key_focus();
-                return true;
-            }
-            if (dir === 'left' && focus === place.ejectButton) {
-                place.actor.grab_key_focus();
-                return true;
-            }
-        }
+        if (this._rightPane.placeStep(dir, focus))
+            return true;
         const leftCol = this._leftColumn();
         const inFolder = this._state.view === 'folder';
-        const rightCol = inFolder ? [] : this._rightGroups().filter(g => g.items.length > 0);
+        const rightCol = inFolder ? [] : this._rightPane.groups().filter(g => g.items.length > 0);
         const cats = inFolder ? null : this._categoryGroup();
 
         let col: Group[] = leftCol;
@@ -1876,7 +1731,7 @@ export class SpawnLayout implements ShortcutHost {
         const inFolder = this._state.view === 'folder';
         return {
             left: this._leftColumn(),
-            right: inFolder ? [] : this._rightGroups().filter(g => g.items.length > 0),
+            right: inFolder ? [] : this._rightPane.groups().filter(g => g.items.length > 0),
             cats: inFolder ? null : this._categoryGroup(),
         };
     }
@@ -1967,7 +1822,7 @@ export class SpawnLayout implements ShortcutHost {
         const cats = this._categoryGroup();
         const main = this._mainGroups().filter(g => g.items.length > 0);
         const nav = this._navGroup();
-        const right = this._rightGroups().filter(g => g.items.length > 0);
+        const right = this._rightPane.groups().filter(g => g.items.length > 0);
         const focus = global.stage.key_focus as Clutter.Actor | null;
 
         const add = (g: Group | null | undefined, which: 'first' | 'last' = 'first') => {
