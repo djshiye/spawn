@@ -50,15 +50,17 @@ import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
 import type {FakePlace} from '../model/places.js';
-import {nearestIndex, pageTarget, searchStep, type Pos} from '../model/listNav.js';
+import {nearestIndex} from '../model/listNav.js';
 import {reorderTarget, type ReorderKey} from '../model/reorder.js';
 import type {SearchResult} from '../search/engine.js';
 import {AppContextMenu} from './contextMenu.js';
+import {centreOf, inView, pageTo} from './layout/geometry.js';
 import {FolderController} from './layout/folders.js';
 import {FrequentView} from './layout/frequentView.js';
 import {LeftPane} from './layout/leftPane.js';
 import {PinnedView} from './layout/pinnedView.js';
 import {RightPane} from './layout/rightPane.js';
+import {SearchController} from './layout/searchView.js';
 import {UndoController} from './layout/undo.js';
 import {LayoutState, type Dir, type Group, type LayoutHost, type ViewId} from './layout/types.js';
 import {PaneMetrics} from './layout/metrics.js';
@@ -70,7 +72,7 @@ import {CategoryList} from './widgets/categoryList.js';
 import {ExtraList} from './widgets/extraList.js';
 import type {FolderHost} from './widgets/folderTile.js';
 import {PointerHighlight} from './widgets/highlight.js';
-import {ResultList, type ResultHost} from './widgets/resultList.js';
+import type {ResultHost} from './widgets/resultList.js';
 import {SearchBox} from './widgets/searchBox.js';
 import type {ShortcutHost} from './widgets/shortcutRow.js';
 import {TooltipManager} from './widgets/tooltip.js';
@@ -114,28 +116,6 @@ const RIGHT_KEYS = [
 /** Category quick links (default-menu-view and icon-size-categories are handled by the relayout / view-settings handlers). */
 const LINK_KEYS = ['arcmenu-extra-categories-links', 'arcmenu-extra-categories-links-location'] as const;
 
-/** Centre of an actor on the stage. */
-function centreOf(actor: Clutter.Actor): Pos {
-    const [x, y] = actor.get_transformed_position();
-    const [w, h] = actor.get_transformed_size();
-    return {x: x + w / 2, y: y + h / 2};
-}
-
-/** Is `actor` (at least half of it) inside the visible part of the scroll view it is in, if any? */
-function inView(actor: Clutter.Actor): boolean {
-    if (!actor.mapped)
-        return false;
-    let scroll = actor.get_parent();
-    while (scroll && !(scroll instanceof St.ScrollView))
-        scroll = scroll.get_parent();
-    if (!scroll)
-        return true;
-    const c = centreOf(actor).y;
-    const [, top] = scroll.get_transformed_position();
-    const [, height] = scroll.get_transformed_size();
-    return c >= top && c <= top + height;
-}
-
 export class SpawnLayout implements ShortcutHost {
     readonly actor: St.Widget;
 
@@ -165,8 +145,7 @@ export class SpawnLayout implements ShortcutHost {
     private readonly _folders: FolderController;
     private _extraList: ExtraList | null = null;
     private _extraScroll: St.ScrollView | null = null;
-    private _resultsScroll: St.ScrollView | null = null;
-    private _results: ResultList | null = null;
+    private readonly _searchCtl: SearchController;
 
     // state
     private readonly _state = new LayoutState();
@@ -256,7 +235,7 @@ export class SpawnLayout implements ShortcutHost {
         // One highlight: the pointed-at item is it (the folder popup has its own rule, widgets/folderView.ts).
         this._highlight = new PointerHighlight(scope, this.actor, {
             ignore: item => Boolean(this._folders.view?.actor.contains(item)),
-            onHover: item => this._onItemHover(item),
+            onHover: item => this._searchCtl.onHover(item),
         });
 
         // Registered FIRST so it runs LAST (LIFO): every widget scope is torn down while its
@@ -302,6 +281,19 @@ export class SpawnLayout implements ShortcutHost {
         });
 
         this._search = new SearchBox(scope, settings);
+        this._searchCtl = new SearchController(scope, services, this._state, {
+            search: this._search,
+            highlight: this._highlight,
+            scrolls: this._scrollFactory,
+            session: this._session,
+            resultHost: this._resultHost,
+            host: {
+                setView: view => this._setView(view),
+                defaultView: () => this._defaultView(),
+                focusMain: last => this._focusMain(last),
+                cyclePane: delta => this._cyclePane(delta),
+            },
+        });
         this._undo = new UndoController(scope, services, this._state, {
             focusMain: () => this._focusMain(),
             syncPinned: () => this._pinned.syncIfNeeded(),
@@ -319,7 +311,7 @@ export class SpawnLayout implements ShortcutHost {
                 focusMain: () => this._focusMain(),
                 back: () => this._back(),
                 openAllApps: () => this._openAllApps(),
-                arranged: top => this._results?.setReversed(!top),
+                arranged: top => this._searchCtl.results?.setReversed(!top),
             },
         });
 
@@ -335,12 +327,12 @@ export class SpawnLayout implements ShortcutHost {
         this._metrics.apply();
 
         // search wiring
-        this._search.onTextChanged(scope, text => this._onSearchText(text));
+        this._search.onTextChanged(scope, text => this._searchCtl.onText(text));
         // An app installed or removed while results are showing: search again, so a new app shows up
         // and a removed one cannot be launched from a stale row.
         services.appIndex.onChanged(scope, () => {
             if (this._state.isOpen && this._state.view === 'results' && this._search.text.trim().length > 0)
-                this._onSearchText(this._search.text);
+                this._searchCtl.onText(this._search.text);
             this._refreshGeneratedLists();
         });
         // A new app was launched or aged out: pinned entries are cached per badge state. Deferred, because the
@@ -354,8 +346,8 @@ export class SpawnLayout implements ShortcutHost {
                     this._pinned.syncIfNeeded();
             });
         });
-        this._search.onActivate(scope, () => this._onSearchActivate());
-        this._search.onNavigate(scope, (key, shift, ctrl) => this._onSearchKey(key, shift, ctrl));
+        this._search.onActivate(scope, () => this._searchCtl.onActivate());
+        this._search.onNavigate(scope, (key, shift, ctrl) => this._searchCtl.onKey(key, shift, ctrl));
 
         // input
         this.actor.connect('key-press-event', (_a: Clutter.Actor, event: Clutter.Event) => this._onKeyPress(event));
@@ -417,7 +409,7 @@ export class SpawnLayout implements ShortcutHost {
             if (this._leftPane.searchOnTop() !== this._state.searchTop)
                 this._leftPane.arrange();
             this._setView(this._defaultView());
-            for (const s of [this._pinned.scroll, this._frequent.scroll, this._extraScroll, this._resultsScroll, this._rightPane.scroll])
+            for (const s of [this._pinned.scroll, this._frequent.scroll, this._extraScroll, this._searchCtl.scroll, this._rightPane.scroll])
                 s?.vadjustment.set_value(0);
             this._search.actor.visible = !this._services.settings.get('search-hidden');
             if (this._search.actor.visible)
@@ -461,7 +453,7 @@ export class SpawnLayout implements ShortcutHost {
             this._session.cancel();
             this._session.arm(false);
             this._search.setSilently('');
-            this._results?.reset();
+            this._searchCtl.results?.reset();
             this._services.search.cancel();
             this._services.search.clear();
         } catch (e) {
@@ -542,7 +534,7 @@ export class SpawnLayout implements ShortcutHost {
             folder: this._state.view === 'folder' ? this._folders.view?.uuid ?? null : null,
             folderTiles: this._state.view === 'folder' ? this._folders.view?.tiles().length ?? 0 : 0,
             folderColumns: this._state.view === 'folder' ? this._folders.view?.columns ?? 0 : 0,
-            results: this._results?.rows().length ?? 0,
+            results: this._searchCtl.results?.rows().length ?? 0,
             links: this._leftPane.links?.actor.visible ? this._leftPane.links.buttons().length : 0,
             extraRows: this._extraList?.rows().length ?? 0,
             places: [this._rightPane.places.devices().length, this._rightPane.places.network().length, this._rightPane.places.bookmarks().length],
@@ -563,9 +555,9 @@ export class SpawnLayout implements ShortcutHost {
             appRowsPending: this._categories?.pendingRows ?? 0,
             undo: this._undo.banner.visible,
             // the search highlight (Return target) and what the screen reader was told last
-            selected: this._results?.selected()?.accessible_name ?? null,
-            selectedIndex: this._results?.rows().indexOf(this._results.selected() as St.Widget) ?? -1,
-            announcement: this._results?.announcement ?? '',
+            selected: this._searchCtl.results?.selected()?.accessible_name ?? null,
+            selectedIndex: this._searchCtl.results?.rows().indexOf(this._searchCtl.results.selected() as St.Widget) ?? -1,
+            announcement: this._searchCtl.results?.announcement ?? '',
             // one-highlight rule: the item the pointer highlights, and every item showing a hover tint
             hovered: this._highlight.hovered?.accessible_name ?? null,
             hoverTints: this._hoverTints(),
@@ -714,7 +706,7 @@ export class SpawnLayout implements ShortcutHost {
             if (this._pinned.showing())
                 this._pinned.syncIfNeeded();
             this._leftPane.updateNav();
-            this._results?.setSelectionVisible(true);
+            this._searchCtl.results?.setSelectionVisible(true);
             return;
         }
         if (this._state.view === 'folder')
@@ -725,7 +717,7 @@ export class SpawnLayout implements ShortcutHost {
             child.visible = actors.includes(child);
         this._leftPane.updateNav();
         if (view === 'pinned')
-            this._results?.setSelectionVisible(true);
+            this._searchCtl.results?.setSelectionVisible(true);
     }
 
     /** Build (if needed) and refresh the actors a view consists of; returns the actors to show. */
@@ -775,22 +767,8 @@ export class SpawnLayout implements ShortcutHost {
             this._extraList.show(view);
             return [add(this._extraScroll)];
         }
-        case 'results': {
-            if (!this._resultsScroll) {
-                const results = new ResultList(this._scope, this._services.settings, this._resultHost);
-                results.setReversed(!this._state.searchTop);
-                const scroll = this._scrollFactory.make(results.actor, 'spawn-results');
-                // New rows (a batch, the reversed list growing upwards): keep the highlighted one in view.
-                scroll.vadjustment.connect('notify::upper', () => {
-                    const row = this._state.view === 'results' ? results.selected() : null;
-                    if (row)
-                        scrollIntoView(scroll, row);
-                });
-                this._results = results;
-                this._resultsScroll = scroll;
-            }
-            return [add(this._resultsScroll)];
-        }
+        case 'results':
+            return [add(this._searchCtl.ensure())];
         }
     }
 
@@ -860,125 +838,6 @@ export class SpawnLayout implements ShortcutHost {
 
     // ---- search ----
 
-    private _onSearchText(text: string): void {
-        if (this._state.destroyed)
-            return;
-        const query = text.trim();
-        this._session.cancel();
-        this._session.arm(false);
-        // Typing: new rows appearing under a resting pointer must not take the highlight from the best match.
-        this._highlight.keyMoved(null);
-        if (query.length === 0) {
-            // Drop the old rows now: the next query must not flash them (dimmed) or let Down focus them.
-            this._results?.reset();
-            if (this._state.view === 'results')
-                this._setView(this._defaultView());
-            if (this._services.settings.get('search-hidden') && this._search.actor.visible) {
-                this._search.actor.visible = false;
-                this._focusMain();
-            }
-            return;
-        }
-        this._setView('results');
-        const results = this._results as ResultList;
-        this._resultsScroll?.vadjustment.set_value(0);
-        // Keep the previous rows (dimmed) until the first batch of this query arrives: no blank
-        // flash between keystrokes.
-        results.beginQuery(query);
-        results.setSelectionVisible(true);
-        this._session.start(query, results);
-    }
-
-    /**
-     * Return in the search entry: activate the highlighted result of the CURRENT query (the first
-     * one until Up / Down / the pointer moved the highlight). Typing and pressing Return inside the
-     * debounce window must not do nothing: flush the pending query (synchronous providers deliver
-     * before flush() returns); if slower providers still owe the first row, activate it as soon as
-     * it arrives. `ctrl` (Ctrl+Return): as a Ctrl+click on the row.
-     */
-    private _onSearchActivate(ctrl = false): void {
-        if (this._state.view !== 'results' || this._search.text.trim().length === 0)
-            return;
-        const results = this._results;
-        if (!results)
-            return;
-        this._session.activate(results, ctrl);
-    }
-
-    /**
-     * Keys in the search entry. While results show, the typing focus stays in the entry: Up / Down move
-     * the highlight one result (wrapping; the first is highlighted already, so the key pointing away from
-     * the entry goes to the second; with the entry below the list, whose order is mirrored, that is Up),
-     * Page Up / Down one page of results, Return / Ctrl+Return activate the highlighted one, Tab goes to
-     * the results. Without a query, Down (and Up when the entry is below) enter the list.
-     */
-    private _onSearchKey(key: number, shift: boolean, ctrl = false): boolean {
-        const results = this._state.view === 'results' ? this._results : null;
-        switch (key) {
-        case Clutter.KEY_Down:
-        case Clutter.KEY_Up: {
-            const down = key === Clutter.KEY_Down;
-            if (results) {
-                // Deliver the synchronous batches of the pending query first: the highlight must move
-                // over what the entry says now, not over the rows of the previous keystroke.
-                this._session.flush();
-                this._showSelection(results.moveSelection(searchStep(down ? 'down' : 'up', this._state.searchTop), false));
-            } else if (down || !this._state.searchTop) {
-                this._focusMain(!down);
-                this._highlight.keyMoved();
-            }
-            return true;
-        }
-        case Clutter.KEY_Page_Up:
-        case Clutter.KEY_Page_Down:
-            if (!results)
-                return false;
-            this._session.flush();
-            this._showSelection(this._pageTo(results.visualRows(), results.selected(), key === Clutter.KEY_Page_Down ? 1 : -1));
-            return true;
-        case Clutter.KEY_Return:
-        case Clutter.KEY_KP_Enter:
-        case Clutter.KEY_ISO_Enter:
-            // Plain Return reaches the entry's `activate`; Ctrl+Return does not.
-            if (!ctrl)
-                return false;
-            this._onSearchActivate(true);
-            return true;
-        case Clutter.KEY_Tab:
-        case Clutter.KEY_ISO_Left_Tab:
-            this._session.flush();
-            this._cyclePane(key === Clutter.KEY_ISO_Left_Tab || shift ? -1 : 1);
-            this._highlight.keyMoved();
-            return true;
-        }
-        return false;
-    }
-
-    /** The search highlight moved to `row` by a key: the hover tint elsewhere goes, the row scrolls into view. */
-    private _showSelection(row: Clutter.Actor | null): void {
-        if (!row)
-            return;
-        this._results?.select(row, true);
-        this._highlight.keyMoved(row);
-        scrollIntoView(this._resultsScroll, row);
-    }
-
-    /**
-     * Page Up (-1) / Page Down (1) from `from` among `items` (screen order): the item one visible page of
-     * their scroll view away, in the same column. Null when there is nothing to move to.
-     */
-    private _pageTo(items: Clutter.Actor[], from: Clutter.Actor | null, dir: 1 | -1): Clutter.Actor | null {
-        const index = from ? items.indexOf(from) : -1;
-        if (index < 0)
-            return null;
-        let scroll: Clutter.Actor | null = from;
-        while (scroll && !(scroll instanceof St.ScrollView))
-            scroll = scroll.get_parent();
-        const page = scroll ? Math.max(scroll.height - (from as Clutter.Actor).height, (from as Clutter.Actor).height) : 0;
-        const target = pageTarget(items.map(centreOf), index, dir, page);
-        return target === index ? null : items[target];
-    }
-
     // ---- navigation ----
 
     private _mainGroups(): Group[] {
@@ -1004,7 +863,7 @@ export class SpawnLayout implements ShortcutHost {
             return [{id: 'extra', items: this._extraList?.rows() ?? [], cols: 1}];
         case 'results':
             // Rows of a superseded query (stale, dimmed) are never keyboard targets.
-            return [{id: 'results', items: this._results?.hasResults ? this._results.visualRows() : [], cols: 1}];
+            return [{id: 'results', items: this._searchCtl.results?.hasResults ? this._searchCtl.results.visualRows() : [], cols: 1}];
         }
     }
 
@@ -1221,7 +1080,7 @@ export class SpawnLayout implements ShortcutHost {
         else if (sym === Clutter.KEY_End || sym === Clutter.KEY_KP_End)
             target = items[items.length - 1];
         else
-            target = this._pageTo(items, current, sym === Clutter.KEY_Page_Down || sym === Clutter.KEY_KP_Page_Down ? 1 : -1);
+            target = pageTo(items, current, sym === Clutter.KEY_Page_Down || sym === Clutter.KEY_KP_Page_Down ? 1 : -1);
         if (target && target !== current)
             target.grab_key_focus();
         return true;
@@ -1266,16 +1125,6 @@ export class SpawnLayout implements ShortcutHost {
         return false;
     }
 
-    /** The pointer is on `item` (widgets/highlight.ts): a search result takes the search highlight. */
-    private _onItemHover(item: St.Widget): boolean {
-        const results = this._state.view === 'results' ? this._results : null;
-        if (!results || !results.rows().includes(item))
-            return false;
-        results.select(item);
-        // Typing focus in the entry stays; a focus ring on another row goes (the generic rule).
-        return this._search.hasFocus;
-    }
-
     private _cyclePane(delta: number): void {
         if (this._state.view === 'folder') {
             // Tab stays inside the folder popup: header <-> apps.
@@ -1299,7 +1148,7 @@ export class SpawnLayout implements ShortcutHost {
             if (!g || !g.items.length)
                 return;
             // Into the search results: the highlighted one.
-            const at = g.id === 'results' ? g.items.indexOf(this._results?.selected() as Clutter.Actor) : -1;
+            const at = g.id === 'results' ? g.items.indexOf(this._searchCtl.results?.selected() as Clutter.Actor) : -1;
             panes.push(() => this._focusItem(g, at >= 0 ? at : which));
         };
         const links = this._leftPane.linksGroup();
@@ -1460,11 +1309,11 @@ export class SpawnLayout implements ShortcutHost {
         }
         // The search highlight follows a result row that takes the keyboard focus, and shows only while no
         // row has it (the focus ring is the highlight then).
-        if (this._results) {
-            const inResults = this._results.actor.contains(focus);
+        if (this._searchCtl.results) {
+            const inResults = this._searchCtl.results.actor.contains(focus);
             if (inResults)
-                this._results.select(focus);
-            this._results.setSelectionVisible(!inResults);
+                this._searchCtl.results.select(focus);
+            this._searchCtl.results.setSelectionVisible(!inResults);
         }
     }
 }
