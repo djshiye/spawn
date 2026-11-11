@@ -6,7 +6,7 @@
 # The one source of truth for the version is package.json; this line, metadata.json "version-name" and the
 # Changelog are kept equal by tools/bump-version.sh (publish.sh and %%check refuse a mismatch).
 Name:           spawn
-Version:        1.3.1
+Version:        1.4.0
 # tools/publish.sh appends .<commit count> so every build from main is a newer release.
 Release:        1%{?release_suffix}%{?dist}
 Summary:        Fast, resilient application menu for GNOME Shell (ArcMenu replacement)
@@ -89,6 +89,9 @@ test ! -e dev/benchmark.js
 %{_datadir}/glib-2.0/schemas/org.gnome.shell.extensions.spawn.gschema.xml
 
 %changelog
+* Wed Nov 11 2026 Dino Klisura <115914552+djshiye@users.noreply.github.com> - 1.4.0-1
+- Grid start layout: a single column with search, a paged grid of pinned apps and a footer
+
 * Wed Nov 11 2026 Dino Klisura <115914552+djshiye@users.noreply.github.com> - 1.3.1-1
 - Simpler settings window: five pages, less-used options in sub-pages
 
