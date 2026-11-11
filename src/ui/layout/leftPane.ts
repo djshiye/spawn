@@ -16,6 +16,10 @@
 //   left.setPinDrag(on) / isBackTarget(actor) / pinnedViaBack()   Back as the "Drop to pin" target of a drag from a list
 //   left.linksGroup() / navGroup()     keyboard groups
 //   LeftPaneHost                       what the pane asks of the layout (view switching, focus, Back)
+//
+// Grid layout (`layout-style` Grid, deps.grid): search entry on top, the header ("Pinned" / "All apps" and the
+// pill that switches between them), the stack, the page dots, the Undo banner, the footer. No quick links and
+// no Back / All Apps row (the header's pill is both).
 
 import Clutter from 'gi://Clutter';
 import St from 'gi://St';
@@ -31,6 +35,7 @@ import {nameItem} from '../widgets/a11y.js';
 import {CategoryLinks} from '../widgets/categoryLinks.js';
 import {makeFace, makeItemButton, wireItem} from '../widgets/interact.js';
 import type {TooltipManager} from '../widgets/tooltip.js';
+import type {GridHeader, GridPager} from './gridChrome.js';
 import type {PaneMetrics} from './metrics.js';
 import type {Group, LayoutState, ViewId} from './types.js';
 
@@ -57,6 +62,8 @@ export interface LeftPaneDeps {
     tooltips: TooltipManager;
     metrics: PaneMetrics;
     host: LeftPaneHost;
+    /** The Grid layout's chrome, arranged when the Grid layout is on. */
+    grid: {header: GridHeader; pager: GridPager; footer: St.Widget};
 }
 
 export class LeftPane {
@@ -71,6 +78,7 @@ export class LeftPane {
     private readonly _tooltips: TooltipManager;
     private readonly _metrics: PaneMetrics;
     private readonly _host: LeftPaneHost;
+    private readonly _grid: LeftPaneDeps['grid'];
     private readonly _nav: St.BoxLayout;
     private readonly _backButton: St.Button;
     private readonly _backLabel: St.Label;
@@ -88,6 +96,7 @@ export class LeftPane {
         this._tooltips = deps.tooltips;
         this._metrics = deps.metrics;
         this._host = deps.host;
+        this._grid = deps.grid;
         this.stack = new St.BoxLayout({style_class: 'spawn-stack', orientation: Clutter.Orientation.VERTICAL, x_expand: true, y_expand: true});
         this._nav = new St.BoxLayout({style_class: 'spawn-nav'});
         const back = this._navButton('go-previous-symbolic', _('Back'), () => this._host.back());
@@ -131,6 +140,8 @@ export class LeftPane {
      * (arrow side TOP = popup below a top panel = entry on top; BOTTOM = popup above = entry below).
      */
     searchOnTop(): boolean {
+        if (this._metrics.grid)
+            return true;
         const loc = this._services.settings.get('search-entry-location') as string;
         if (loc === 'Auto')
             return this._state.side === St.Side.TOP;
@@ -143,7 +154,9 @@ export class LeftPane {
         this._state.searchTop = top;
         this.syncLinks();
         const links = this.links?.actor ?? null;
-        for (const c of [this._search, this.stack, this._banner, this._nav, links]) {
+        const {header, pager, footer} = this._grid;
+        const dots = pager.dots;
+        for (const c of [this._search, this.stack, this._banner, this._nav, links, header.actor, dots, footer]) {
             if (c && c.get_parent() === this._left)
                 this._left.remove_child(c);
         }
@@ -154,6 +167,19 @@ export class LeftPane {
             if (c)
                 this._left.add_child(c);
         };
+        if (this._metrics.grid) {
+            this._left.add_style_class_name('spawn-grid-column');
+            add(this._search);
+            add(header.actor);
+            add(this.stack);
+            add(dots);
+            add(this._banner);
+            add(footer);
+            this._search.add_style_class_name('spawn-search-top');
+            this._host.arranged(true);
+            return;
+        }
+        this._left.remove_style_class_name('spawn-grid-column');
         if (top)
             add(this._search);
         if (linksTop)
@@ -174,7 +200,7 @@ export class LeftPane {
     private _linkIds(): number[] {
         const s = this._services.settings;
         const view = s.get('default-menu-view');
-        if (view === 'Categories_List')
+        if (view === 'Categories_List' || this._metrics.grid)
             return [];
         const skip = new Set<number>();
         if (view === 'Pinned_Apps' || view === 'Pinned_And_Frequent_Apps')
@@ -239,6 +265,15 @@ export class LeftPane {
         // An open folder popup leaves the nav of the view under it alone (no jump behind the scrim).
         if (this._state.view === 'folder')
             return;
+        if (this._metrics.grid) {
+            const view = this._state.view;
+            this._grid.header.setMode(view === 'pinned' ? 'pinned' : view === 'all' ? 'all' : 'hidden');
+            this._grid.pager.setShown(view === 'pinned');
+            this._nav.visible = false;
+            this._updateLinksVisible();
+            return;
+        }
+        this._grid.pager.setShown(false);
         const dv = this._services.settings.get('default-menu-view');
         const back = this._host.canGoBack();
         this._backButton.visible = back;
@@ -290,6 +325,8 @@ export class LeftPane {
     }
 
     navGroup(): Group | null {
+        if (this._metrics.grid)
+            return this._grid.header.group();
         const items = [this._backButton, this._allAppsButton].filter(b => b.visible && this._nav.visible);
         return items.length ? {id: 'nav', items, cols: items.length} : null;
     }

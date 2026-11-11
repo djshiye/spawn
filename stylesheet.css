@@ -1265,3 +1265,165 @@
 .spawn-light .spawn-context-source .spawn-folder-plate {
     background-color: rgba(0, 0, 0, 0.16);
 }
+
+/* ---- Grid layout (layout-style Grid, ui/layout/gridChrome.ts) ----
+ * One column: search entry, header ("Pinned" + the "All apps" pill), the pinned grid in pages, page dots,
+ * footer (user card, folder shortcuts, power). Quiet on purpose: no extra sections, one accent (focus only). */
+.spawn-grid-column {
+    padding-top: 10px;
+    spacing: 0;
+}
+
+.spawn-grid-column .spawn-search-box {
+    margin: 0 16px 6px 16px;
+    min-height: 38px;
+}
+
+.spawn-grid-header {
+    padding: 8px 12px 6px 24px;
+}
+
+.spawn-grid-title {
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.spawn-grid-header-button.spawn-nav-button {
+    padding: 0;
+}
+
+.spawn-grid-pill.spawn-nav-surface {
+    padding: 4px 8px 4px 12px;
+    min-height: 0;
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.07);
+}
+
+.spawn-grid-pill-box {
+    spacing: 4px;
+    font-size: 0.9em;
+    font-weight: bold;
+}
+
+.spawn-grid-dots {
+    /* a fixed height: the row is there with one page too (no jump when a second page appears) */
+    height: 24px;
+    padding: 0;
+    spacing: 2px;
+}
+
+.spawn-grid-dot {
+    padding: 6px 3px;
+}
+
+.spawn-grid-dot-face {
+    width: 7px;
+    height: 7px;
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.3);
+    transition-duration: 150ms;
+}
+
+.spawn-grid-dot:hover .spawn-grid-dot-face {
+    background-color: rgba(255, 255, 255, 0.6);
+}
+
+.spawn-grid-dot-current .spawn-grid-dot-face,
+.spawn-grid-dot-current:hover .spawn-grid-dot-face {
+    width: 18px;
+    background-color: rgba(255, 255, 255, 0.92);
+}
+
+.spawn-grid-footer {
+    margin: 4px 8px 0 8px;
+    padding: 8px 0 0 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    spacing: 0;
+}
+
+.spawn-grid-footer .spawn-user-card {
+    padding: 0;
+}
+
+.spawn-grid-footer .spawn-card-surface {
+    padding: 6px 12px 6px 6px;
+}
+
+.spawn-grid-footer .spawn-avatar-box .user-icon.spawn-avatar {
+    icon-size: 32px;
+}
+
+.spawn-grid-footer .spawn-user-name {
+    font-weight: bold;
+}
+
+.spawn-grid-places {
+    spacing: 0;
+}
+
+.spawn-grid-footer .spawn-power-button,
+.spawn-grid-footer .spawn-power-button.spawn-power-first,
+.spawn-grid-footer .spawn-power-button.spawn-power-last,
+.spawn-grid-footer .spawn-power-compact .spawn-power-button {
+    padding: 2px;
+}
+
+.spawn-grid-footer .spawn-power-surface {
+    min-width: 36px;
+    min-height: 36px;
+    border-radius: 18px;
+}
+
+.spawn-grid-footer .spawn-power-rule {
+    height: 0;
+    margin: 0;
+}
+
+.spawn-grid-footer-rule {
+    width: 1px;
+    height: 20px;
+    margin: 0 8px;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.spawn-light .spawn-grid-title {
+    color: rgba(0, 0, 0, 0.87);
+}
+
+.spawn-light .spawn-grid-pill.spawn-nav-surface {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.spawn-light .spawn-grid-dot-face {
+    background-color: rgba(0, 0, 0, 0.25);
+}
+
+.spawn-light .spawn-grid-dot:hover .spawn-grid-dot-face {
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.spawn-light .spawn-grid-dot-current .spawn-grid-dot-face,
+.spawn-light .spawn-grid-dot-current:hover .spawn-grid-dot-face {
+    background-color: rgba(0, 0, 0, 0.8);
+}
+
+.spawn-light .spawn-grid-footer {
+    border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+.spawn-light .spawn-grid-footer-rule {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.spawn-reduce-motion .spawn-grid-dot-face {
+    transition-duration: 0ms;
+}
+
+/* the paged pinned grid has no scroll bar: the page dots say where you are */
+.spawn-grid-paged StScrollBar {
+    width: 0;
+    min-width: 0;
+    padding: 0;
+    margin: 0;
+    opacity: 0;
+}

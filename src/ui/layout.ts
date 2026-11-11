@@ -50,7 +50,12 @@
 //   undo.ts         UndoController: the Undo banner and the actions it undoes
 //   navigation.ts   Navigator: arrows / Tab / Home / End / Page keys over keyboard groups (NavSources)
 //   keys.ts         KeyRouter: key-press handler (reorder, Ctrl+Z, F2, Delete, typing) and focus changes
+//   gridChrome.ts   GridHeader / GridFooter / GridPager: the Grid layout style's header, footer and paged pinned grid
 //   scrolls.ts, geometry.ts, types.ts, debug.ts   scroll view factory, on-screen geometry, shared types, debugState
+//
+// Layout styles (`layout-style`): Classic is the two panes above. Grid is one column (search, header, the paged
+// pinned grid or another view, page dots, footer with user card / folder shortcuts / power); the right pane is
+// hidden and its groups are replaced by the footer's. Switching is live: the same views, re-arranged.
 //
 // "New" badge: apps the NewAppsStore calls new get a pill in rows and tiles and their category a dot; the layout
 // only asks (TileHost.isNew), tells the store about the launches it starts and redraws what is cached when the
@@ -73,6 +78,7 @@ import {AppContextMenu} from './contextMenu.js';
 import {layoutDebugState} from './layout/debug.js';
 import {FolderController} from './layout/folders.js';
 import {FrequentView} from './layout/frequentView.js';
+import {GridFooter, GridHeader, GridPager} from './layout/gridChrome.js';
 import {KeyRouter} from './layout/keys.js';
 import {LeftPane} from './layout/leftPane.js';
 import {ListDrag} from './layout/listDrag.js';
@@ -103,7 +109,7 @@ export {MIN_LEFT_WIDTH, MIN_RIGHT_WIDTH} from './layout/metrics.js';
 const RELAYOUT_KEYS = [
     'menu-height', 'menu-width-adjustment', 'left-panel-width', 'right-panel-width',
     'icon-size-grid', 'default-menu-view', 'vert-separator', 'search-entry-location', 'search-hidden',
-    'multi-lined-labels', 'pinned-apps-display', 'pinned-item-size',
+    'multi-lined-labels', 'pinned-apps-display', 'pinned-item-size', 'layout-style',
 ] as const;
 
 /** Read once when a view is built: a change rebuilds the lists. */
@@ -151,6 +157,11 @@ export class SpawnLayout implements ShortcutHost {
 
     // right pane (rebuilt as a unit)
     private readonly _rightPane: RightPane;
+
+    // Grid layout chrome
+    private readonly _gridHeader: GridHeader;
+    private readonly _gridFooter: GridFooter;
+    private readonly _pager: GridPager;
 
     // lazily built views
     private readonly _pinned: PinnedView;
@@ -279,7 +290,11 @@ export class SpawnLayout implements ShortcutHost {
             context: this._context,
             scrolls: this._scrollFactory,
             frequent: this._frequent,
-            host: {close: () => this._host.close(), openAllApps: () => this._views.openAllApps()},
+            host: {
+                close: () => this._host.close(),
+                openAllApps: () => this._views.openAllApps(),
+                built: (scroll, grid) => this._pager.attach(scroll, grid),
+            },
         });
         this._folders = new FolderController(scope, services, this._state, {
             root: this.actor,
@@ -291,6 +306,21 @@ export class SpawnLayout implements ShortcutHost {
                 back: () => this._views.back(),
                 folderTile: uuid => this._pinned.tileWidget(`f:${uuid}`),
             },
+        });
+
+        this._gridHeader = new GridHeader(scope, {host: {openAllApps: () => this._views.openAllApps(), back: () => this._views.back()}});
+        this._gridFooter = new GridFooter(scope, services, {
+            host: {close: () => this.close(), showAllApps: () => this.showAllApps(), tooltips: this._tooltips},
+            tooltips: this._tooltips,
+            context: this._context,
+        });
+
+        this._pager = new GridPager(scope, {
+            stack: () => this._leftPane.stack,
+            column: () => ({box: this._left, height: this._metrics.baseHeight, max: this._metrics.maxHeight}),
+            trim: px => this._metrics.setTrim(px),
+            enabled: () => this._metrics.grid,
+            settings,
         });
 
         this._search = new SearchBox(scope, settings);
@@ -313,9 +343,12 @@ export class SpawnLayout implements ShortcutHost {
             linksGroup: () => this._leftPane.linksGroup(),
             linksTop: () => this._leftPane.links?.location === 'Top',
             navGroup: () => this._leftPane.navGroup(),
+            navTop: () => this._metrics.grid,
+            footerGroup: () => this._metrics.grid ? this._gridFooter.group() : null,
+            pageRows: group => this._metrics.grid && group.id === 'tiles' && this._state.view === 'pinned' ? this._pager.rows : 0,
             undoGroup: () => this._undoGroup(),
             searchGroup: () => this._searchGroup(),
-            rightGroups: () => this._rightPane.groups(),
+            rightGroups: () => this._metrics.grid ? [] : this._rightPane.groups(),
             placeStep: (dir, focus) => this._rightPane.placeStep(dir, focus),
             selectedResult: () => this._searchCtl.results?.selected() ?? null,
         });
@@ -342,6 +375,7 @@ export class SpawnLayout implements ShortcutHost {
             banner: this._undo.banner.actor,
             tooltips: this._tooltips,
             metrics: this._metrics,
+            grid: {header: this._gridHeader, pager: this._pager, footer: this._gridFooter.actor},
             host: {
                 canGoBack: () => this._views.canGoBack(),
                 setView: view => this._views.setView(view),
@@ -375,9 +409,9 @@ export class SpawnLayout implements ShortcutHost {
             context: this._context,
             scrolls: this._scrollFactory,
         });
-        this._leftPane.arrange();
-        this._rightPane.build();
         this._metrics.apply();
+        this._leftPane.arrange();
+        this._buildSide();
 
         // search wiring
         this._search.onTextChanged(scope, text => this._searchCtl.onText(text));
@@ -411,10 +445,15 @@ export class SpawnLayout implements ShortcutHost {
             }
             return Clutter.EVENT_PROPAGATE;
         });
-        scope.connect(global.stage, 'notify::key-focus', () => this._keys.onFocusChanged());
+        scope.connect(global.stage, 'notify::key-focus', () => {
+            this._keys.onFocusChanged();
+            const focus = global.stage.key_focus as Clutter.Actor | null;
+            if (focus)
+                this._pager.reveal(focus);
+        });
 
         settings.onChanged(scope, [...RELAYOUT_KEYS], () => this._relayout());
-        settings.onChanged(scope, [...RIGHT_KEYS], () => this._rightPane.build());
+        settings.onChanged(scope, [...RIGHT_KEYS], () => this._buildSide());
         settings.onChanged(scope, [...LINK_KEYS], () => this._relink());
         settings.onChanged(scope, [...SCROLL_KEYS], () => this._onScrollSettings());
         settings.onChanged(scope, [...VIEW_KEYS], () => this._onViewSettings());
@@ -464,6 +503,7 @@ export class SpawnLayout implements ShortcutHost {
             this._views.setView(this._views.defaultView());
             for (const s of [this._pinned.scroll, this._frequent.scroll, this._views.extraScroll, this._searchCtl.scroll, this._rightPane.scroll])
                 s?.vadjustment.set_value(0);
+            this._pager.reset();
             this._search.actor.visible = !this._services.settings.get('search-hidden');
             if (this._search.actor.visible)
                 this._search.focus();
@@ -569,12 +609,15 @@ export class SpawnLayout implements ShortcutHost {
     }
 
     debugState(): Record<string, unknown> {
-        return layoutDebugState({
+        const grid = this._metrics.grid
+            ? {layoutStyle: 'Grid', gridPage: this._pager.page, gridPages: this._pager.pages, gridCols: this._pinned.grid.columns, pager: this._pager.debug()}
+            : {layoutStyle: 'Classic', pager: this._pager.debug()};
+        return {...grid, ...layoutDebugState({
             state: this._state, root: this.actor, left: this._left, right: this._right, search: this._search,
             views: this._views, searchCtl: this._searchCtl, pinned: this._pinned, folders: this._folders,
             metrics: this._metrics, leftPane: this._leftPane, rightPane: this._rightPane, undo: this._undo,
             tooltips: this._tooltips, highlight: this._highlight, nav: this._nav,
-        });
+        })};
     }
 
     // ---- sizes ----
@@ -583,8 +626,12 @@ export class SpawnLayout implements ShortcutHost {
     private _relayout(): void {
         if (this._state.destroyed)
             return;
+        const wasGrid = this._metrics.grid;
         this._metrics.apply();
         this._leftPane.arrange();
+        if (wasGrid !== this._metrics.grid)
+            this._buildSide();
+        this._pager.relayout();
         this._pinned.dirty = true;
         if (this._state.isOpen)
             this._views.setView(this._state.view);
@@ -619,6 +666,8 @@ export class SpawnLayout implements ShortcutHost {
             if (scroll)
                 applyScrollSettings(scroll, s);
         }
+        // Grid: the pinned grid keeps its pages (no scroll bar).
+        this._pager.relayout();
     }
 
     /** The catalogue changed (an app was installed, removed or hidden): Frequent lists that are on screen follow. */
@@ -649,6 +698,16 @@ export class SpawnLayout implements ShortcutHost {
         if (this._state.destroyed)
             return;
         this._leftPane.arrange();
+    }
+
+    /** The right pane (Classic) or the footer row (Grid): only the one on screen is built. */
+    private _buildSide(): void {
+        if (this._state.destroyed)
+            return;
+        if (this._metrics.grid)
+            this._gridFooter.build();
+        else
+            this._rightPane.build();
     }
 
     // ---- keyboard groups (the Navigator's sources) ----

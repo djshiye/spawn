@@ -335,7 +335,8 @@ if [ ! -f "$dev/config/dconf/user" ]; then
 fi
 
 # ---------------------------------------------------------------- start the shell
-gnome-shell --headless --wayland --virtual-monitor 1600x900 --no-x11 >"$log" 2>&1 &
+# SPAWN_MONITOR=WxH tries another screen size (e.g. 1280x720, or 3200x1800 for a 200% scale check).
+gnome-shell --headless --wayland --virtual-monitor ${SPAWN_MONITOR:-1600x900} --no-x11 >"$log" 2>&1 &
 gshell_pid=$!
 
 for ((i = 0; i < 60; i++)); do

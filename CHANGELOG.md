@@ -5,6 +5,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **Grid layout:** a new choice under Settings, Menu, Menu layout. One tidy column: the search bar, your pinned
+  apps as large icons shown a page at a time (page dots, Page Up / Page Down, the mouse wheel), an "All apps"
+  button to see everything, and a bottom row with your name, your folders and the power buttons. No recent files,
+  no suggestions. Classic stays the default.
+
 ## [1.3.1] - 2026-11-11
 
 ### Changed

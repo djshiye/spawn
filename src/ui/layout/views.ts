@@ -91,6 +91,9 @@ export class ViewManager {
     }
 
     defaultView(): ViewId {
+        // Grid layout: always the pinned grid (its header's pill opens All Apps).
+        if (this._services.settings.get('layout-style') === 'Grid')
+            return 'pinned';
         switch (this._services.settings.get('default-menu-view')) {
         case 'Categories_List': return 'categories';
         case 'Frequent_Apps': return 'frequent';
@@ -130,8 +133,10 @@ export class ViewManager {
     }
 
     openAllApps(): void {
-        const action = this._services.settings.get('all-apps-button-action');
-        this.setView(action === 'All_Programs' ? 'all' : 'categories');
+        const s = this._services.settings;
+        // Grid layout: one A-Z list, no category column (one column has no room for it).
+        const all = s.get('layout-style') === 'Grid' || s.get('all-apps-button-action') === 'All_Programs';
+        this.setView(all ? 'all' : 'categories');
         this._nav.focusMain();
     }
 

@@ -67,6 +67,8 @@ export interface PinnedViewDeps {
         close(): void;
         /** Spawn_ShowAllApplications: keep the menu open and show All Apps. */
         openAllApps(): void;
+        /** The view was built (its scroll view and the grid in it): the Grid layout pages it. */
+        built?(scroll: St.ScrollView, grid: St.Widget): void;
     };
 }
 
@@ -147,6 +149,7 @@ export class PinnedView {
             this._box.add_child(this._makePinnedEmpty());
             this.scroll = this._scrolls.make(this._box, 'spawn-pinned');
             acceptDrops(this._scope, this.scroll, this._services.pinned, {kind: 'grid', index: () => -1});
+            this._host.built?.(this.scroll, this.grid.actor);
             if (!this.subscribed) {
                 this.subscribed = true;
                 this._services.pinned.onChanged(this._scope, () => {
@@ -200,7 +203,7 @@ export class PinnedView {
             this._frequentSection.destroy();
             this._frequentSection = null;
         }
-        if (this._services.settings.get('default-menu-view') !== 'Pinned_And_Frequent_Apps')
+        if (this._services.settings.get('default-menu-view') !== 'Pinned_And_Frequent_Apps' || this._metrics.grid)
             return;
         const section = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
         section.add_child(new St.Widget({style_class: 'spawn-separator', x_expand: true}));
@@ -366,8 +369,9 @@ export class PinnedView {
         this.grid.setTiles(tiles, list ? 1 : this._metrics.cols, list ? -1 : this._metrics.tileWidth, size);
         const empty = tiles.length === 0;
         this.grid.actor.visible = !empty;
+        // Grid layout: the header above the view says "Pinned".
         if (this._title)
-            this._title.visible = !empty;
+            this._title.visible = !empty && !this._metrics.grid;
         if (this._empty)
             this._empty.visible = empty;
     }

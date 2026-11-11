@@ -169,10 +169,20 @@ export function createAppearancePage(ctx: PrefsContext): Adw.PreferencesPage {
         ctx.settings.raw.bind('override-menu-theme', g, 'visible', Gio.SettingsBindFlags.GET);
 
     const sizeKeys: SettingKey[] = ['menu-height', 'left-panel-width', 'right-panel-width', 'menu-arrow-rise'];
-    page.add(group(ctx, 'Size', [
-        spinRow(ctx, 'menu-height', 'Menu height', 360, 1600, {step: 10, subtitle: 'In pixels'}),
+    // The Grid layout is one column of a fixed width (Extra width still widens it): the pane widths are Classic only.
+    const paneWidths = [
         spinRow(ctx, 'left-panel-width', 'Left pane width', 420, 1200, {step: 5, subtitle: 'Apps and search results'}),
         spinRow(ctx, 'right-panel-width', 'Right pane width', 180, 600, {step: 5, subtitle: 'Shortcuts and places'}),
+    ];
+    const syncPanes = (): void => {
+        for (const row of paneWidths)
+            row.set_visible(ctx.settings.get('layout-style') !== 'Grid');
+    };
+    syncPanes();
+    watch(ctx, paneWidths[0], ['layout-style'], syncPanes);
+    page.add(group(ctx, 'Size', [
+        spinRow(ctx, 'menu-height', 'Menu height', 360, 1600, {step: 10, subtitle: 'In pixels'}),
+        ...paneWidths,
         optionalSpinRow(ctx, 'menu-arrow-rise', 'Distance from the panel', 0, 50, 'Distance'),
     ], {reset: sizeKeys}));
 
