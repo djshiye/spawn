@@ -169,6 +169,7 @@ export class FolderView {
     /** The folder drawn above the scrim (a clone of `_anchor`) while its card is open. */
     private _spotlight: Clutter.Clone | null = null;
     private _anchorDestroyId = 0;
+    private _anchorAllocId = 0;
     /** The scroll view's max-height from refresh() (whole menu), and the one in effect now (_place may lower it). */
     private _maxScroll = -1;
     private _scrollCap = -1;
@@ -592,10 +593,13 @@ export class FolderView {
         if (old) {
             if (this._anchorDestroyId)
                 old.disconnect(this._anchorDestroyId);
+            if (this._anchorAllocId)
+                old.disconnect(this._anchorAllocId);
             if (old instanceof St.Widget)
                 old.remove_style_class_name('spawn-folder-open');
         }
         this._anchorDestroyId = 0;
+        this._anchorAllocId = 0;
         this._spotlight?.destroy();
         this._spotlight = null;
         this._anchor = anchor;
@@ -611,6 +615,8 @@ export class FolderView {
             this._spotlight = null;
             this._place();
         });
+        // A tile that was just added (New Folder) is allocated after the card opened: follow it.
+        this._anchorAllocId = (anchor as Clutter.Actor).connect('notify::allocation', () => this._place());
         this._spotlight = new Clutter.Clone({source: anchor, reactive: false});
         this.actor.insert_child_below(this._spotlight, this._card);
     }

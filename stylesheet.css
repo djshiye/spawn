@@ -1334,6 +1334,13 @@
     background-color: rgba(255, 255, 255, 0.92);
 }
 
+/* a dragged app rests on a page edge / dot: the page it is about to turn to lights up */
+.spawn-grid-dot-armed .spawn-grid-dot-face,
+.spawn-grid-dot-armed:hover .spawn-grid-dot-face {
+    width: 12px;
+    background-color: -st-accent-color;
+}
+
 .spawn-grid-footer {
     margin: 4px 8px 0 8px;
     padding: 8px 0 0 0;
@@ -1405,6 +1412,11 @@
 .spawn-light .spawn-grid-dot-current .spawn-grid-dot-face,
 .spawn-light .spawn-grid-dot-current:hover .spawn-grid-dot-face {
     background-color: rgba(0, 0, 0, 0.8);
+}
+
+.spawn-light .spawn-grid-dot-armed .spawn-grid-dot-face,
+.spawn-light .spawn-grid-dot-armed:hover .spawn-grid-dot-face {
+    background-color: -st-accent-color;
 }
 
 .spawn-light .spawn-grid-footer {

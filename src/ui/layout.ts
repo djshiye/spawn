@@ -45,8 +45,8 @@
 //   frequentView.ts FrequentView: the Frequent list
 //   folders.ts      FolderController: the folder popup
 //   searchView.ts   SearchController: results view, entry text / Return / keys (query running: ui/searchSession.ts)
-//   listDrag.ts     ListDrag: rows of All Apps / categories / results / Frequent as drag sources (drop on Back or
-//                   spring-load to Pinned to pin them)
+//   listDrag.ts     ListDrag: rows of All Apps / categories / results / Frequent as drag sources (drop on Back, in Grid on
+//                   the header's pill, or spring-load to Pinned to pin them)
 //   undo.ts         UndoController: the Undo banner and the actions it undoes
 //   navigation.ts   Navigator: arrows / Tab / Home / End / Page keys over keyboard groups (NavSources)
 //   keys.ts         KeyRouter: key-press handler (reorder, Ctrl+Z, F2, Delete, typing) and focus changes
@@ -55,7 +55,9 @@
 //
 // Layout styles (`layout-style`): Classic is the two panes above. Grid is one column (search, header, the paged
 // pinned grid or another view, page dots, footer with user card / folder shortcuts / power); the right pane is
-// hidden and its groups are replaced by the footer's. Switching is live: the same views, re-arranged.
+// hidden and its groups are replaced by the footer's. Switching is live: the same views, re-arranged. Grid details:
+// a folder opens after the grid turned to the page of its tile; Page Up / Down in the empty entry turn the page; a drag
+// of a pinned tile turns whole pages at the grid's top / bottom edge and on the page dots (GridPager, no pixel scrolling).
 //
 // "New" badge: apps the NewAppsStore calls new get a pill in rows and tiles and their category a dot; the layout
 // only asks (TileHost.isNew), tells the store about the launches it starts and redraws what is cached when the
@@ -305,10 +307,14 @@ export class SpawnLayout implements ShortcutHost {
                 setView: view => this._views.setView(view),
                 back: () => this._views.back(),
                 folderTile: uuid => this._pinned.tileWidget(`f:${uuid}`),
+                revealTile: tile => this._pager.showTile(tile),
             },
         });
 
-        this._gridHeader = new GridHeader(scope, {host: {openAllApps: () => this._views.openAllApps(), back: () => this._views.back()}});
+        this._gridHeader = new GridHeader(scope, {
+            host: {openAllApps: () => this._views.openAllApps(), back: () => this._views.back()},
+            store: services.pinned,
+        });
         this._gridFooter = new GridFooter(scope, services, {
             host: {close: () => this.close(), showAllApps: () => this.showAllApps(), tooltips: this._tooltips},
             tooltips: this._tooltips,
@@ -335,6 +341,7 @@ export class SpawnLayout implements ShortcutHost {
                 defaultView: () => this._views.defaultView(),
                 focusMain: last => this._nav.focusMain(last),
                 cyclePane: delta => this._nav.cyclePane(delta),
+                pageGrid: dir => this._metrics.grid && this._state.view === 'pinned' && this._search.text.length === 0 && this._pager.turn(dir),
             },
         });
         this._nav = new Navigator(this._state, {

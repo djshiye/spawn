@@ -4,7 +4,7 @@
 // the reaction to the entry's text (switch to the results, begin the query, back to the start view when it
 // is emptied, `search-hidden`), Return / Ctrl+Return (activate the highlighted result, or wait for the first
 // row), the keys inside the entry while results show (Up / Down / Page Up / Down move the highlight, Tab
-// leaves the entry), and a result row taking the highlight from the pointer. Running the query is the
+// leaves the entry; with no query in the Grid layout Page Up / Down turn the pinned grid's page), and a result row taking the highlight from the pointer. Running the query is the
 // shared SearchSession (ui/searchSession.ts).
 //
 // Public API:
@@ -38,6 +38,8 @@ export interface SearchControllerHost {
     focusMain(last?: boolean): void;
     /** Tab in the entry: move to the next / previous pane. */
     cyclePane(delta: number): void;
+    /** Grid layout, pinned view showing, entry empty: turn the grid one page (dir -1 / 1). false: not applicable. */
+    pageGrid(dir: number): boolean;
 }
 
 export interface SearchControllerDeps {
@@ -162,10 +164,18 @@ export class SearchController {
         }
         case Clutter.KEY_Page_Up:
         case Clutter.KEY_Page_Down:
-            if (!results)
-                return false;
+        case Clutter.KEY_KP_Page_Up:
+        case Clutter.KEY_KP_Page_Down:
+            if (!results) {
+                // Grid: the pinned grid turns a page; the focus stays in the entry.
+                const down = key === Clutter.KEY_Page_Down || key === Clutter.KEY_KP_Page_Down;
+                if (ctrl || !this._host.pageGrid(down ? 1 : -1))
+                    return false;
+                this._highlight.keyMoved();
+                return true;
+            }
             this._session.flush();
-            this._showSelection(pageTo(results.visualRows(), results.selected(), key === Clutter.KEY_Page_Down ? 1 : -1));
+            this._showSelection(pageTo(results.visualRows(), results.selected(), (key === Clutter.KEY_Page_Down || key === Clutter.KEY_KP_Page_Down) ? 1 : -1));
             return true;
         case Clutter.KEY_Return:
         case Clutter.KEY_KP_Enter:

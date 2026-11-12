@@ -10,9 +10,11 @@
 //
 // Public API:
 //   enableDrag(scope, tile: St.Widget, payload: DragPayload): void
-//   acceptDrops(scope, target: St.Widget, store: PinnedStore, drop: DropTarget, opts?: {vertical?}): void
+//   acceptDrops(scope, target: St.Widget, store: PinnedStore, drop: DropTarget, opts?: {vertical?, enabled?}): void
 //        vertical: the target is a row of a vertical list, so before / onto / after are the
 //        top / middle / bottom bands (default: left / middle / right bands of a grid tile)
+//        enabled: asked on every motion and drop; false = the target refuses (the Grid header's pill is a
+//        drop target only in the All apps view)
 //   DragPayload: {id, folderUuid?, isFolder?, isCustom?, fromList?, name?, apply?, onDragBegin?(), onDragEnd?()}
 //        id = desktop id (or folder uuid when isFolder); folderUuid = folder the app is dragged from;
 //        isCustom = a pinned command (it can be reordered but never goes into a folder);
@@ -27,8 +29,8 @@
 //     {kind: 'folder'; uuid}                              a folder tile
 //     {kind: 'unfolder'; folderUuid}                      "take the app out of its folder" zone
 //                                                         (folderUuid '' = whichever folder the app came from)
-//     {kind: 'back'}                                      the Back button: takes the app out of its folder, or
-//                                                         pins an app dragged from a list at the end
+//     {kind: 'back'}                                      the Back button (Grid: the header's pill): takes the app
+//                                                         out of its folder, or pins an app dragged from a list at the end
 //   rejectDrops(scope, target: St.Widget): void
 //        the target (a ghost row / tile of a missing app) shows "no drop" and swallows a drop on it
 //        (does nothing), so it does not bubble to the list's append-at-end target
@@ -36,6 +38,11 @@
 //
 // While a drag is held within AUTOSCROLL_EDGE px of the top / bottom edge of the St.ScrollView under the
 // pointer, that view scrolls (GNOME's DND grabs the pointer, so the wheel does not work mid-drag).
+//
+//   setDragPaging(scope, paging: DragPaging): void
+//        The Grid layout's paged pinned grid takes over: `paging.handles(view)` views are not scrolled by pixels;
+//        `paging.motion(x, y, target)` sees every motion of a Spawn drag (edge zones and page dots turn whole
+//        pages, see GridPager), `paging.end()` is called when the drag ends.
 
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
@@ -62,6 +69,23 @@ interface Delegate {
 const AUTOSCROLL_EDGE = 28;
 const AUTOSCROLL_STEP = 14;
 const AUTOSCROLL_TICK_MS = 40;
+
+/** The Grid layout's pager (one at a time): pages instead of pixels. */
+export interface DragPaging {
+    handles(view: St.ScrollView): boolean;
+    motion(x: number, y: number, target: Clutter.Actor | null): void;
+    end(): void;
+}
+
+let paging: DragPaging | null = null;
+
+export function setDragPaging(scope: Scope, p: DragPaging): void {
+    paging = p;
+    scope.add(() => {
+        if (paging === p)
+            paging = null;
+    }, 'drag paging');
+}
 
 const DROP_CLASSES = ['spawn-drop-target', 'spawn-drop-before', 'spawn-drop-after'];
 
@@ -135,6 +159,8 @@ export function enableDrag(scope: Scope, tile: St.Widget, payload: DragPayload):
             if (a instanceof St.ScrollView)
                 view = a;
         }
+        if (view && paging?.handles(view))
+            view = null;
         let dir = 0;
         if (view) {
             const [, top] = view.get_transformed_position();
@@ -165,6 +191,7 @@ export function enableDrag(scope: Scope, tile: St.Widget, payload: DragPayload):
             highlighted = null;
             try {
                 updateScroll(event);
+                paging?.motion(event.x, event.y, event.targetActor);
             } catch (e) {
                 error('drag auto-scroll failed', e);
                 stopScroll();
@@ -182,8 +209,10 @@ export function enableDrag(scope: Scope, tile: St.Widget, payload: DragPayload):
     };
     let monitoring = false;
     const stop = () => {
-        if (monitoring)
+        if (monitoring) {
             DND.removeDragMonitor(monitor);
+            paging?.end();
+        }
         monitoring = false;
         stopScroll();
         clearDropClasses(highlighted);
@@ -245,13 +274,13 @@ function zoneOf(target: St.Widget, x: number, y: number, vertical: boolean, prev
     return 'onto';
 }
 
-export function acceptDrops(scope: Scope, target: St.Widget, store: PinnedStore, drop: DropTarget, opts: {vertical?: boolean} = {}): void {
+export function acceptDrops(scope: Scope, target: St.Widget, store: PinnedStore, drop: DropTarget, opts: {vertical?: boolean; enabled?: () => boolean} = {}): void {
     const vertical = Boolean(opts.vertical);
     const delegate = delegateOf(target);
 
     const canAccept = (source: Delegate | undefined, zone: Zone): boolean => {
         const p = source?.spawnPayload;
-        return Boolean(p) && canDrop(p as DragPayload, drop, zone);
+        return Boolean(p) && (opts.enabled?.() ?? true) && canDrop(p as DragPayload, drop, zone);
     };
 
     let last: {zone: Zone; at: number} | null = null;
