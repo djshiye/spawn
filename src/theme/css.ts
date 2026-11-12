@@ -308,7 +308,7 @@ function overrideRules(c: ThemeColors): string[] {
         // The folder popup card is a raised copy of the menu background (opaque-ish over the scrim).
         // Always opaque (see cardSurface), with a hairline in the text colour: a custom border colour is
         // often the menu colour itself, which would leave the card without an edge.
-        rule(`${popup} .spawn-folder-popup`, [
+        rule([`${popup} .spawn-folder-popup`, `${popup} .spawn-grid-card`], [
             ['background-color', bg === null ? null : cardSurface(bg, fg) ?? bg],
             ['color', fg],
             ['border-color', fg === null ? border : withAlpha(fg, 0.12)],

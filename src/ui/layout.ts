@@ -51,6 +51,7 @@
 //   navigation.ts   Navigator: arrows / Tab / Home / End / Page keys over keyboard groups (NavSources)
 //   keys.ts         KeyRouter: key-press handler (reorder, Ctrl+Z, F2, Delete, typing) and focus changes
 //   gridChrome.ts   GridHeader / GridFooter / GridPager: the Grid layout style's header, footer and paged pinned grid
+//   gridApps.ts     GridAllApps: the Grid layout's All apps (icon grid in A-Z letter groups, letter picker, category menu)
 //   scrolls.ts, geometry.ts, types.ts, debug.ts   scroll view factory, on-screen geometry, shared types, debugState
 //
 // Layout styles (`layout-style`): Classic is the two panes above. Grid is one column (search, header, the paged
@@ -312,7 +313,12 @@ export class SpawnLayout implements ShortcutHost {
         });
 
         this._gridHeader = new GridHeader(scope, {
-            host: {openAllApps: () => this._views.openAllApps(), back: () => this._views.back()},
+            host: {
+                openAllApps: () => this._views.openAllApps(),
+                // the pill says "Pinned": straight there, also from a category
+                back: () => this._views.back(true),
+                categories: () => this._views.gridApps?.toggleCategories(),
+            },
             store: services.pinned,
         });
         this._gridFooter = new GridFooter(scope, services, {
@@ -403,6 +409,8 @@ export class SpawnLayout implements ShortcutHost {
             searchCtl: this._searchCtl,
             leftPane: this._leftPane,
             nav: this._nav,
+            metrics: this._metrics,
+            header: this._gridHeader,
             host: {close: () => this._host.close()},
         });
         this._listDrag = new ListDrag(scope, services, this._state, {
@@ -457,6 +465,7 @@ export class SpawnLayout implements ShortcutHost {
             const focus = global.stage.key_focus as Clutter.Actor | null;
             if (focus)
                 this._pager.reveal(focus);
+            this._views.gridApps?.focusChanged(focus);
         });
 
         settings.onChanged(scope, [...RELAYOUT_KEYS], () => this._relayout());
@@ -569,6 +578,9 @@ export class SpawnLayout implements ShortcutHost {
             this._folders.view.cancelRename();
             return true;
         }
+        // The Grid All apps' letter picker / category menu closes first.
+        if (this._views.closeOverlay())
+            return true;
         if (this._search.text.length > 0) {
             this._search.clear();
             return true;
@@ -617,7 +629,7 @@ export class SpawnLayout implements ShortcutHost {
 
     debugState(): Record<string, unknown> {
         const grid = this._metrics.grid
-            ? {layoutStyle: 'Grid', gridPage: this._pager.page, gridPages: this._pager.pages, gridCols: this._pinned.grid.columns, pager: this._pager.debug()}
+            ? {layoutStyle: 'Grid', gridPage: this._pager.page, gridPages: this._pager.pages, gridCols: this._pinned.grid.columns, pager: this._pager.debug(), allApps: this._views.gridApps?.debug() ?? null}
             : {layoutStyle: 'Classic', pager: this._pager.debug()};
         return {...grid, ...layoutDebugState({
             state: this._state, root: this.actor, left: this._left, right: this._right, search: this._search,
@@ -652,6 +664,7 @@ export class SpawnLayout implements ShortcutHost {
         if (this._state.destroyed)
             return;
         this._views.categories?.refresh();
+        this._views.gridApps?.changed();
         this._leftPane.syncLinks();
         this._pinned.dirty = true;
         if (this._state.isOpen)

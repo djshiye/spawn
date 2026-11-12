@@ -324,7 +324,10 @@ export class LeftPane {
 
     /** Can a drag from a list reach Pinned through Back (the start view is a pinned one; in Grid it always is)? */
     pinnedViaBack(): boolean {
-        return this._metrics.grid || isDefaultViewPinnedish(this._services.settings.get('default-menu-view'));
+        // Grid: the start view is always the pinned grid, whatever `default-menu-view` says (All apps tiles drag to pin).
+        if (this._metrics.grid)
+            return true;
+        return isDefaultViewPinnedish(this._services.settings.get('default-menu-view'));
     }
 
     // ---- keyboard ----
