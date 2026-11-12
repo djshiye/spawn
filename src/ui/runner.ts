@@ -29,6 +29,11 @@
 // the entry, Escape closes. One highlight: the pointer moves it (widgets/highlight.ts). Activating a result
 // closes the runner. Context menus (right click) are not part of the runner.
 //
+// Run commands (`runner-run-commands`, off by default): when the query parses like a command line and its first
+// word is an executable (ui/runCommand.ts, search/command.ts), a bare "Run “<command line>”" row is the LAST
+// result (the only one, and highlighted, when nothing else matched). Activating it starts the argv directly
+// (never through a shell), in the home folder, and closes the runner. The main menu never offers it.
+//
 // Public API:
 //   new SpawnRunner(scope, services, host: RunnerHost)
 //   runner.isOpen: boolean
@@ -39,6 +44,7 @@
 //   RunnerHost: {beforeOpen(): void}  called right before the popup opens (the extension closes the main menu)
 
 import Clutter from 'gi://Clutter';
+import Gio from 'gi://Gio';
 import type Shell from 'gi://Shell';
 import St from 'gi://St';
 
@@ -51,6 +57,8 @@ import {pageTarget} from '../model/listNav.js';
 import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
 import {closeMenu, openMenu, silenceSourceKeys} from './menuParams.js';
+import type {SearchResult} from '../search/engine.js';
+import {detectTypedCommand, runTypedCommand} from './runCommand.js';
 import {SearchSession} from './searchSession.js';
 import {
     applyScrollSettings, applyTone, displayName, iconSizeFor, launchApp, lookupApp, scrollIntoView, showDescriptions,
@@ -78,6 +86,8 @@ const SCREEN_MARGIN = 16;
 /** Height of the search row (entry, margins and the popup padding); the results get the rest. */
 const CHROME_HEIGHT = 72;
 const DEFAULT_LIST_ROWS = 10;
+/** Sorts after every provider section (SearchBatch.order is slot * 1000). */
+const RUN_ROW_ORDER = 1e9;
 const SCROLL_KEYS = ['scrollbars-visible', 'scrollbars-overlay', 'scrollview-fade-effect'] as const;
 
 interface Ui {
@@ -183,6 +193,7 @@ export class SpawnRunner {
             query: ui?.search.text ?? '',
             view: ui ? (ui.search.text.trim() === '' ? 'default' : 'results') : null,
             results: ui?.results.rows().length ?? 0,
+            resultTitles: ui?.results.titles() ?? [],
             defaultRows: this._defaultRows.length,
             focus: where,
             // the search highlight (Return target)
@@ -420,6 +431,26 @@ export class SpawnRunner {
         ui.results.beginQuery(query);
         ui.results.setSelectionVisible(true);
         this._session.start(query, ui.results);
+        this._offerRun(ui, query);
+    }
+
+    /** The "Run “…”" row for a typed command, last in the list (runner-run-commands). */
+    private _offerRun(ui: Ui, query: string): void {
+        if (!this._services.settings.get('runner-run-commands'))
+            return;
+        const cmd = detectTypedCommand(query);
+        if (!cmd)
+            return;
+        const result: SearchResult = {
+            id: 'run',
+            providerId: 'runCommand',
+            title: _('Run \u201C%s\u201D').replace('%s', cmd.line),
+            icon: new Gio.ThemedIcon({name: 'utilities-terminal-symbolic'}),
+            plainTitle: true,
+            score: 0,
+            activate: () => runTypedCommand(cmd),
+        };
+        ui.results.addBatch({providerId: 'runCommand', providerTitle: '', query, results: [result], order: RUN_ROW_ORDER});
     }
 
     /**

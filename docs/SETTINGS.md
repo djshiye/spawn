@@ -59,6 +59,7 @@ and offers the two lists ArcMenu has.
 | `runner-position` | enum runner-position | `'Top'` | `runner-position`  (Top, Centered) |
 | `runner-menu-width` | i | `500` | `runner-menu-width`  (range 300..2000; ArcMenu allows up to 5000, clamped with a warning) |
 | `runner-menu-height` | i | `400` | `runner-menu-height`  (range 300..1000; the maximum height: the runner grows with its results) |
+| `runner-run-commands` | b | `false` | new. The runner offers a last row that runs the typed command (argv, never a shell) |
 | `runner-default-view` | enum runner-default-view | `'Default'` | `default-menu-view-runner`  (Default = nothing, Pinned_Apps, `Frequent Apps` -> `Frequent_Apps`). Pinned_Apps lists the top-level pinned apps (no folders, at most 10), Frequent_Apps `max-frequent-apps` (at most 10) |
 
 | `runner-font-size` | i | `0` | `runner-font-size`  (range 0..30, pt; 0 = the runner uses the menu font; set on the runner's content and search entry) |
@@ -184,6 +185,7 @@ was rebuilt after an install or removal, an app was launched), never when the me
 | `search-unit-conversion` | b | `true` | new |
 | `search-settings-panels` | b | `true` | new |
 | `search-app-actions` | b | `true` | new |
+| `search-power-actions` | b | `false` | new. Power actions (lock, log out, restart...) in the search |
 | `show-hidden-recent-files` | b | `false` | `show-hidden-recent-files` |
 | `apps-show-extra-details` | b | `false` | `apps-show-extra-details` |
 | `apps-show-generic-names` | b | `false` | `apps-show-generic-names` |

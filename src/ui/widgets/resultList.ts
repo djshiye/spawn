@@ -1,6 +1,14 @@
 // ResultList: streaming search results. One section per SearchBatch (provider title + rows),
 // ordered by SearchBatch.order (the engine's provider registration order: apps > windows >
-// recent files > GNOME shell providers in their sort-order) regardless of arrival order.
+// recent files > GNOME shell providers in their sort-order) regardless of arrival order, except for the
+// best match: the section that holds the single strongest result across the sections that rank names
+// (search/bestMatch.ts: apps, Settings panels, app actions, power actions) is shown first, so its first row,
+// the highlighted one, is the best match of the whole query ("display" -> the Displays panel, not an app
+// that lists it as a keyword). Moving the section (not copying its row to a "Best match" heading) keeps every
+// result once, the counts and the "2 of 5" announcements true and the list as compact as before. While a
+// calculator / conversion answer shows, it keeps the top. The leader is re-picked with every arriving batch
+// only until the highlight was moved (keys, pointer, focus); after that it stays, so a late batch never
+// reorders under the user. A batch with the title '' is a bare row group without heading (the runner's Run row).
 // The highlight: one row carries the :selected pseudo class (and the accessible SELECTED state) and is
 // what Return in the search entry activates: the first (best) row of a new query, moved with
 // moveSelection() / select() (the typing focus stays in the entry), hidden while a row has keyboard focus.
@@ -26,6 +34,7 @@
 //   list.beginQuery(): void             a new query starts: keep old rows dimmed, see above
 //   list.reset(): void                  hard clear (menu closed / view left): rows gone now
 //   list.addBatch(batch: SearchBatch): void   empty batches are ignored
+//   list.titles(): string[]            accessible names of rows(), best first (dev hook)
 //   list.rows(): St.Widget[]            rows of the CURRENT query, best first; never stale ones.
 //                                       Stale rows are also made non-reactive / non-focusable,
 //                                       so neither the keyboard nor the mouse can activate a
@@ -62,6 +71,7 @@ import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
 import type {SearchBatch, SearchResult} from '../../search/engine.js';
 import {error} from '../../core/log.js';
+import {pickLeader, sectionRank} from '../../search/bestMatch.js';
 import {highlightMarkup} from '../../search/highlight.js';
 import {iconSizeFor, showDescriptions} from '../util.js';
 import {stepIndex} from '../../model/listNav.js';
@@ -85,6 +95,10 @@ interface Section {
     order: number;
     box: St.BoxLayout;
     rows: St.Button[];
+    /** 1 when the box starts with the title label, 0 for a bare group (rows start at child 0). */
+    head: number;
+    /** Score of the first (best) row: what the best match compares. */
+    top: number;
     /** Belongs to the previous query (dimmed, inert) until this provider's new batch replaces it. */
     stale: boolean;
 }
@@ -112,6 +126,8 @@ export class ResultList {
     private _marked: St.Button | null = null;
     /** The highlighted row once moved off the first one (null: the first). */
     private _pick: St.Button | null = null;
+    /** Provider id of the best-match section (null: the provider order stands). */
+    private _leader: string | null = null;
     private readonly _announcer: ResultAnnouncer;
     private _selectionVisible = true;
     private _reversed = false;
@@ -170,6 +186,7 @@ export class ResultList {
     beginQuery(query = ''): void {
         this._query = query.trim();
         this._pick = null;
+        this._leader = null;
         this._host.tooltips?.hide();
         this._pending = true;
         this._announcer.hold();
@@ -228,9 +245,11 @@ export class ResultList {
         this._empty.hide();
 
         const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-result-section'});
-        box.add_child(new St.Label({text: batch.providerTitle, style_class: 'spawn-section-title'}));
-        markList(box, batch.providerTitle);
-        const section: Section = {providerId: batch.providerId, order: batch.order, box, rows: [], stale: false};
+        const titled = batch.providerTitle !== '';
+        if (titled)
+            box.add_child(new St.Label({text: batch.providerTitle, style_class: 'spawn-section-title'}));
+        markList(box, titled ? batch.providerTitle : _('Search results'));
+        const section: Section = {providerId: batch.providerId, order: batch.order, box, rows: [], head: titled ? 1 : 0, top: results[0].score, stale: false};
         for (const result of results) {
             const row = this._makeRow(result, batch.query);
             section.rows.push(row);
@@ -238,20 +257,33 @@ export class ResultList {
         }
         this._fillSection(section);
 
-        // Insert keeping provider order (the label for "No results" stays last).
-        let at = 0;
-        while (at < this._sections.length && this._sections[at].order <= section.order)
-            at++;
-        this._sections.splice(at, 0, section);
+        this._sections.push(section);
         this.actor.add_child(box);
+        this._sortSections();
         this._placeSections();
         this._updateSelection();
         this._announcer.found(this._sections.reduce((n, s) => n + (s.stale ? 0 : s.rows.length), 0));
     }
 
+    /**
+     * Provider order, the best-match section first (the label for "No results" stays last). The leader is picked
+     * from the sections of the current query, and kept once the user moved the highlight.
+     */
+    private _sortSections(): void {
+        if (!this._pick || !this._sections.some(s => s.providerId === this._leader && !s.stale))
+            this._leader = pickLeader(this._sections.filter(s => !s.stale).map(s => ({providerId: s.providerId, order: s.order, score: s.top})));
+        const leader = this._leader;
+        // Array.prototype.sort is stable
+        this._sections.sort((a, b) => sectionRank(a.order, a.providerId, leader) - sectionRank(b.order, b.providerId, leader));
+    }
+
     /** What the screen reader was last told about the result count (dev hook). */
     get announcement(): string {
         return this._announcer.lastMessage;
+    }
+
+    titles(): string[] {
+        return this.rows().map(r => r.accessible_name ?? '');
     }
 
     rows(): St.Widget[] {
@@ -384,9 +416,9 @@ export class ResultList {
         const rows = this._reversed ? [...section.rows].reverse() : section.rows;
         rows.forEach((row, i) => {
             if (row.get_parent() === section.box)
-                section.box.set_child_at_index(row, i + 1);
+                section.box.set_child_at_index(row, i + section.head);
             else
-                section.box.insert_child_at_index(row, i + 1);
+                section.box.insert_child_at_index(row, i + section.head);
         });
     }
 
