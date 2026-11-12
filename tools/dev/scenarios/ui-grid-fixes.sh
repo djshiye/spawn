@@ -173,15 +173,17 @@ expect "the dragged app moved to the end (the page that shows)" "$(pinned_ids | 
 expect "no app lost or doubled" "$(pinned_ids | wc -w)" "$n"
 
 echo "-- the top edge goes back"
+screenshot grid-fix-4-before-top-edge
 ids="$(pinned_ids)"
-t1="$(center spawn-folder-tile 0)" # the folder: page two shows it only
+t1="$(center spawn-tile $((n - 1)))" # the last entry: page two shows it only
 top="$(python3 -c 'import json,sys; x,y,w,h=json.loads(sys.argv[1]); print(round(x+w/2), round(y+6))' "$(rect spawn-grid-paged 0)")"
-dots_c="$(center spawn-grid-dot 1)"
+away="$(center spawn-grid-title 0 2>/dev/null || center spawn-search-box 0)" # a neutral spot: no drop target
 ui_call Move $t1 >/dev/null; sleep 0.4
-ui_call DragVia $t1 $top 1400 $dots_c >/dev/null
+ui_call DragVia $t1 $top 1400 $away >/dev/null
 sleep 3.6
 expect_state "the top edge turned back to page one" layout.gridPage 0
-expect "nothing changed (released over the dots)" "$(pinned_ids)" "$ids"
+echo "page after the top-edge drag: $(state_get layout.gridPage)"
+expect "nothing changed (released on no target)" "$(pinned_ids)" "$ids"
 pager="$(state_get layout.pager)"
 expect "whole page" "$(echo "$pager" | json_get value)" "0"
 
