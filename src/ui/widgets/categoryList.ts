@@ -26,6 +26,8 @@
 //   list.pendingRows: number              rows not built yet (dev hook / tests)
 //   list.selectedId: string
 //   list.destroy()
+//   categoryEntries(services, frequent = true): CategoryEntry[]   the categories offered (id, name, icon, hasNew); the Grid
+//                                         layout's category menu (layout/gridApps.ts) lists the same without Frequent
 //   A category that contains a new app (services.newApps, show-new-apps-badge) gets a subtle dot after its name and
 //   the accessible name "<name>, contains new apps"; the lists rebuild when that changes.
 
@@ -72,7 +74,7 @@ interface AppList {
     spacer: St.Widget | null;
 }
 
-interface CategoryEntry {
+export interface CategoryEntry {
     id: string;
     name: string;
     icon: string;
@@ -99,6 +101,30 @@ export function symbolicCategoryIcon(id: string, name: string): string {
             return icon;
     }
     return 'view-more-symbolic';
+}
+
+/**
+ * The categories the menu offers, in order: All Apps, Frequent (when `frequent`), then the GMenu categories, each with
+ * its icon (`icon-style-categories`) and whether it contains a "New" app. The Grid layout's category menu uses the
+ * same list without Frequent.
+ */
+export function categoryEntries(services: Services, frequent = true): CategoryEntry[] {
+    const index = services.appIndex;
+    const news = services.newApps;
+    const hasNew = (apps: readonly {get_id(): string | null}[]): boolean => news.anyNew(apps.map(a => a.get_id() ?? ''));
+    const out: CategoryEntry[] = [{id: 'all', name: _('All Apps'), icon: 'view-app-grid-symbolic', hasNew: hasNew(index.apps())}];
+    if (frequent)
+        out.push({id: 'frequent', name: _('Frequent'), icon: 'document-open-recent-symbolic', hasNew: false});
+    const symbolic = services.settings.get('icon-style-categories') === 'Symbolic';
+    for (const c of index.categories()) {
+        out.push({
+            id: c.id,
+            name: c.name,
+            icon: symbolic ? symbolicCategoryIcon(c.id, c.name) : c.iconName || 'applications-other',
+            hasNew: hasNew(c.apps),
+        });
+    }
+    return out;
 }
 
 export class CategoryList {
@@ -304,23 +330,7 @@ export class CategoryList {
     }
 
     private _categories(): CategoryEntry[] {
-        const index = this._services.appIndex;
-        const news = this._services.newApps;
-        const hasNew = (apps: readonly {get_id(): string | null}[]): boolean => news.anyNew(apps.map(a => a.get_id() ?? ''));
-        const out: CategoryEntry[] = [
-            {id: 'all', name: _('All Apps'), icon: 'view-app-grid-symbolic', hasNew: hasNew(index.apps())},
-            {id: 'frequent', name: _('Frequent'), icon: 'document-open-recent-symbolic', hasNew: false},
-        ];
-        const symbolic = this._services.settings.get('icon-style-categories') === 'Symbolic';
-        for (const c of index.categories()) {
-            out.push({
-                id: c.id,
-                name: c.name,
-                icon: symbolic ? symbolicCategoryIcon(c.id, c.name) : c.iconName || 'applications-other',
-                hasNew: hasNew(c.apps),
-            });
-        }
-        return out;
+        return categoryEntries(this._services);
     }
 
     private _buildColumn(): void {

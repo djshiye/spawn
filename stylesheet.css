@@ -1427,3 +1427,138 @@
     margin: 0;
     opacity: 0;
 }
+
+/* ---- Grid layout: All apps (ui/layout/gridApps.ts) ----
+ * The tiles are the pinned grid's (.spawn-tile in a .spawn-tile-grid); what is new is the quiet letter heading over each
+ * group, the title button in the header and the card over the view (letter picker, category menu). */
+.spawn-grid-apps-box {
+    padding: 0 0 8px 0;
+    spacing: 0;
+}
+
+/* a heading is a button: its face starts where the header's title does (16 + 8 px), the gap above is its own padding */
+.spawn-grid-letter.spawn-nav-button {
+    padding: 10px 0 0 16px;
+}
+
+.spawn-grid-letter-face.spawn-nav-surface {
+    min-height: 16px;
+    padding: 2px 8px;
+    border-radius: 8px;
+}
+
+.spawn-grid-letter-label {
+    font-size: 0.85em;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* the All apps title: plain title text, a button; the icon is the hint */
+.spawn-grid-header-menu {
+    padding-left: 16px;
+}
+
+.spawn-grid-title-button.spawn-nav-button {
+    padding: 0;
+}
+
+.spawn-grid-title-face.spawn-nav-surface {
+    min-height: 0;
+    padding: 2px 6px 2px 8px;
+    border-radius: 8px;
+}
+
+.spawn-grid-title-box {
+    spacing: 4px;
+}
+
+.spawn-grid-title-icon {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.spawn-grid-title-button:hover .spawn-grid-title-icon,
+.spawn-grid-title-button:focus .spawn-grid-title-icon {
+    color: rgba(255, 255, 255, 0.92);
+}
+
+/* the overlay: a soft scrim over the view and a card, opaque like the folder card (gridApps.ts sets the colour) */
+.spawn-grid-scrim {
+    background-color: rgba(0, 0, 0, 0.32);
+}
+
+.spawn-grid-card {
+    background-color: rgb(44, 44, 44);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    padding: 10px;
+    spacing: 4px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.spawn-grid-card-categories {
+    margin: 2px 0 0 12px;
+    padding: 6px 0;
+    min-width: 240px;
+    spacing: 0;
+}
+
+.spawn-grid-key-row {
+    spacing: 4px;
+}
+
+.spawn-grid-key.spawn-nav-button {
+    padding: 0;
+}
+
+.spawn-grid-key-face.spawn-nav-surface {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0;
+    border-radius: 10px;
+    font-weight: bold;
+}
+
+.spawn-grid-key-off .spawn-grid-key-face.spawn-nav-surface {
+    color: rgba(255, 255, 255, 0.25);
+}
+
+/* the current category, as the category column marks it */
+.spawn-grid-card .spawn-category-row:checked .spawn-row-surface {
+    background-color: st-transparentize(-st-accent-color, 0.7);
+    color: white;
+}
+
+.spawn-grid-card .spawn-category-row:checked .spawn-new-dot {
+    background-color: white;
+}
+
+.spawn-light .spawn-grid-letter-label {
+    color: rgba(0, 0, 0, 0.6);
+}
+
+.spawn-light .spawn-grid-title-icon {
+    color: rgba(0, 0, 0, 0.6);
+}
+
+.spawn-light .spawn-grid-title-button:hover .spawn-grid-title-icon,
+.spawn-light .spawn-grid-title-button:focus .spawn-grid-title-icon {
+    color: rgba(0, 0, 0, 0.87);
+}
+
+.spawn-light .spawn-grid-scrim {
+    background-color: rgba(0, 0, 0, 0.2);
+}
+
+.spawn-light .spawn-grid-card {
+    background-color: rgb(252, 252, 253);
+    border-color: rgba(0, 0, 0, 0.1);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.24);
+}
+
+.spawn-light .spawn-grid-key-off .spawn-grid-key-face.spawn-nav-surface {
+    color: rgba(0, 0, 0, 0.3);
+}
+
+.spawn-light .spawn-grid-card .spawn-category-row:checked .spawn-row-surface {
+    color: rgba(0, 0, 0, 0.87);
+}

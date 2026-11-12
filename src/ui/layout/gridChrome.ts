@@ -3,7 +3,8 @@
 // Responsibility: the Grid layout is one column: search entry, a header row, the view stack (the pinned grid
 // shows in pages), page dots, and a footer. This module builds the three pieces the classic two-pane layout
 // does not have and that the coordinator (ui/layout.ts) and LeftPane arrange:
-//   GridHeader   "Pinned" + an "All apps" pill on the start view; "All apps" + a "Pinned" pill in All Apps;
+//   GridHeader   "Pinned" + an "All apps" pill on the start view; in All apps the title is a quiet menu button
+//                ("All apps" / the category's name + a pan-down icon, opens the category menu) + a "Pinned" pill;
 //                hidden in search results and other views
 //   GridFooter   the user card, the folder shortcuts as icon buttons, and the power bar, in one row
 //   GridPager    the pinned grid in whole pages: the scroll view shows exactly N rows, the wheel / touchpad and
@@ -12,8 +13,10 @@
 //
 // Public API:
 //   isGridLayout(settings): boolean
-//   new GridHeader(scope, deps)        deps: {host: {openAllApps(), back()}}
+//   new GridHeader(scope, deps)        deps: {host: {openAllApps(), back(), categories()}}
 //     header.actor / header.setMode('pinned' | 'all' | 'hidden') / header.group(): Group | null
+//     header.setCategory(name)        the name the All apps title shows ("All apps", or the category)
+//     header.titleButton              the All apps title button (focus returns to it when its menu closes)
 //   new GridFooter(scope, services, deps)   deps: {host, tooltips, context}
 //     footer.actor / footer.build() / footer.group(): Group | null
 //   new GridPager(scope, deps)         deps: {stack(), column(), trim(px), enabled(), settings}
@@ -27,6 +30,7 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
+import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
@@ -54,22 +58,42 @@ export function isGridLayout(settings: SpawnSettings): boolean {
 export type GridHeaderMode = 'pinned' | 'all' | 'hidden';
 
 export interface GridHeaderDeps {
-    host: {openAllApps(): void; back(): void};
+    host: {openAllApps(): void; back(): void; categories(): void};
 }
 
 export class GridHeader {
     readonly actor: St.BoxLayout;
+    /** All apps: the title as a button that opens the category menu. */
+    readonly titleButton: St.Button;
     private readonly _title: St.Label;
     private readonly _button: St.Button;
     private readonly _label: St.Label;
     private readonly _before: St.Icon;
     private readonly _after: St.Icon;
+    private readonly _categoryLabel: St.Label;
+    private _category = _('All apps');
     private _mode: GridHeaderMode = 'pinned';
 
     constructor(_scope: Scope, deps: GridHeaderDeps) {
         this.actor = new St.BoxLayout({style_class: 'spawn-grid-header', x_expand: true});
         this._title = new St.Label({style_class: 'spawn-grid-title', x_expand: true, y_align: Clutter.ActorAlign.CENTER});
         this.actor.add_child(this._title);
+
+        // The All apps title: reads as a title, is a button (the pan-down icon says so; hover / focus show the face).
+        this.titleButton = makeItemButton('spawn-nav-button spawn-grid-title-button');
+        this.titleButton.x_expand = true;
+        this.titleButton.x_align = Clutter.ActorAlign.START;
+        this.titleButton.y_align = Clutter.ActorAlign.CENTER;
+        const titleBox = new St.BoxLayout({style_class: 'spawn-grid-title-box'});
+        this._categoryLabel = new St.Label({style_class: 'spawn-grid-title', y_align: Clutter.ActorAlign.CENTER});
+        this._categoryLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        titleBox.add_child(this._categoryLabel);
+        titleBox.add_child(new St.Icon({icon_name: 'pan-down-symbolic', icon_size: 16, style_class: 'spawn-grid-title-icon', y_align: Clutter.ActorAlign.CENTER}));
+        const titleFace = makeFace('spawn-nav-surface spawn-grid-title-face', titleBox);
+        titleFace.x_expand = false;
+        this.titleButton.set_child(titleFace);
+        wireItem(this.titleButton, {activate: () => deps.host.categories()});
+        this.actor.add_child(this.titleButton);
 
         this._button = makeItemButton('spawn-nav-button spawn-grid-header-button');
         this._button.x_expand = false;
@@ -98,15 +122,32 @@ export class GridHeader {
         this._mode = mode;
         this.actor.visible = mode !== 'hidden';
         const pinned = mode === 'pinned';
-        this._title.text = pinned ? _('Pinned') : _('All apps');
+        this._title.visible = pinned;
+        this.titleButton.visible = mode === 'all';
+        if (mode === 'all')
+            this.actor.add_style_class_name('spawn-grid-header-menu');
+        else
+            this.actor.remove_style_class_name('spawn-grid-header-menu');
+        this._title.text = _('Pinned');
         this._label.text = pinned ? _('All apps') : _('Pinned');
         this._before.visible = !pinned;
         this._after.visible = pinned;
         nameItem(this._button, pinned ? _('Show all apps') : _('Back to pinned apps'), {label: this._label});
+        this.setCategory(this._category);
     }
 
+    setCategory(name: string): void {
+        this._category = name;
+        this._categoryLabel.text = name;
+        nameItem(this.titleButton, _('%s, choose a category').format(name));
+    }
+
+    /** The title button (All apps) first, then the pill, left to right. */
     group(): Group | null {
-        return this.actor.visible ? {id: 'nav', items: [this._button], cols: 1} : null;
+        if (!this.actor.visible)
+            return null;
+        const items = this._mode === 'all' ? [this.titleButton, this._button] : [this._button];
+        return {id: 'nav', items, cols: items.length};
     }
 }
 

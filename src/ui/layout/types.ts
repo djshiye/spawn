@@ -8,7 +8,7 @@
 //   ViewId          the views the left pane can show ('folder' is the popup over another view)
 //   LayoutState     the few facts every controller reads (current view, open, destroyed, anchor side...);
 //                   only the coordinator (SpawnLayout) writes them
-//   Group           one keyboard group: a list or grid of focusable items with `cols` columns
+//   Group           one keyboard group: a list or grid of focusable items with `cols` columns (or its own `move`)
 //   Dir             an arrow direction
 //   TileEntry       a cached pinned tile with the scope that owns its drag / drop wiring
 
@@ -63,6 +63,14 @@ export interface Group {
     id: string;
     items: Clutter.Actor[];
     cols: number;
+    /**
+     * A group whose items are not a plain grid of `cols` columns (the Grid layout's All apps: letter headings are rows
+     * of their own, groups end on short rows) steps itself: the item an arrow key reaches from `index`, or -1 for
+     * Up / Down past its first / last row (the focus then leaves the group). Left / Right always stay inside the group.
+     */
+    move?(index: number, dir: Dir): number;
+    /** The item `focusMain` starts on instead of the first one. */
+    entry?: number;
 }
 
 export interface TileEntry {
