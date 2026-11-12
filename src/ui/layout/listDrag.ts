@@ -6,8 +6,14 @@
 // the app at the end); keeping the dragged app over it for SPRING_MS switches the left pane to Pinned with
 // the drag still running, so it can be dropped between entries or onto a folder (ui/dnd.ts / model/pinnedDrop.ts
 // do the rest). Dropping on a pinned app moves it (never a duplicate). The store change goes through the
-// Undo banner ("Pinned “X”"). Only offered when Back leads to Pinned (a pinned start view), and a drag
-// from search results does not spring (switching view would clear the query and destroy the dragged row).
+// Undo banner ("Pinned “X”"). Only offered when Back leads to Pinned (a pinned start view; the Grid layout's
+// start view is always the pinned grid), and a drag from search results does not spring (switching view would
+// clear the query and destroy the dragged row).
+//
+// Grid layout: there is no Back row; the header's "Pinned" pill of the All apps view takes its part (label
+// "Drop to pin", drop-ready style, drop pins at the end, 500 ms rest springs to the Pinned view with the drag
+// running). Search results have no header in Grid, hence no pill to drop on: their rows are not drag sources
+// there (nothing to offer a drag that cannot be dropped anywhere useful, and no layout jump mid-drag).
 //
 // While it lasts the pointer carries a compact chip (icon + name) rather than a clone of the row.
 //
@@ -67,6 +73,8 @@ export class ListDrag {
 
     attach(row: St.Widget, id: string, name: string): void {
         if (!id || !this._deps.leftPane.pinnedViaBack())
+            return;
+        if (this._deps.leftPane.gridLayout() && this._deps.searching())
             return;
         enableDrag(this._scope, row, {
             id,

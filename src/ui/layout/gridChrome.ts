@@ -4,7 +4,10 @@
 // shows in pages), page dots, and a footer. This module builds the three pieces the classic two-pane layout
 // does not have and that the coordinator (ui/layout.ts) and LeftPane arrange:
 //   GridHeader   "Pinned" + an "All apps" pill on the start view; "All apps" + a "Pinned" pill in All Apps;
-//                hidden in search results and other views
+//                hidden in search results and other views. While an app is dragged out of a list the "Pinned" pill
+//                of All Apps is Classic's Back button: "Drop to pin" (pin icon, drop-ready style), a drop on it
+//                pins the app at the end, resting on it springs to Pinned (ListDrag). Search results have no
+//                header, so a drag from there has no pill to drop on (their rows are not drag sources in Grid)
 //   GridFooter   the user card, the folder shortcuts as icon buttons, and the power bar, in one row
 //   GridPager    the pinned grid in whole pages: the scroll view shows exactly N rows, the wheel / touchpad and
 //                the keyboard move a page at a time, page dots under it (click one to jump); the menu's height is
@@ -12,8 +15,9 @@
 //
 // Public API:
 //   isGridLayout(settings): boolean
-//   new GridHeader(scope, deps)        deps: {host: {openAllApps(), back()}}
+//   new GridHeader(scope, deps)        deps: {host: {openAllApps(), back()}, store: PinnedStore}
 //     header.actor / header.setMode('pinned' | 'all' | 'hidden') / header.group(): Group | null
+//     header.setPinDrag(on) / header.isPill(actor)   the pill as the "Drop to pin" target of a list drag
 //   new GridFooter(scope, services, deps)   deps: {host, tooltips, context}
 //     footer.actor / footer.build() / footer.group(): Group | null
 //   new GridPager(scope, deps)         deps: {stack(), column(), trim(px), enabled(), settings}
@@ -23,6 +27,12 @@
 //     pager.reset()                     back to the first page (menu opens)
 //     pager.relayout()                  re-measure rows (settings / tiles changed)
 //     pager.page / pager.pages / pager.rows   current page, page count, rows per page (0: not paging)
+//     pager.turn(dir): boolean          turn one page (animated) when the pinned grid shows in pages; false: not paging
+//     pager.showTile(tile)              turn (no animation) to the page holding `tile`: a folder opens next to it
+//   Drags (ui/dnd.ts setDragPaging): while a drag that can drop into the pinned grid runs, resting in the top / bottom
+//   edge zone of the paged grid (a third of a row, at least 24 px) turns one whole page after 450 ms and again every
+//   700 ms; resting on a page dot for 400 ms jumps to its page. The dot of the page to come is lit meanwhile. No
+//   pixel auto-scroll over the paged grid, so the drag never ends between two pages.
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
@@ -33,6 +43,8 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 
 import {error} from '../../core/log.js';
 import type {Scope} from '../../core/scope.js';
+import type {PinnedStore} from '../../model/pinned.js';
+import {acceptDrops, setDragPaging} from '../dnd.js';
 import type {Services} from '../../core/services.js';
 import type {Entry, SpawnSettings} from '../../core/settings.js';
 import type {AppContextMenu} from '../contextMenu.js';
@@ -55,6 +67,8 @@ export type GridHeaderMode = 'pinned' | 'all' | 'hidden';
 
 export interface GridHeaderDeps {
     host: {openAllApps(): void; back(): void};
+    /** Where a list app dropped on the pill is pinned. */
+    store: PinnedStore;
 }
 
 export class GridHeader {
@@ -65,8 +79,9 @@ export class GridHeader {
     private readonly _before: St.Icon;
     private readonly _after: St.Icon;
     private _mode: GridHeaderMode = 'pinned';
+    private _pinDrag = false;
 
-    constructor(_scope: Scope, deps: GridHeaderDeps) {
+    constructor(scope: Scope, deps: GridHeaderDeps) {
         this.actor = new St.BoxLayout({style_class: 'spawn-grid-header', x_expand: true});
         this._title = new St.Label({style_class: 'spawn-grid-title', x_expand: true, y_align: Clutter.ActorAlign.CENTER});
         this.actor.add_child(this._title);
@@ -91,18 +106,49 @@ export class GridHeader {
             },
         });
         this.actor.add_child(this._button);
+        // Classic's Back button takes dragged list apps ("pin at the end"); in All apps the pill is that button.
+        acceptDrops(scope, this._button, deps.store, {kind: 'back'}, {enabled: () => this._mode === 'all'});
         this.setMode('pinned');
     }
 
     setMode(mode: GridHeaderMode): void {
         this._mode = mode;
         this.actor.visible = mode !== 'hidden';
-        const pinned = mode === 'pinned';
+        this._render();
+    }
+
+    /**
+     * An app is dragged out of a list: in All apps the "Pinned" pill says "Drop to pin" and is marked as the drop
+     * target (Classic's Back button does the same). Reverted when the drag ends; on the Pinned view (after the
+     * spring-load) the pill is the plain "All apps" one again.
+     */
+    setPinDrag(on: boolean): void {
+        this._pinDrag = on;
+        this._render();
+    }
+
+    /** Is `actor` the pill or inside it (the spring-loaded hover target of a drag from a list)? */
+    isPill(actor: Clutter.Actor | null): boolean {
+        for (let a = actor; a; a = a.get_parent()) {
+            if (a === this._button)
+                return true;
+        }
+        return false;
+    }
+
+    private _render(): void {
+        const pinned = this._mode === 'pinned';
+        const drop = this._pinDrag && this._mode === 'all';
         this._title.text = pinned ? _('Pinned') : _('All apps');
-        this._label.text = pinned ? _('All apps') : _('Pinned');
+        this._label.text = drop ? _('Drop to pin') : pinned ? _('All apps') : _('Pinned');
+        this._before.icon_name = drop ? 'view-pin-symbolic' : 'go-previous-symbolic';
         this._before.visible = !pinned;
         this._after.visible = pinned;
-        nameItem(this._button, pinned ? _('Show all apps') : _('Back to pinned apps'), {label: this._label});
+        if (drop)
+            this._button.add_style_class_name('spawn-drop-ready');
+        else
+            this._button.remove_style_class_name('spawn-drop-ready');
+        nameItem(this._button, drop ? _('Drop to pin') : pinned ? _('Show all apps') : _('Back to pinned apps'), {label: this._label});
     }
 
     group(): Group | null {
@@ -241,6 +287,13 @@ export interface GridPagerDeps {
 /** Wheel / touchpad: a smooth scroll this far (in scroll units) turns one page. */
 const SMOOTH_STEP = 1.0;
 const PAGE_MS = 220;
+/** A drag resting in the top / bottom edge zone turns a page after this long, then again every EDGE_REPEAT_MS. */
+const EDGE_FIRST_MS = 450;
+const EDGE_REPEAT_MS = 700;
+/** A drag resting on a page dot jumps to its page after this long. */
+const DOT_HOVER_MS = 400;
+/** The edge zone: a third of a row, at least this many px. */
+const EDGE_MIN_PX = 24;
 /** Rows of pinned apps on a page when the screen has the room: 4 x 6 = 24 apps at the default width. */
 const MIN_ROWS = 4;
 
@@ -261,6 +314,15 @@ export class GridPager {
     private _relayoutId = 0;
     private _dotsSig = '';
     private _destroyed = false;
+    private readonly _scope: Scope;
+    /** Drag paging: the edge being held (-1 up, 1 down, 0 none) and its timer, the dot being hovered and its timer. */
+    private _edgeDir = 0;
+    private _edgeCancel: (() => void) | null = null;
+    private _dotHover = -1;
+    private _dotCancel: (() => void) | null = null;
+    /** The page a held edge / dot is about to turn to (its dot is lit), -1 none. */
+    private _armed = -1;
+    private _pointer: {x: number; y: number; target: Clutter.Actor | null} | null = null;
     /** Pages of the pinned grid (its rows over the rows on one page). */
     private _gridPages = 1;
     /** The scroll view the pager changed (sizes, classes), so Classic can undo it once. */
@@ -268,10 +330,17 @@ export class GridPager {
 
     constructor(scope: Scope, deps: GridPagerDeps) {
         this._deps = deps;
+        this._scope = scope;
         this.dots = new St.BoxLayout({style_class: 'spawn-grid-dots', x_align: Clutter.ActorAlign.CENTER, visible: false});
         markToolbar(this.dots, _('Pages'));
+        setDragPaging(scope, {
+            handles: view => view === this._scroll && this._active(),
+            motion: (x, y, target) => this._dragMotion(x, y, target),
+            end: () => this._dragEnd(),
+        });
         scope.add(() => {
             this._destroyed = true;
+            this._dragEnd();
             const laters = global.compositor.get_laters();
             if (this._laterId)
                 laters.remove(this._laterId);
@@ -329,6 +398,29 @@ export class GridPager {
             this._goTo(Math.floor((top + 1) / this._pageH), false);
             return false;
         });
+    }
+
+    /** Turn one page (animated, like the wheel). false: the pinned grid is not showing in pages. */
+    turn(dir: number): boolean {
+        if (!this._active() || !this._shown || this._pageH <= 0)
+            return false;
+        this._goTo(this.page + dir, true);
+        return true;
+    }
+
+    /**
+     * Show the page holding `tile`, at once: a folder popup opens next to its tile, which must be on screen.
+     * Counted by row, not measured, so a tile that was just added (New Folder) and is not allocated yet counts too.
+     */
+    showTile(tile: Clutter.Actor): void {
+        if (!this._active() || !this._grid?.contains(tile))
+            return;
+        this.relayout();
+        if (this._pageH <= 0 || this.rows <= 0)
+            return;
+        const row = this._grid.get_children().findIndex(r => r.contains(tile));
+        if (row >= 0)
+            this._goTo(Math.floor(row / this.rows), false);
     }
 
     /** Dev hook: what the pager measured last. */
@@ -452,6 +544,105 @@ export class GridPager {
         this._syncDots();
     }
 
+    // ---- drags ----
+
+    /** Which way would the pointer at (x, y) turn the page: -1 / 1 in the top / bottom edge zone of the grid, else 0. */
+    private _edgeAt(x: number, y: number, target: Clutter.Actor | null): number {
+        const scroll = this._scroll;
+        if (!scroll?.mapped || !target || !scroll.contains(target))
+            return 0;
+        const [sx, sy] = scroll.get_transformed_position();
+        const [sw, sh] = scroll.get_transformed_size();
+        if (!(x >= sx && x <= sx + sw))
+            return 0;
+        const zone = Math.max(EDGE_MIN_PX, Math.round(this._pageH / Math.max(1, this.rows) / 3));
+        const dir = y < sy + zone ? -1 : y > sy + sh - zone ? 1 : 0;
+        return dir !== 0 && this.page + dir >= 0 && this.page + dir < this.pages ? dir : 0;
+    }
+
+    private _dragMotion(x: number, y: number, target: Clutter.Actor | null): void {
+        if (!this._active() || !this._shown || this._pageH <= 0 || this.pages < 2) {
+            this._dragEnd();
+            return;
+        }
+        this._pointer = {x, y, target};
+        const dot = target && this.dots.visible ? this.dots.get_children().findIndex(d => d === target || d.contains(target)) : -1;
+        if (dot >= 0) {
+            this._setEdge(0);
+            this._hoverDot(dot);
+            return;
+        }
+        this._hoverDot(-1);
+        this._setEdge(this._edgeAt(x, y, target));
+    }
+
+    private _dragEnd(): void {
+        this._pointer = null;
+        this._setEdge(0);
+        this._hoverDot(-1);
+    }
+
+    private _setEdge(dir: number): void {
+        if (dir === this._edgeDir)
+            return;
+        this._edgeCancel?.();
+        this._edgeCancel = null;
+        this._edgeDir = dir;
+        this._arm(dir !== 0 ? this.page + dir : -1);
+        if (dir !== 0)
+            this._edgeCancel = this._scope.timeout(EDGE_FIRST_MS, () => this._edgeFire());
+    }
+
+    private _edgeFire(): void {
+        this._edgeCancel = null;
+        const p = this._pointer;
+        const dir = this._edgeDir;
+        if (!p || dir === 0 || this._edgeAt(p.x, p.y, p.target) !== dir) {
+            this._setEdge(0);
+            return;
+        }
+        this._goTo(this.page + dir, true);
+        // Still held: the next page after a while, as long as there is one.
+        if (this.page + dir >= 0 && this.page + dir < this.pages) {
+            this._arm(this.page + dir);
+            this._edgeCancel = this._scope.timeout(EDGE_REPEAT_MS, () => this._edgeFire());
+        } else {
+            this._setEdge(0);
+        }
+    }
+
+    private _hoverDot(index: number): void {
+        if (index === this._dotHover)
+            return;
+        this._dotCancel?.();
+        this._dotCancel = null;
+        this._dotHover = index;
+        if (index < 0 || index === this.page) {
+            if (this._edgeDir === 0)
+                this._arm(-1);
+            return;
+        }
+        this._arm(index);
+        this._dotCancel = this._scope.timeout(DOT_HOVER_MS, () => {
+            this._dotCancel = null;
+            if (this._dotHover === index) {
+                this._goTo(index, true);
+                this._arm(-1);
+            }
+        });
+    }
+
+    /** Light the dot of the page a held edge / dot is about to turn to (-1: none). */
+    private _arm(page: number): void {
+        this._armed = page;
+        (this.dots.get_children() as St.Widget[]).forEach((dot, i) => {
+            if (i === page)
+                dot.add_style_class_name('spawn-grid-dot-armed');
+            else
+                dot.remove_style_class_name('spawn-grid-dot-armed');
+        });
+    }
+
     private _onScroll(event: Clutter.Event): boolean {
         if (!this._active() || this._pageH <= 0)
             return Clutter.EVENT_PROPAGATE;
@@ -523,6 +714,8 @@ export class GridPager {
             });
             nameItem(dot, _('Page %d of %d').format(i + 1, this.pages));
             dot.connect('clicked', () => this._goTo(i, true));
+            if (i === this._armed)
+                dot.add_style_class_name('spawn-grid-dot-armed');
             this.dots.add_child(dot);
         }
     }

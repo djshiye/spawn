@@ -2,7 +2,8 @@
 //
 // Responsibility: create the FolderView (the card over both panes, on top of the panes in the layout root)
 // the first time a folder opens, feed it the grid metrics, open a folder next to its tile and focus it,
-// and start a rename. Which view is under the popup and the switch to the 'folder' view stay with the
+// and start a rename. In the Grid layout the pinned grid first turns to the page holding the folder's tile
+// (host.revealTile), so the card never anchors at a tile scrolled out of view; closing leaves the page as it is. Which view is under the popup and the switch to the 'folder' view stay with the
 // layout (`host.setView`).
 //
 // Public API:
@@ -35,6 +36,8 @@ export interface FolderControllerDeps {
         back(): void;
         /** The pinned tile of folder `uuid` when the pinned view shows it. */
         folderTile(uuid: string): St.Widget | null;
+        /** Grid layout: turn the pinned grid to the page holding `tile` (it is anchored to, so it must be on screen). */
+        revealTile(tile: St.Widget): void;
     };
 }
 
@@ -88,6 +91,9 @@ export class FolderController {
         const fv = this.ensure();
         // The card opens next to the folder it came from when that folder is on screen (pinned view).
         const tile = this._state.view === 'pinned' ? this._host.folderTile(uuid) : null;
+        // Grid: the tile may be on another page than the one showing; the card opens next to it, so show it first.
+        if (tile)
+            this._host.revealTile(tile);
         // The folder vanished (deleted elsewhere, emptied): show() already went back to the default
         // view, so do not switch to an empty folder view.
         if (!fv.show(uuid, this._state.isOpen, tile?.mapped ? tile : null))
