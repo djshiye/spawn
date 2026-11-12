@@ -9,18 +9,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
-- **Grid layout:** a new "Menu layout" setting under Settings > Menu. **Classic** stays the default and is unchanged.
-  **Grid** is a single column with the search bar on top, your pinned apps as large icons shown a page at a time
-  with page dots, an "All apps" button, and a footer with your user card, folder shortcuts and power buttons.
+- **Grid layout:** a new choice under Settings > Menu > Menu layout. **Classic** stays the default and is unchanged.
+  **Grid** is one tidy column: the search bar on top, your pinned apps as large icons shown a page at a time with
+  page dots, an "All apps" button to see everything, and a bottom row with your user card, your folder shortcuts and
+  the power buttons. No recent files, no suggestions.
 - Turn pages with the mouse wheel, Page Up and Page Down, Home and End, or the dots.
 - In Grid, settings that only Classic uses are hidden. Their values are kept for when you switch back.
-
-### Added
-
-- **Grid layout:** a new choice under Settings, Menu, Menu layout. One tidy column: the search bar, your pinned
-  apps as large icons shown a page at a time (page dots, Page Up / Page Down, the mouse wheel), an "All apps"
-  button to see everything, and a bottom row with your name, your folders and the power buttons. No recent files,
-  no suggestions. Classic stays the default.
 
 ## [1.3.1] - 2026-11-11
 

@@ -10,8 +10,11 @@ A fast, resilient application menu for GNOME Shell 49, 50 and 51. It replaces
 - native look: shell theme classes plus the GNOME accent colour, optional custom colours,
 - one-click import of ArcMenu settings, pinned apps and pinned folders (with an Undo button, and an "Import and Disable ArcMenu" shortcut); every Reset in the preferences can be undone too.
 
-Status: feature complete for the v1 scope in `docs/SPEC.md` (panel button, two-pane menu, pinned
-apps and folders with drag and drop, search, hotkeys, theming, preferences, ArcMenu import).
+Status: in active use and released as signed Fedora packages. Two menu layouts: **Classic** (the two-pane menu,
+the default) and **Grid** (one column with a paged grid of pinned apps). Pinned apps and folders with drag and drop,
+ranked search with a calculator, unit conversion, Settings panels and app actions, a standalone runner, hotkeys,
+theming, screen reader support, and a one-click ArcMenu import. See `CHANGELOG.md` for what each release changed and
+`ROADMAP.md` for what comes next.
 
 ## Credits and licence
 
@@ -37,10 +40,13 @@ npm run build       # tools/build.sh -> build/ and dist/spawn@djshiye.github.io.
 ### Continuous integration
 
 `.github/workflows/ci.yml` runs on every pull request and push to `main` (documentation-only changes excepted):
-typecheck, lint, unit tests, `npm audit` and the GNOME Shell 49 / 50 compatibility typechecks. Pull requests to `main`
-that touch `src/`, `schemas/`, `stylesheet.css` or `tools/` also run the `smoke` and `lifecycle` scenarios in a headless
-GNOME Shell 51 (`tools/container/Dockerfile.ubuntu`, no network). Actions are pinned by commit SHA and kept up to date by
-Dependabot. The full harness (`tools/dev-shell.sh all`) and the Fedora containers stay a local step before a release.
+typecheck, lint, unit tests (including the preferences test, which CI requires), `npm audit` and the GNOME Shell 49 /
+50 compatibility typechecks. Pull requests to `main` that touch `src/`, `schemas/`, `stylesheet.css` or `tools/` also
+run six scenarios in a headless GNOME Shell 51 (`tools/container/Dockerfile.ubuntu`, no network): `smoke`,
+`lifecycle`, `core-panel-passthrough`, `core-tray-passthrough`, `core-panel-hover` and `core-fullscreen`. When one
+fails, its screenshots and logs are uploaded for seven days. Actions are pinned by commit SHA and kept up to date by
+Dependabot. The full harness (`tools/dev-shell.sh all`, with `--with-dtp` for the real Dash to Panel) stays a local
+step before a release.
 Security reports: see `SECURITY.md`.
 
 ## Install
