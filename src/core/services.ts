@@ -28,6 +28,7 @@ import {AppActionsProvider} from '../search/providers/appActions.js';
 import {AppsProvider} from '../search/providers/apps.js';
 import {CalculatorProvider, UnitConversionProvider} from '../search/providers/calculator.js';
 import {RecentFilesProvider} from '../search/providers/recentFiles.js';
+import {PowerActionsProvider} from '../search/providers/power.js';
 import {SettingsPanelsProvider} from '../search/providers/settingsPanels.js';
 import {ShellProviders} from '../search/providers/shellProviders.js';
 import {WindowsProvider} from '../search/providers/windows.js';
@@ -109,6 +110,7 @@ export class Services {
             engine.addProvider(new AppActionsProvider(this.appIndex, this.settings));
             engine.addProvider(new AppsProvider(this.appIndex, this.settings));
             engine.addProvider(new SettingsPanelsProvider(this.settings));
+            engine.addProvider(new PowerActionsProvider(scope, this.settings));
             engine.addProvider(new WindowsProvider(this.settings));
             this._recent = new RecentFilesProvider(scope, this.settings);
             engine.addProvider(this._recent);

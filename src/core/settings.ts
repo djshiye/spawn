@@ -76,6 +76,7 @@ export interface SettingsMap {
     'runner-menu-width': number;
     'runner-menu-height': number;
     'runner-default-view': RunnerDefaultView;
+    'runner-run-commands': boolean;
     'position-in-panel': MenuPosition;
     'menu-button-position-offset': number;
     'menu-button-appearance': MenuButtonAppearance;
@@ -139,6 +140,7 @@ export interface SettingsMap {
     'search-unit-conversion': boolean;
     'search-settings-panels': boolean;
     'search-app-actions': boolean;
+    'search-power-actions': boolean;
     'show-hidden-recent-files': boolean;
     'apps-show-extra-details': boolean;
     'apps-show-generic-names': boolean;

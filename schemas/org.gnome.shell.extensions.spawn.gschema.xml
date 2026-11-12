@@ -152,6 +152,11 @@
       <summary>What the runner shows before anything is typed</summary>
       <description>Default: nothing (just the search box). Pinned_Apps / Frequent_Apps: that list of apps</description>
     </key>
+    <key name="runner-run-commands" type="b">
+      <default>false</default>
+      <summary>Run what is typed in the runner</summary>
+      <description>When the text typed in the runner is a command that exists, a last row offers to run it (never through a shell)</description>
+    </key>
     <key name="position-in-panel" enum="org.gnome.shell.extensions.spawn.menu-position">
       <default>'Left'</default>
       <summary>Position of the menu button in the panel</summary>
@@ -470,6 +475,11 @@
       <default>true</default>
       <summary>Search app actions</summary>
       <description>Find the actions of an app, such as New Private Window of Firefox, and run them</description>
+    </key>
+    <key name="search-power-actions" type="b">
+      <default>false</default>
+      <summary>Power actions in the search</summary>
+      <description>Typing lock, log out, restart, power off and the like shows the matching power actions, with the same confirmation as the power buttons</description>
     </key>
     <key name="show-hidden-recent-files" type="b">
       <default>false</default>
