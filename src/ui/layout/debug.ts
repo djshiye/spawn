@@ -69,6 +69,7 @@ export function layoutDebugState(p: DebugParts): Record<string, unknown> {
         folderTiles: p.state.view === 'folder' ? p.folders.view?.tiles().length ?? 0 : 0,
         folderColumns: p.state.view === 'folder' ? p.folders.view?.columns ?? 0 : 0,
         results: p.searchCtl.results?.rows().length ?? 0,
+        resultTitles: p.searchCtl.results?.titles() ?? [],
         links: p.leftPane.links?.actor.visible ? p.leftPane.links.buttons().length : 0,
         extraRows: p.views.extraList?.rows().length ?? 0,
         places: [p.rightPane.places.devices().length, p.rightPane.places.network().length, p.rightPane.places.bookmarks().length],

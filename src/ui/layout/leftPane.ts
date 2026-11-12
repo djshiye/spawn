@@ -13,7 +13,8 @@
 //   left.searchOnTop(): boolean        where the entry should sit now (`Auto` follows the popup side)
 //   left.syncLinks()                   create / refill the quick links box
 //   left.updateNav()                   Back / All Apps / links visibility for the current view
-//   left.setPinDrag(on) / isBackTarget(actor) / pinnedViaBack()   Back as the "Drop to pin" target of a drag from a list
+//   left.setPinDrag(on) / isBackTarget(actor) / pinnedViaBack() / gridLayout()   Back (Grid: the header's pill) as the
+//                                      "Drop to pin" target of a drag from a list
 //   left.linksGroup() / navGroup()     keyboard groups
 //   LeftPaneHost                       what the pane asks of the layout (view switching, focus, Back)
 //
@@ -289,8 +290,10 @@ export class LeftPane {
 
     // ---- drag to pin ----
 
-    /** Is `target` the Back button or inside it (the spring-loaded hover target of a drag from a list)? */
+    /** Is `target` the Back button (Grid: the header's pill) or inside it (the spring-loaded hover target of a drag from a list)? */
     isBackTarget(target: Clutter.Actor | null): boolean {
+        if (this._metrics.grid)
+            return this._grid.header.isPill(target);
         for (let a = target; a; a = a.get_parent()) {
             if (a === this._backButton)
                 return true;
@@ -303,6 +306,8 @@ export class LeftPane {
      * says so ("Drop to pin"). Reverted when the drag ends.
      */
     setPinDrag(on: boolean): void {
+        // Grid: the same on the header's pill (All apps view only; Back is not in the layout).
+        this._grid.header.setPinDrag(on && this._metrics.grid);
         this._backLabel.text = on ? _('Drop to pin') : _('Back');
         this._backIcon.icon_name = on ? 'view-pin-symbolic' : 'go-previous-symbolic';
         this._backButton.accessible_name = this._backLabel.text;
@@ -312,8 +317,16 @@ export class LeftPane {
             this._backButton.remove_style_class_name('spawn-drop-ready');
     }
 
-    /** Can a drag from a list reach Pinned through Back (the start view is a pinned one)? */
+    /** The Grid layout is on. */
+    gridLayout(): boolean {
+        return this._metrics.grid;
+    }
+
+    /** Can a drag from a list reach Pinned through Back (the start view is a pinned one; in Grid it always is)? */
     pinnedViaBack(): boolean {
+        // Grid: the start view is always the pinned grid, whatever `default-menu-view` says (All apps tiles drag to pin).
+        if (this._metrics.grid)
+            return true;
         return isDefaultViewPinnedish(this._services.settings.get('default-menu-view'));
     }
 

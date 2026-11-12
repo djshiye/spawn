@@ -153,8 +153,9 @@ function runnerGroups(ctx: PrefsContext): Adw.PreferencesGroup[] {
             spinRow(ctx, 'runner-menu-height', 'Maximum height', 300, 1000, {step: 10, subtitle: 'The runner grows with its results up to this height'}),
             spinRow(ctx, 'runner-font-size', 'Font size', 0, 30, {subtitle: 'In points', special: [{value: 0, label: 'Menu font'}]}),
             enumRow(ctx, 'runner-default-view', 'Before typing', [['Default', 'Nothing'], ['Pinned_Apps', 'Pinned apps'], ['Frequent_Apps', 'Frequent apps']]),
+            switchRow(ctx, 'runner-run-commands', 'Run commands', 'Run what you type, like the Run dialog (Alt+F2)'),
         ], {
-            reset: ['runner-position', 'runner-menu-width', 'runner-menu-height', 'runner-font-size', 'runner-default-view'],
+            reset: ['runner-position', 'runner-menu-width', 'runner-menu-height', 'runner-font-size', 'runner-default-view', 'runner-run-commands'],
         }),
     ];
 }

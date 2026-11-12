@@ -5,7 +5,9 @@
 // Apps, the shortcuts, the power buttons, the category column); the navigator moves the focus between items and
 // groups (arrows, Tab / Shift+Tab as pane cycling, Home / End / Page Up / Page Down inside a list). It knows
 // nothing about how a group is built: the layout gives it `NavSources`, one provider per group. A different
-// layout (another arrangement of panes) supplies its own sources and positions.
+// layout (another arrangement of panes) supplies its own sources and positions. A group that is not a plain
+// grid of `cols` columns (the Grid layout's All apps: headings are rows of their own) steps itself through
+// `Group.move` (types.ts) and may name the item the keyboard starts on (`Group.entry`).
 //
 // Public API:
 //   new Navigator(state, sources)
@@ -136,7 +138,8 @@ export class Navigator {
                 this.focusItem(this._src.navGroup() ?? undefined);
             return;
         }
-        this.focusItem(last ? groups[groups.length - 1] : groups[0], last ? 'last' : 'first');
+        const target = last ? groups[groups.length - 1] : groups[0];
+        this.focusItem(target, last ? 'last' : target.entry ?? 'first');
     }
 
     move(dir: Dir): boolean {
@@ -172,17 +175,23 @@ export class Navigator {
         const groupIdx = col.indexOf(group);
 
         const vertical = (delta: number): boolean => {
-            const row = Math.floor(index / cols);
-            const target = index + delta * cols;
-            if (cols > 1 && Math.floor(target / cols) >= 0 && target >= 0 && target < n && (cols > 1 && !ROW_GROUPS.has(group.id)))
-                return this.focusItem(group, target);
-            if (cols > 1 && delta > 0 && !ROW_GROUPS.has(group.id)) {
-                const lastRow = Math.floor((n - 1) / cols);
-                if (row < lastRow)
-                    return this.focusItem(group, n - 1);
+            if (group.move) {
+                const to = group.move(index, delta > 0 ? 'down' : 'up');
+                if (to >= 0)
+                    return this.focusItem(group, to);
+            } else {
+                const row = Math.floor(index / cols);
+                const target = index + delta * cols;
+                if (cols > 1 && Math.floor(target / cols) >= 0 && target >= 0 && target < n && (cols > 1 && !ROW_GROUPS.has(group.id)))
+                    return this.focusItem(group, target);
+                if (cols > 1 && delta > 0 && !ROW_GROUPS.has(group.id)) {
+                    const lastRow = Math.floor((n - 1) / cols);
+                    if (row < lastRow)
+                        return this.focusItem(group, n - 1);
+                }
+                if (cols === 1 && index + delta >= 0 && index + delta < n)
+                    return this.focusItem(group, index + delta);
             }
-            if (cols === 1 && index + delta >= 0 && index + delta < n)
-                return this.focusItem(group, index + delta);
             if (inCats) {
                 // The category column is not one of the left column's groups: leave it explicitly.
                 const search = this._src.searchGroup();
@@ -202,6 +211,8 @@ export class Navigator {
                     return this.focusItem(leftCol.find(g => g.id === 'apps'), 'first');
                 return true;
             }
+            if (group.move)
+                return this.focusItem(group, group.move(index, delta < 0 ? 'left' : 'right'));
             const rowStart = cols > 1 ? Math.floor(index / cols) * cols : 0;
             const rowEnd = cols > 1 ? Math.min(n - 1, rowStart + cols - 1) : 0;
             if (cols > 1) {

@@ -1,44 +1,78 @@
 # Spawn roadmap
 
-Written November 2026, against `main` at 1.0.0 (GNOME Shell 49, 50 and 51; Fedora DNF repository only).
-This is a plan, not a promise. It is reviewed after each release.
+Reviewed November 2026, against `main` at 1.4.0 (GNOME Shell 49, 50 and 51; Fedora DNF repository only, signed).
+This is a plan, not a promise. It is reviewed after each release. The original 1.0 plan is kept below with each
+item's status, so the numbers used in issues and notes still mean the same thing.
 
 ## Where Spawn stands
 
-Spawn 1.0 does what it set out to do: it replaces ArcMenu's two-pane "arcmenu" layout for one user, without
-ArcMenu's crashes, and imports ArcMenu's settings in one click. The foundations are strong: every resource is
-owned by a `Scope`, the panel is re-resolved on every Dash to Panel restart, the menu is built lazily, and a
-headless GNOME Shell harness tests the real UI.
+Spawn replaces ArcMenu's two-pane layout without ArcMenu's crashes, imports ArcMenu's settings in one click, and has
+grown well past the 1.0 scope:
 
-The gaps are mostly outside the core menu:
+- **Two layouts:** Classic (two panes, the default) and Grid (one column, a paged grid of pinned apps, 1.4.0).
+- **Search is the strongest part:** ranked with typo tolerance and usage, a calculator, unit conversion, Settings
+  panels and app actions (1.3.0).
+- **Safe to install and to change:** signed packages and repository metadata, CI on every pull request with a headless
+  GNOME Shell 51, a split layout module, and an accessibility pass (screen reader names, focus rings, reduced motion).
+- **Fast:** about 20 ms from open to painted, under 1 ms per app search with 300+ apps, no actor leaks.
 
-- **Little is checked automatically.** CI runs typecheck, lint and unit tests, and a headless-shell smoke check on
-  pull requests to `main`; the full harness is still run by hand.
-- **Packages are unsigned.** The DNF repository uses `gpgcheck=0`.
-- **Fedora only,** by choice: Spawn is distributed through its own DNF repository (decided November 2026).
-- **English only,** although `gettext` is already wired in.
-- **Little accessibility work.** Only a handful of widgets set an accessible name, so a screen reader hears
-  very little.
-- **One layout.** ArcMenu offers 20+; Spawn offers one, plus the runner.
-- **`src/ui/layout.ts` is 1,863 lines** and almost every UI change touches it.
+What is still missing: web search as a fallback, touch gestures, open on hover / hot corner, free placement,
+translations, unread badges, and GNOME Shell 52 (due March 2027).
 
-## How Spawn compares
+## Next: Spawn 1.5.0
 
-| Area | ArcMenu | Spawn 1.0 | What people expect from a modern menu in 2026 |
-|---|---|---|---|
-| Stability across Dash to Panel restarts | Fragile (cached panels, prototype patches) | Solid, tested 10× in a row | Never breaks |
-| Open speed | Builds everything at enable | ~20 ms open to painted, lazy build | Instant, under one frame budget feels "native" |
-| App search | Provider order, no ranking | Ranked (prefix > word > substring > fuzzy), ~1.3 ms per query with PR #3 | Typo-tolerant, learns from use |
-| Layouts | 20+ | 1 (two-pane) + runner | 2–4 good ones beats 20 average ones |
-| Quick answers in search | Through GNOME providers only | Same | Calculator, unit conversion, "search the web for…", Settings panels |
-| Recently installed apps | Highlighted | Not migrated | "New" badge, then fades |
-| Hide an app from the menu | No (needs a menu editor) | No | Right-click → Hide |
-| Unread badges on apps | No | No | Count badges, like Dash to Panel |
-| Accessibility | Partial | Minimal | Full screen reader labels, visible focus, reduced motion |
-| Touch | Basic | Basic | Long-press for the context menu, larger targets on touch screens |
-| Translations | Many languages | English only | At least the top 10 languages |
-| Distribution | extensions.gnome.org | Fedora DNF repository, unsigned | One-click install, signed packages |
-| ArcMenu import | n/a | Yes, with preview and undo | n/a |
+Fixes and features from the November 2026 review of 1.4.0 (all chosen by Dino):
+
+1. Grid: drag an app from All apps onto the header pill to pin it.
+2. Grid: a folder on another page opens on its own page, inside the menu.
+3. Grid: Page Up / Page Down turn pages from the search box.
+4. Grid: dragging a pinned app to the edge of the grid turns whole pages.
+5. Grid: All apps as an icon grid with letter headings, a letter jump, and categories.
+6. Search: one best match across all sections ("display" finds the Displays panel).
+7. Search: power actions (lock, log out, restart, power off), off by default.
+8. Runner: run a typed command, like Alt+F2, off by default.
+
+## After 1.5.0
+
+9. "Search the web for…" as the last result (item 14 below).
+10. Touch: long press for the context menu, swipe to turn Grid pages (item 22).
+11. Open on hover and hot corner (item 18), and free menu placement (item 26).
+12. Translations (item 16) and unread badges (item 25).
+13. GNOME Shell 52 readiness (item 9), as soon as beta images exist.
+
+## Status of the original plan
+
+| # | Item | Status |
+|---|---|---|
+| 1 | Land the open work (PRs #1–#5) | Done, 1.0.x |
+| 2 | CI on GitHub Actions, `SECURITY.md`, `CHANGELOG.md` | Done (CI live since PR #11) |
+| 3 | Distribution: own DNF repository | Done |
+| 4 | Signed packages and repository metadata | Done, 1.1.0 |
+| 5 | Split `layout.ts` | Done, 1.3.0 |
+| 6 | Accessibility pass | Done, 1.1.0 and 1.2.0 |
+| 7 | Hide apps from the menu | Done, 1.1.0 |
+| 8 | "New" badge on recently installed apps | Done, 1.1.0 |
+| 9 | GNOME Shell 52 readiness | Waiting for 52 beta images |
+| 10 | Calculator in search | Done, 1.3.0 |
+| 11 | Unit conversion in search | Done, 1.3.0 |
+| 12 | Settings panels and app actions as results | Done, 1.3.0 |
+| 13 | Usage-aware ranking | Done (a "Clear usage history" button is still open) |
+| 14 | "Search the web for…" | After 1.5.0 |
+| 15 | A second layout: grid start | Done, 1.4.0 (quiet version: no Recommended row, by Dino's choice) |
+| 16 | Translations | After 1.5.0 |
+| 17 | Back up and restore settings | Done, 1.3.0 |
+| 18 | Open on hover and hot corner | After 1.5.0 |
+| 19 | Multi-monitor polish | Open |
+| 20 | Run a typed command from the runner | 1.5.0 |
+| 21 | Screen size checks | Checked in the sandbox at 720p, 150 % text and 4K 200 % (November 2026) |
+| 22 | Touch and tablet | After 1.5.0 (taps on panel icons fixed in 1.3.0) |
+| 23 | More layouts, picked by demand | Later |
+| 24 | File search beyond recent files | Later |
+| 25 | Unread badges | After 1.5.0 |
+| 26 | Free menu placement | After 1.5.0 |
+
+The original plan, as written for 1.0.0, follows. Its last two sections ("Not planned" and "How each release is
+judged") still apply.
 
 ## Effort scale
 

@@ -11,11 +11,14 @@
 //   new ViewManager(scope, services, state, deps)
 //   views.defaultView(): ViewId      the start view for the current settings
 //   views.canGoBack(): boolean       a view other than the start view shows, or a query is typed
-//   views.back()                     Escape / Back / the mouse back button
+//   views.back(toStart = false)      Escape / Back / the mouse back button (Grid: a category goes back to All apps first,
+//                                    unless `toStart`: the header's "Pinned" pill)
 //   views.openAllApps()              the All Apps button (`all-apps-button-action`)
 //   views.setView(view)              switch view ('folder' = the popup over the current one)
 //   views.mainGroups() / categoryGroup()   keyboard groups of the shown view / of its category column
 //   views.categories / extraList / extraScroll   the views built here (null until first shown)
+//   views.gridApps                   the Grid layout's All apps (layout/gridApps.ts; replaces the category list there)
+//   views.closeOverlay(): boolean    Escape: close the Grid All apps' letter picker / category menu, true when one was open
 
 import type Clutter from 'gi://Clutter';
 import type St from 'gi://St';
@@ -28,9 +31,12 @@ import {ExtraList} from '../widgets/extraList.js';
 import type {TileHost} from '../widgets/appTile.js';
 import type {SearchBox} from '../widgets/searchBox.js';
 import type {TooltipManager} from '../widgets/tooltip.js';
+import {GridAllApps} from './gridApps.js';
 import type {FolderController} from './folders.js';
 import type {FrequentView} from './frequentView.js';
+import type {GridHeader} from './gridChrome.js';
 import type {LeftPane} from './leftPane.js';
+import type {PaneMetrics} from './metrics.js';
 import type {Navigator} from './navigation.js';
 import type {PinnedView} from './pinnedView.js';
 import type {ScrollFactory} from './scrolls.js';
@@ -48,6 +54,9 @@ export interface ViewManagerDeps {
     searchCtl: SearchController;
     leftPane: LeftPane;
     nav: Navigator;
+    metrics: PaneMetrics;
+    /** The Grid layout's header: its title follows the category of All apps. */
+    header: GridHeader;
     host: {
         /** Close the popup. */
         close(): void;
@@ -56,6 +65,7 @@ export interface ViewManagerDeps {
 
 export class ViewManager {
     categories: CategoryList | null = null;
+    gridApps: GridAllApps | null = null;
     extraList: ExtraList | null = null;
     extraScroll: St.ScrollView | null = null;
     private readonly _scope: Scope;
@@ -71,6 +81,8 @@ export class ViewManager {
     private readonly _searchCtl: SearchController;
     private readonly _leftPane: LeftPane;
     private readonly _nav: Navigator;
+    private readonly _metrics: PaneMetrics;
+    private readonly _header: GridHeader;
     private readonly _host: ViewManagerDeps['host'];
 
     constructor(scope: Scope, services: Services, state: LayoutState, deps: ViewManagerDeps) {
@@ -87,6 +99,8 @@ export class ViewManager {
         this._searchCtl = deps.searchCtl;
         this._leftPane = deps.leftPane;
         this._nav = deps.nav;
+        this._metrics = deps.metrics;
+        this._header = deps.header;
         this._host = deps.host;
     }
 
@@ -106,9 +120,21 @@ export class ViewManager {
         return this._state.view !== this.defaultView() || this._search.text.length > 0;
     }
 
-    back(): void {
+    back(toStart = false): void {
         if (this._search.text.length > 0) {
             this._search.clear();
+            return;
+        }
+        // Grid: a category of All apps goes back to All apps first (the header's pill goes straight to Pinned).
+        const all = this.gridApps;
+        if (!toStart && this._state.view === 'all' && all && all.category !== 'all' && this._metrics.grid) {
+            all.show('all');
+            if (this._state.isOpen) {
+                if (this._search.actor.visible)
+                    this._search.focus();
+                else
+                    this._nav.focusMain();
+            }
             return;
         }
         const pointer = isPointerEvent();
@@ -134,7 +160,7 @@ export class ViewManager {
 
     openAllApps(): void {
         const s = this._services.settings;
-        // Grid layout: one A-Z list, no category column (one column has no room for it).
+        // Grid layout: the icon grid, its categories are a menu in the header (one column has no room for a column of them).
         const all = s.get('layout-style') === 'Grid' || s.get('all-apps-button-action') === 'All_Programs';
         this.setView(all ? 'all' : 'categories');
         this._nav.focusMain();
@@ -186,6 +212,12 @@ export class ViewManager {
             return [add(this._frequent.ensure())];
         case 'categories':
         case 'all': {
+            if (this._metrics.grid && view === 'all') {
+                const grid = this._ensureGridApps();
+                add(grid.actor);
+                grid.show('all');
+                return [grid.actor];
+            }
             // On the stage before the rows are built: the first one measures how many fill the view.
             const list = this._ensureCategories();
             add(list.actor);
@@ -220,6 +252,25 @@ export class ViewManager {
         }
     }
 
+    private _ensureGridApps(): GridAllApps {
+        if (!this.gridApps) {
+            this.gridApps = new GridAllApps(this._scope.child('grid apps'), this._services, {
+                tileHost: this._tileHost,
+                tooltips: this._tooltips,
+                metrics: this._metrics,
+                scrolls: this._scrolls,
+                titleButton: this._header.titleButton,
+                host: {titleChanged: name => this._header.setCategory(name)},
+            });
+        }
+        return this.gridApps;
+    }
+
+    /** Escape: the Grid All apps' letter picker / category menu closes first (focus back on what opened it). */
+    closeOverlay(): boolean {
+        return this.gridApps?.closeOverlay() ?? false;
+    }
+
     private _ensureCategories(): CategoryList {
         if (!this.categories)
             this.categories = new CategoryList(this._scope.child('categories'), this._services, this._tileHost);
@@ -236,6 +287,8 @@ export class ViewManager {
             return [{id: 'frequent', items: this._frequent.rows(), cols: 1}];
         case 'categories':
         case 'all':
+            if (this._metrics.grid && this._state.view === 'all' && this.gridApps)
+                return [this.gridApps.group()];
             return [{id: 'apps', items: this.categories?.appRows() ?? [], cols: 1}];
         case 'folder': {
             const fv = this._folders.view;
