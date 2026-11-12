@@ -18,7 +18,7 @@ import GLib from 'gi://GLib';
 import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-import {error} from '../core/log.js';
+import {error, warn} from '../core/log.js';
 import {detectCommand, type CommandEnv, type DetectedCommand} from '../search/command.js';
 
 const TITLE_MAX = 60;
@@ -72,7 +72,7 @@ export function runTypedCommand(cmd: DetectedCommand): void {
         const child = pid;
         GLib.child_watch_add(GLib.PRIORITY_DEFAULT, child, () => GLib.spawn_close_pid(child));
     } catch (e) {
-        error('could not run a typed command');
+        warn('could not run a typed command');
         try {
             const message = e instanceof Error ? e.message : String(e);
             Main.notifyError(_('Couldn’t run “%s”').replace('%s', shorten(cmd.line)), message);
