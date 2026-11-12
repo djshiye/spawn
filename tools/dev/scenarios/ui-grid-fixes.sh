@@ -54,8 +54,8 @@ expect_state "All apps shows" layout.view all
 expect "no drop-ready pill before the drag" "$(count spawn-drop-ready)" 0
 before="$(pinned_ids)"
 nb=$(echo "$before" | wc -w)
-src="$(center spawn-list-row 1)"; dst="$(center spawn-grid-header-button 0)"
-echo "second row at $src (Boxes, not pinned; bottles sorts first), pill at $dst"
+src="$(center spawn-tile 1)"; dst="$(center spawn-grid-header-button 0)"
+echo "second tile at $src (Boxes, not pinned; bottles sorts first), pill at $dst"
 ui_call Move $src >/dev/null; sleep 0.4
 ui_call Drag $src $dst >/dev/null
 sleep 0.78 # the pointer has just arrived on the pill (the drop follows 250 ms later, before the spring-load delay)
@@ -83,7 +83,7 @@ echo "-- spring-load to Pinned, drop between two tiles"
 ui_call ShowView pinned >/dev/null; sleep 0.9
 slot="$(frac spawn-tile 1 0.08 0.5)"
 ui_call ShowView all >/dev/null; sleep 1.2
-src="$(center spawn-list-row 1)"; dst="$(center spawn-grid-header-button 0)"
+src="$(center spawn-tile 1)"; dst="$(center spawn-grid-header-button 0)"
 ui_call Move $src >/dev/null; sleep 0.4
 ui_call DragVia $src $dst 1800 $slot >/dev/null
 sleep 2.7
