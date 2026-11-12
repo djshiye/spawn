@@ -171,7 +171,7 @@ Signing happens on the host (`tools/lib/signing.sh`), never in a container, so t
 3. Optional extra hardening, not required: an offline primary with a signing subkey, or a YubiKey (`keytocard`).
    `publish.sh` accepts those layouts too.
 4. Install the signing tool on the publishing machine: `sudo dnf install rpm-sign` (`rpmsign` is not in the `rpm` package; `publish.sh` says so if it is missing).
-5. Update the README's "Fedora (DNF repository)" section in the same commit as the first signed publish, so that the README and the
+5. Update the README's "Install" section in the same commit as the first signed publish, so that the README and the
    landing page agree. Replace the unsigned note with the fingerprint and these install steps:
 
    ```sh

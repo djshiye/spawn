@@ -5,6 +5,34 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-12
+
+### Added
+
+- **All apps in the Grid layout is now a grid of icons**, A to Z, with a small letter above each group. Click a
+  letter to jump straight to another one. The "All apps" title opens a list of categories (Games, Graphics,
+  Internet and so on) to see just those apps.
+- **Power actions in search:** type `lock`, `log out`, `suspend`, `restart` or `power off` and press Return. You get
+  the same confirmation as the power buttons. Off by default: turn it on under Settings > Search sources.
+- **Run a command from the runner:** with "Run commands" on (runner settings, off by default), type a command such as
+  `gnome-text-editor notes.txt` and the last row runs it, like the Alt+F2 dialog. Nothing is passed through a shell.
+
+### Changed
+
+- **One best match in search:** the strongest result now goes to the top, whatever kind it is. `display` finds the
+  Displays settings panel first, not an app that only mentions "display" somewhere.
+- The README is shorter, with screenshots. Build and test notes moved to `docs/DEVELOPING.md`.
+
+### Fixed
+
+- **Grid layout, drag to pin:** drag an app from All apps onto the "Pinned" button to pin it, or hold it there for
+  half a second to jump into your pinned apps and drop it exactly where you want.
+- **Grid layout, folders on another page:** opening a folder that is not on the page you are looking at (for
+  example right after "New Folder") turns to its page first, instead of drawing it outside the menu.
+- **Grid layout, Page Up and Page Down** now turn pages straight away, while the cursor is still in the search box.
+- **Grid layout, dragging between pages:** hold a dragged app at the top or bottom edge of the grid, or over a page
+  dot, to turn a whole page. The dots stay visible, and the app always lands on a page, not between two.
+
 ## [1.4.0] - 2026-11-11
 
 ### Added
