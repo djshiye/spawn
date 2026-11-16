@@ -5,6 +5,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-11-16
+
 ### Fixed
 
 - **Right click over a fullscreen game:** with the menu open over a game, a right click on the Spawn button now opens
