@@ -221,4 +221,50 @@ test('a destroyed panel box and API drift never throw', () => {
     scope.dispose();
 });
 
+
+test('the shell\'s fullscreen tracking is paused while the panel is shown, and given back before it hides', () => {
+    const p = fakePanel();
+    const scope = new Scope('t');
+    const calls = [];
+    const reveal = new FullscreenReveal(scope, {
+        panels: () => [p],
+        overviewVisible: () => false,
+        untrack: box => {
+            calls.push(['untrack', box === p.box]);
+            return () => calls.push(['retrack', p.box.visible]);
+        },
+    });
+    reveal.show(p.button);
+    assertEquals(JSON.stringify(calls), JSON.stringify([['untrack', true]]));
+    reveal.show(p.button); // already shown: not paused twice
+    assertEquals(calls.length, 1);
+    reveal.restore();
+    // given back while the panel is still shown, then hidden
+    assertEquals(JSON.stringify(calls[1]), JSON.stringify(['retrack', true]));
+    assert(p.box.visible === false);
+    reveal.restore();
+    assertEquals(calls.length, 2);
+    // a visible panel is never shown by Spawn, so tracking is never touched
+    const v = fakePanel({visible: true});
+    const r2 = new FullscreenReveal(scope, {panels: () => [v], overviewVisible: () => false, untrack: () => {
+        throw new Error('must not be called');
+    }});
+    r2.show(v.button);
+    r2.restore();
+    scope.dispose();
+});
+
+test('a failing untrack never breaks the reveal', () => {
+    const p = fakePanel();
+    const scope = new Scope('t');
+    const reveal = new FullscreenReveal(scope, {panels: () => [p], overviewVisible: () => false, untrack: () => {
+        throw new Error('shell changed');
+    }});
+    reveal.show(p.button);
+    assert(p.box.visible === true);
+    reveal.restore();
+    assert(p.box.visible === false);
+    scope.dispose();
+});
+
 run();

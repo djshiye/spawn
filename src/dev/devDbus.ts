@@ -22,6 +22,8 @@
 //                                 ('+' press, '-' release, Clutter.KEY_* names); chords for accelerators
 //   ActivateWorkspace(i i)        switch to workspace i (Show Desktop per-workspace tests)
 //   FocusButton()                 give the panel button the key focus (keyboard activation tests)
+//   RecheckFullscreen()           emits 'in-fullscreen-changed' on global.display, as mutter does when a fullscreen
+//                                 game re-applies its mode (the shell then re-hides fullscreen-tracked panels)
 //
 
 import Gio from 'gi://Gio';
@@ -59,6 +61,7 @@ export const DEV_IFACE = `
     <method name="RunnerState"><arg type="s" direction="out" name="json"/></method>
     <method name="EmitOverlayKey"/>
     <method name="FocusButton"/>
+    <method name="RecheckFullscreen"/>
     <method name="ActivateWorkspace"><arg type="i" direction="in" name="index"/></method>
     <method name="SendKeys"><arg type="s" direction="in" name="spec"/></method>
     <method name="Benchmark"><arg type="s" direction="in" name="sections"/><arg type="s" direction="out" name="json"/></method>
@@ -96,6 +99,11 @@ export function createDevImpl(host: DevHost): object {
         },
         FocusButtonAsync: (_params: unknown[], invocation: Invocation) => {
             host.call(invocation, () => host.controller.focusButton?.());
+        },
+        RecheckFullscreenAsync: (_params: unknown[], invocation: Invocation) => {
+            host.call(invocation, () => {
+                (global.display as unknown as {emit(signal: string): void}).emit('in-fullscreen-changed');
+            });
         },
         ActivateWorkspaceAsync: ([index]: [number], invocation: Invocation) => {
             host.call(invocation, () => host.controller.activateWorkspace?.(index));

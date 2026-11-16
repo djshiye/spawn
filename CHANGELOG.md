@@ -5,6 +5,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- **Right click over a fullscreen game:** with the menu open over a game, a right click on the Spawn button now opens
+  its own menu (Settings, Power Options and so on) instead of dropping you back into the game. Right-click menus on
+  the taskbar (Dash to Panel app icons) and inside Spawn also stay open now when the game grabs the focus back for a
+  moment, which closed them along with the panel before.
+
 ## [1.5.0] - 2026-11-12
 
 ### Added

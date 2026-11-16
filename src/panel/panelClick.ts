@@ -20,7 +20,8 @@
 //     (secondary activate) and right click (menu) do exactly what that extension does for them.
 //
 // Only buttons inside a known panel box are clicked, never the Spawn button the menu opened from (that click
-// closes the menu, as before). The target is resolved when the menu closes, before a fullscreen panel is
+// closes the menu, as before; a click there whose action is the button's own menu, a right click by default, opens
+// that menu once the popup has closed: SpawnPopup._ownButtonClick in ui/menu.ts). The target is resolved when the menu closes, before a fullscreen panel is
 // hidden again, and activated on idle, once the grab is gone. Everything is duck-typed and wrapped in
 // try/catch: an API change turns this into a no-op.
 //

@@ -290,6 +290,19 @@ export class MenuButton extends PanelMenu.Button {
         this._onClick(buttonNumber);
     }
 
+    /**
+     * A click with this mouse button on this button, while the Spawn popup is open on it, should still do its own
+     * action once the popup has closed: true unless that action is the popup itself (closing it was the point).
+     * Over a fullscreen game a second click is impossible: the panel goes away with the popup.
+     */
+    passesClick(buttonNumber: number): boolean {
+        const key = BUTTON_ACTION_KEY[buttonNumber as keyof typeof BUTTON_ACTION_KEY];
+        if (!key)
+            return false;
+        const action: MenuButtonClickAction = this._deps.settings.get(key);
+        return action === 'ContextMenu';
+    }
+
     private _onClick(buttonNumber: number): void {
         try {
             const key = BUTTON_ACTION_KEY[buttonNumber as keyof typeof BUTTON_ACTION_KEY];

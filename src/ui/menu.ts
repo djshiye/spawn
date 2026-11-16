@@ -14,7 +14,9 @@
 // menu attached to its panel instead of floating at the screen edge. A click that closes the popup on a
 // button in a panel (a Dash to Panel pinned app, the clock, a tray icon, with the left, middle or right
 // button, or a touchscreen tap) is passed on to that button (panel/panelClick.ts), so it works in one click, also over a
-// fullscreen game, where the panel then stays until a menu that click opened is closed again.
+// fullscreen game, where the panel then stays until a menu that click opened is closed again. A right click on the
+// Spawn button itself (its "Context menu" action) closes the popup and opens the button's own menu in one click; over
+// a game the panel stays for that menu too.
 // The popup actor carries `spawn-popup spawn-menu-popup` (the theme's `menu-arrow-rise` targets
 // .spawn-menu-popup only; the runner shares .spawn-popup). `menu-position-alignment` moves a popup under
 // a panel button that is centred in the panel (see _align).
@@ -29,7 +31,8 @@
 //   popup.isOpen: boolean
 //   popup.anchor: St.Widget | null     the button the popup is currently attached to
 //   popup.open(anchor): void           never throws; ignores dead anchors
-//   popup.close(): void
+//   popup.close(takeOver?): void      takeOver() names the menu that opens in its place on the same panel (the
+//                                      button's own menu): over a fullscreen game the panel is kept while it is open
 //   popup.toggle(anchor): void         close if open on this anchor, otherwise open there
 //   popup.onOpenStateChanged(scope, cb(open: boolean, anchor: St.Widget | null))
 //   popup.prebuild(anchor?): void      optional, call on idle: build the layout; with `anchor`, also attach
@@ -116,6 +119,8 @@ export class SpawnPopup {
     private _handedOver: unknown = null;
     /** The mouse button of the click _passClickOn last passed on. */
     private _passedButton = 0;
+    /** close(takeOver): finds the menu that takes the popup's place (read once the popup has closed). */
+    private _takeOver: (() => unknown) | null = null;
 
     constructor(scope: Scope, services: Services) {
         this._scope = scope;
@@ -260,12 +265,15 @@ export class SpawnPopup {
         }
     }
 
-    close(): void {
+    close(takeOver: (() => unknown) | null = null): void {
         try {
+            this._takeOver = this._open ? takeOver : null;
             if (this._menu)
                 closeMenu(this._menu);
         } catch (e) {
             error('popup close failed', e);
+        } finally {
+            this._takeOver = null;
         }
     }
 
@@ -422,7 +430,17 @@ export class SpawnPopup {
             // A tray icon / indicator clicked over a fullscreen game opens its menu on that panel: keep the panel
             // until that menu closes (or, if it never opens, hide it after a moment).
             const passedMenu = (passedTo as {menu?: unknown} | null)?.menu;
-            if (passedMenu && this._fullscreen.shown)
+            const takeOver = this._takeOver;
+            this._takeOver = null;
+            if (passedTo && passedTo === anchor && this._fullscreen.shown)
+                // A right click on the Spawn button itself: its own menu opens on the same panel.
+                this._fullscreen.holdUntilMenu(
+                    () => (anchor as {contextMenu?: {openMenu?: unknown}} | null)?.contextMenu?.openMenu ?? null,
+                    closed => this._nextHeldMenu(closed));
+            else if (takeOver && this._fullscreen.shown)
+                // The Spawn button's own menu opens in the popup's place (a right click on the button).
+                this._fullscreen.holdUntilMenu(takeOver, closed => this._nextHeldMenu(closed));
+            else if (passedMenu && this._fullscreen.shown)
                 this._fullscreen.holdWhileOpen(passedMenu, closed => this._nextHeldMenu(closed));
             else if (passedTo && this._fullscreen.shown && opensContextMenu(passedTo, this._passedButton))
                 // A right click on a Dash to Panel app icon: its context menu is built once the click is activated.
@@ -541,6 +559,9 @@ export class SpawnPopup {
                 return null;
             const [x, y] = event.get_coords();
             const click = closingClick(kind, x, y, kind === 'press' || kind === 'release' ? event.get_button() : PRIMARY);
+            const own = this._ownButtonClick(anchor, click);
+            if (own)
+                return own;
             const target = panelClickTarget(click, anchor, panelClickDeps());
             if (!target)
                 return null;
@@ -566,6 +587,25 @@ export class SpawnPopup {
             error('panel click pass-through failed', e);
             return null;
         }
+    }
+
+    /**
+     * The closing click landed on the Spawn button the popup is open on, with a mouse button whose action is not the
+     * popup (a right click opens the button's own menu): do that action once the grab is gone. Returns the button.
+     */
+    private _ownButtonClick(anchor: St.Widget | null, click: {x: number; y: number; button: number}): unknown {
+        const button = anchor as (St.Widget & {passesClick?(b: number): boolean; handlePassedClick?(b: number): void}) | null;
+        if (!button || typeof button.passesClick !== 'function' || typeof button.handlePassedClick !== 'function')
+            return null;
+        const hit = panelClickDeps().actorAt(click.x, click.y);
+        if (!hit || !button.contains(hit as Clutter.Actor) || !button.passesClick(click.button))
+            return null;
+        this._passedButton = click.button;
+        this._scope.idle(() => {
+            if (isActorAlive(button))
+                button.handlePassedClick?.(click.button);
+        });
+        return button;
     }
 
     private _teardown(): void {
