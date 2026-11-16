@@ -31,6 +31,7 @@
 //   menu.close(): void
 //   menu.toggle(): void
 //   menu.isOpen: boolean
+//   menu.openMenu: PopupMenu | null          the open PopupMenu (SpawnPopup holds a fullscreen panel for it)
 //   ButtonMenuAnchor: St.Widget & {arrowSide: St.Side}   (the MenuButton)
 //   ButtonMenuDeps: {settings, iconDir, popup: PopupControl, openPreferences()}
 //   PopupControl: {isOpen, open(anchor), close(), showAllApps?()}   (SpawnPopup)
@@ -63,7 +64,11 @@ export interface PopupControl {
     /** The button the popup is attached to (SpawnPopup); keeps `active` correct with several buttons. */
     readonly anchor?: St.Widget | null;
     open(anchor: St.Widget): void;
-    close(): void;
+    /**
+     * `takeOver`: the menu that opens in the popup's place on the same panel (this button menu); over a fullscreen
+     * game the panel the popup showed is kept while that menu is open (SpawnPopup.close).
+     */
+    close(takeOver?: () => unknown): void;
     showAllApps?(): void;
 }
 
@@ -119,6 +124,11 @@ export class ButtonMenu {
         });
     }
 
+    /** The open menu itself (the popup keeps a fullscreen panel while it is open), or null. */
+    get openMenu(): PopupMenu.PopupMenu | null {
+        return this._menu?.isOpen ? this._menu : null;
+    }
+
     get isOpen(): boolean {
         return this._menu?.isOpen ?? false;
     }
@@ -133,7 +143,8 @@ export class ButtonMenu {
     open(fromKeyboard = false): void {
         try {
             this._teardown();
-            this._deps.popup.close();
+            // Over a fullscreen game the popup's panel must stay for this menu, or it would close as it opens.
+            this._deps.popup.close(() => (this._menu?.isOpen ? this._menu : null));
             this._probeLogind();
             // Availability depends on Polkit, which sends no change notifications.
             systemActions()?.forceUpdate?.();

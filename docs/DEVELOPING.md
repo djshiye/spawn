@@ -22,8 +22,8 @@ npm run build       # tools/build.sh -> build/ and dist/spawn@djshiye.github.io.
 `.github/workflows/ci.yml` runs on every pull request and push to `main` (documentation-only changes excepted):
 typecheck, lint, unit tests (including the preferences test, which CI requires), `npm audit` and the GNOME Shell 49 /
 50 compatibility typechecks. Pull requests to `main` that touch `src/`, `schemas/`, `stylesheet.css` or `tools/` also
-run six scenarios in a headless GNOME Shell 51 (`tools/container/Dockerfile.ubuntu`, no network): `smoke`,
-`lifecycle`, `core-panel-passthrough`, `core-tray-passthrough`, `core-panel-hover` and `core-fullscreen`. When one
+run seven scenarios in a headless GNOME Shell 51 (`tools/container/Dockerfile.ubuntu`, no network): `smoke`,
+`lifecycle`, `core-panel-passthrough`, `core-tray-passthrough`, `core-panel-hover`, `core-fullscreen` and `core-fullscreen-rightclick`. When one
 fails, its screenshots and logs are uploaded for seven days. Actions are pinned by commit SHA and kept up to date by
 Dependabot. The full harness (`tools/dev-shell.sh all`, with `--with-dtp` for the real Dash to Panel) stays a local
 step before a release.

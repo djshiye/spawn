@@ -104,11 +104,34 @@ function panelBoxes(): PanelBoxInfo[] {
     return out;
 }
 
+interface TrackedActorData {
+    actor?: unknown;
+    trackFullscreen?: boolean;
+}
+
+/**
+ * Pause the shell's fullscreen tracking of a panel box Spawn shows over a fullscreen window (layout.js
+ * `_updateActorVisibility` would hide it on the next 'in-fullscreen-changed'). Returns the undo, which puts tracking
+ * back unless someone else (Dash to Panel's Overview / intellihide handling) changed it meanwhile.
+ */
+export function untrackFullscreen(box: unknown): (() => void) | null {
+    const tracked = (Main.layoutManager as unknown as {_trackedActors?: TrackedActorData[]})._trackedActors;
+    const data = Array.isArray(tracked) ? tracked.find(d => d?.actor === box) : undefined;
+    if (!data || data.trackFullscreen !== true)
+        return null;
+    data.trackFullscreen = false;
+    return () => {
+        if (data.trackFullscreen === false)
+            data.trackFullscreen = true;
+    };
+}
+
 export function createFullscreenReveal(scope: Scope): FullscreenReveal {
     return new FullscreenReveal(scope, {
         panels: panelBoxes,
         overviewVisible: () => Main.overview.visible,
         alive: box => isActorAlive(box as Parameters<typeof isActorAlive>[0]),
+        untrack: untrackFullscreen,
     });
 }
 

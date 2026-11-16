@@ -10,6 +10,12 @@
 // would be worse than a panel that goes away with the menu (the intellihide hold also lets go at once in
 // fullscreen).
 //
+// While Spawn shows the panel, the shell's own fullscreen tracking of it is paused (`untrack`, the same switch Dash to
+// Panel flips for its intellihide and the Overview): a fullscreen game re-applies its mode when it gets the focus back
+// (Proton's Wayland driver does), mutter then re-checks fullscreen and the shell would hide the panel again at once,
+// and every menu on it (Spawn, a Dash to Panel app icon's right-click menu, the Spawn button's own menu) would close
+// under the pointer, sending the user back into the game. Tracking is given back before the panel is hidden again.
+//
 // Only a known panel box (the shell's own `Main.layoutManager.panelBox` or a Dash to Panel `panelBox`) is
 // ever touched, and only when it is hidden AND its monitor is fullscreen. Everything is duck-typed and
 // wrapped in try/catch: an API change turns this into a no-op, never into an error in the menu. A Dash to
@@ -32,6 +38,8 @@
 //                                      icon's context menu is built when its right click is passed on): `find()`
 //                                      is asked on idle for the menu; none: the panel hides again
 //   reveal.shown: boolean              a panel is being shown by Spawn
+//   deps.untrack?(box)                 pause the shell's fullscreen tracking of `box`; returns the function that
+//                                      gives it back (targets.ts: the layout manager's tracked-actor data)
 
 import type {Scope} from '../core/scope.js';
 import {warn} from '../core/log.js';
@@ -52,6 +60,8 @@ export interface FullscreenRevealDeps {
     overviewVisible: () => boolean;
     /** False for a destroyed actor (a Dash to Panel rebuild while the menu was open): never touched. */
     alive?: (box: PanelBoxLike) => boolean;
+    /** Stop the shell from hiding `box` on a fullscreen re-check; returns the undo (null: nothing was changed). */
+    untrack?: (box: PanelBoxLike) => (() => void) | null;
 }
 
 /** How long a passed-on click may take to open its menu (a tray icon waits out the double-click time first). */
@@ -67,6 +77,7 @@ export class FullscreenReveal {
     private readonly _deps: FullscreenRevealDeps;
     private readonly _scope: Scope;
     private _shown: PanelBoxInfo | null = null;
+    private _retrack: (() => void) | null = null;
     private _hold: Scope | null = null;
 
     constructor(scope: Scope, deps: FullscreenRevealDeps) {
@@ -90,6 +101,11 @@ export class FullscreenReveal {
                 return;
             info.box.visible = true;
             this._shown = info;
+            try {
+                this._retrack = this._deps.untrack?.(info.box) ?? null;
+            } catch (e) {
+                warn('fullscreen panel untrack failed', e);
+            }
         } catch (e) {
             warn('fullscreen panel reveal failed', e);
         }
@@ -189,8 +205,15 @@ export class FullscreenReveal {
         this._dropHold();
         const shown = this._shown;
         this._shown = null;
+        const retrack = this._retrack;
+        this._retrack = null;
         if (!shown?.box)
             return;
+        try {
+            retrack?.();
+        } catch (e) {
+            warn('fullscreen panel retrack failed', e);
+        }
         try {
             if (this._deps.alive && !this._deps.alive(shown.box))
                 return;

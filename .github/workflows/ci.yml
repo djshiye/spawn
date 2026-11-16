@@ -138,7 +138,7 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         run: |
           mkdir -p .dev
-          for scenario in smoke lifecycle core-panel-passthrough core-tray-passthrough core-panel-hover core-fullscreen; do
+          for scenario in smoke lifecycle core-panel-passthrough core-tray-passthrough core-panel-hover core-fullscreen core-fullscreen-rightclick; do
             echo "::group::$scenario"
             docker run --rm --network none --shm-size=1g \
               --user dev \

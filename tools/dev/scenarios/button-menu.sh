@@ -116,15 +116,13 @@ right_click_button
 expect "a second right click closes it" "$(wait_menu 0)" 0
 
 echo "-- mutual exclusion with the Spawn popup"
-# (the popup's grab swallows a press on the button like any outside click: it only dismisses the popup)
+# One right click while the popup is open closes it AND opens the button's own menu (ui/menu.ts _ownButtonClick):
+# over a fullscreen game a second click is impossible, the panel goes away with the popup.
 open_menu 1.2
 expect_state "Spawn popup open" open true
 right_click_button
-sleep 1
-expect_state "a right click while the popup is open dismisses it" open false
-expect "... without opening the context menu" "$(menu_count)" 0
-right_click_button
-expect "the next right click opens the context menu" "$(wait_menu 1)" 1
+expect "a right click while the popup is open opens the context menu" "$(wait_menu 1)" 1
+expect_state "... and closes the popup" open false
 open_menu 1.2
 expect_state "Spawn popup opened (Dev Open) while the context menu was open" open true
 expect "... the context menu closed" "$(wait_menu 0)" 0

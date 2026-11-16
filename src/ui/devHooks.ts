@@ -178,7 +178,7 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
             out.push(menu);
         for (const c of Main.uiGroup.get_children()) {
             const cls = (c as St.Widget).style_class ?? '';
-            if (c !== menu && /spawn-(context-menu|button-menu|tooltip|power-popup|runner)/.test(cls))
+            if (c !== menu && (/spawn-(context-menu|button-menu|tooltip|power-popup|runner)/.test(cls) || / app-menu /.test(` ${cls} `)))
                 out.push(c);
         }
         // Spawn's own modal dialogs (the firmware restart confirmation) live in the modal group

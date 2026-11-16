@@ -23,6 +23,9 @@
 #     core-fullscreen  seeded, optionally --with-dtp: Super over a real fullscreen window shows the hidden panel
 #                  (top bar, or Dash to Panel without intellihide) with the menu attached to it, and hides it again
 #                  on close; screenshots
+#     core-fullscreen-rightclick  seeded, optionally --with-dtp: right clicks over a fullscreen window with the
+#                  menu open (an app in Spawn, the Spawn button, a Dash to Panel app icon) open their menus and keep
+#                  the panel, also when the shell re-checks fullscreen meanwhile
 #     button-menu  seeded: the panel button context menu (right click / Menu key / Shift+F10, items, Power Options,
 #                  Show Desktop toggle, mutual exclusion with the Spawn popup; with --with-dtp also Panel Extension Settings)
 #     runner       seeded: the standalone runner (D-Bus ToggleRunner and the runner-hotkey accelerator, typing,
@@ -78,12 +81,12 @@ case "$scenario" in
         fi
         ;;
 esac
-case "$scenario" in ui | ui-* | dtp-open | dtp-intellihide | core-fullscreen | shots | bench | button-menu | runner) seed=1 ;; esac
+case "$scenario" in ui | ui-* | dtp-open | dtp-intellihide | core-fullscreen | core-fullscreen-* | shots | bench | button-menu | runner) seed=1 ;; esac
 
 if [ "$scenario" = "all" ]; then
     # Each scenario runs in its own fresh isolated shell (this script, recursively).
     mkdir -p "$dev/logs"
-    runs=("smoke" "lifecycle" "hotkeys" "theme" "dtp-toggle --with-dtp" "dtp-open --with-dtp" "dtp-intellihide --with-dtp" "core-fullscreen" "core-fullscreen --with-dtp" "ui" "runner" "shots" "bench")
+    runs=("smoke" "lifecycle" "hotkeys" "theme" "dtp-toggle --with-dtp" "dtp-open --with-dtp" "dtp-intellihide --with-dtp" "core-fullscreen" "core-fullscreen --with-dtp" "core-fullscreen-rightclick" "core-fullscreen-rightclick --with-dtp" "ui" "runner" "shots" "bench")
     summary=()
     failed=0
     for run in "${runs[@]}"; do
