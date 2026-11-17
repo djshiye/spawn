@@ -406,13 +406,14 @@ export class FolderView {
         const iconSize = metrics.iconSize >= 64 ? FOLDER_ICON_LARGE : FOLDER_ICON;
         const tiles: St.Widget[] = [];
         const settings = this._services.settings;
+        const generic = settings.get('apps-show-generic-names');
         for (const entry of store.folderApps(uuid, true)) {
             const app = lookupApp(this._services, entry.id);
             if (!app) {
                 tiles.push(this._ghostTile(entry.id, iconSize, metrics.multiLine));
                 continue;
             }
-            const name = displayName(app, settings);
+            const name = displayName(app, settings, generic);
             const actor = new AppTile(app, this._host, {
                 folderUuid: uuid, iconSize, multiLine: metrics.multiLine, name,
             }).actor;

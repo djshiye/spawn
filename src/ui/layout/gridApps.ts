@@ -299,8 +299,9 @@ export class GridAllApps {
             }));
             return;
         }
+        const generic = settings.get('apps-show-generic-names');
         const groups = this._category === 'all'
-            ? groupByLetter(apps, a => displayName(a, settings)).map(g => ({letter: g.letter as string | null, apps: g.items}))
+            ? groupByLetter(apps, a => displayName(a, settings, generic)).map(g => ({letter: g.letter as string | null, apps: g.items}))
             : [{letter: null as string | null, apps}];
         for (const g of groups)
             this._groups.push(this._makeGroup(g.letter, g.apps));
@@ -390,8 +391,9 @@ export class GridAllApps {
         const o = this._tileOptions();
         const host = this._deps.tileHost;
         const tiles: St.Widget[] = [];
+        const generic = settings.get('apps-show-generic-names');
         for (const app of group.apps) {
-            const name = displayName(app, settings);
+            const name = displayName(app, settings, generic);
             const tile = new AppTile(app, host, {iconSize: o.iconSize, multiLine: o.multiLine, name}).actor;
             host.dragApp?.(tile, app, name);
             tiles.push(tile);

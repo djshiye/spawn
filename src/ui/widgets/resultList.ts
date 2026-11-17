@@ -27,6 +27,11 @@
 // "No results" state follows). Stale rows are never first() and cannot be activated, so Return can
 // never activate a row of an OLD query: call SearchHandle.flush() (engine) first, which delivers
 // the synchronous batches before it returns, then activateFirst().
+// When a provider's new batch replaces its section, the rows of results with the same id are reused (a row is
+// 6-7 actors): they get the new title markup (the highlight follows the query), description, icon (when it
+// changed), accessible name and place, and leave the stale state; the rows of results that are gone are
+// destroyed, new results get new rows. A row whose shape changes (a "New" pill, a description appearing) is
+// rebuilt. The settings the rows depend on are read once per batch.
 //
 // Public API:
 //   new ResultList(scope: Scope, settings: SpawnSettings, host: ResultHost)
@@ -62,6 +67,7 @@
 
 import Atk from 'gi://Atk';
 import Clutter from 'gi://Clutter';
+import type Gio from 'gi://Gio';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
@@ -103,6 +109,31 @@ interface Section {
     stale: boolean;
 }
 
+/** What a row was built from, so a reused row only changes what differs. */
+interface RowParts {
+    box: St.BoxLayout;
+    icon: St.Widget;
+    /** The icon's gicon and size; a result with a createIcon factory gets a new icon every time. */
+    gicon: Gio.Icon | null;
+    iconSize: number;
+    factory: boolean;
+    title: St.Label;
+    /** Last title text / markup applied. */
+    titleKey: string;
+    desc: St.Label | null;
+    /** What the accessible name was last set from. */
+    nameKey: string;
+    /** Row shape: markup or plain title, "New" pill, description present, drag name; a change rebuilds the row. */
+    shape: string;
+}
+
+/** Settings read once for a batch. */
+interface RowSettings {
+    highlight: boolean;
+    descriptions: boolean;
+    iconSize: number;
+}
+
 const EMPTY_DELAY_MS = 700;
 const STALE_MS = 150;
 const STALE_OPACITY = 110;
@@ -119,6 +150,9 @@ export class ResultList {
     private readonly _emptyTitle: St.Label;
     private _query = '';
     private readonly _results = new Map<St.Button, SearchResult>();
+    private readonly _parts = new Map<St.Button, RowParts>();
+    /** The row that carries the tail padding now (see _trimTail). */
+    private _tail: St.Button | null = null;
     private _cancelEmpty: (() => void) | null = null;
     private _cancelStale: (() => void) | null = null;
     private _pending = false;
@@ -236,29 +270,75 @@ export class ResultList {
         const results = batch.results.slice(0, max);
         if (results.length === 0)
             return;
-        // This provider's rows of the previous query make way; the other providers' stay until theirs arrive.
-        for (const old of this._sections.filter(s => s.providerId === batch.providerId))
-            this._removeSection(old);
+        const rs: RowSettings = {
+            highlight: this._settings.get('highlight-search-result-terms'),
+            descriptions: showDescriptions(this._settings),
+            iconSize: iconSizeFor(this._settings, 'icon-size-apps', 28),
+        };
+        // This provider's rows of the previous query are reused where the result is still there; the other
+        // providers' stay until theirs arrive.
+        const titled = batch.providerTitle !== '';
+        const olds = this._sections.filter(s => s.providerId === batch.providerId);
+        const reuse = olds.find(s => s.head === (titled ? 1 : 0)) ?? null;
+        for (const old of olds) {
+            if (old !== reuse)
+                this._removeSection(old);
+        }
+        const spare = new Map<string, St.Button>();
+        if (reuse) {
+            for (const row of reuse.rows) {
+                const id = this._results.get(row)?.id;
+                if (id !== undefined && !spare.has(id))
+                    spare.set(id, row);
+            }
+            this._resetMarks(reuse);
+        }
         this._pending = false;
         this._cancelEmpty?.();
         this._cancelEmpty = null;
         this._empty.hide();
 
-        const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-result-section'});
-        const titled = batch.providerTitle !== '';
-        if (titled)
-            box.add_child(new St.Label({text: batch.providerTitle, style_class: 'spawn-section-title'}));
-        markList(box, titled ? batch.providerTitle : _('Search results'));
-        const section: Section = {providerId: batch.providerId, order: batch.order, box, rows: [], head: titled ? 1 : 0, top: results[0].score, stale: false};
+        let section: Section;
+        if (reuse) {
+            section = reuse;
+            section.order = batch.order;
+            section.top = results[0].score;
+            section.stale = false;
+            section.box.opacity = 255;
+            const label = titled ? section.box.get_child_at_index(0) as St.Label : null;
+            if (label && label.text !== batch.providerTitle) {
+                label.text = batch.providerTitle;
+                markList(section.box, batch.providerTitle);
+            }
+        } else {
+            const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true, style_class: 'spawn-result-section'});
+            if (titled)
+                box.add_child(new St.Label({text: batch.providerTitle, style_class: 'spawn-section-title'}));
+            markList(box, titled ? batch.providerTitle : _('Search results'));
+            section = {providerId: batch.providerId, order: batch.order, box, rows: [], head: titled ? 1 : 0, top: results[0].score, stale: false};
+        }
+        const previous = section.rows;
+        const rows: St.Button[] = [];
         for (const result of results) {
-            const row = this._makeRow(result, batch.query);
-            section.rows.push(row);
+            const kept = spare.get(result.id) ?? null;
+            if (kept)
+                spare.delete(result.id);
+            const row = kept && this._refreshRow(kept, result, batch.query, rs) ? kept : this._makeRow(result, batch.query, rs);
+            rows.push(row);
             this._results.set(row, result);
         }
+        // Rows of results that are gone (or were rebuilt above) go.
+        for (const row of previous) {
+            if (!rows.includes(row))
+                this._dropRow(row);
+        }
+        section.rows = rows;
         this._fillSection(section);
 
-        this._sections.push(section);
-        this.actor.add_child(box);
+        if (!reuse) {
+            this._sections.push(section);
+            this.actor.add_child(section.box);
+        }
         this._sortSections();
         this._placeSections();
         this._updateSelection();
@@ -371,9 +451,13 @@ export class ResultList {
         const rows = this._sections.flatMap(s => s.rows);
         if (this._reversed)
             rows.reverse();
-        for (const row of rows)
-            row.set_style(null);
-        rows[rows.length - 1]?.set_style('padding-bottom: 0;');
+        const last = rows[rows.length - 1] ?? null;
+        if (last === this._tail)
+            return;
+        // Only the row that changes is restyled (the old tail may be gone: _dropRow forgets it).
+        this._tail?.set_style(null);
+        last?.set_style('padding-bottom: 0;');
+        this._tail = last;
     }
 
     private _removeSection(section: Section): void {
@@ -382,12 +466,41 @@ export class ResultList {
             this._sections.splice(i, 1);
         for (const row of section.rows) {
             this._results.delete(row);
+            this._parts.delete(row);
             if (this._marked === row)
                 this._marked = null;
             if (this._pick === row)
                 this._pick = null;
+            if (this._tail === row)
+                this._tail = null;
         }
         section.box.destroy();
+    }
+
+    /** A row of a section that stays leaves the selection as if it had been rebuilt (the caller re-applies it). */
+    private _resetMarks(section: Section): void {
+        for (const row of section.rows) {
+            if (this._marked === row) {
+                row.remove_style_pseudo_class('selected');
+                row.remove_accessible_state(Atk.StateType.SELECTED);
+                this._marked = null;
+            }
+            if (this._pick === row)
+                this._pick = null;
+        }
+    }
+
+    /** Destroy one row of a section that stays. */
+    private _dropRow(row: St.Button): void {
+        this._results.delete(row);
+        this._parts.delete(row);
+        if (this._marked === row)
+            this._marked = null;
+        if (this._pick === row)
+            this._pick = null;
+        if (this._tail === row)
+            this._tail = null;
+        row.destroy();
     }
 
     /** The STALE_MS deadline: drop the sections no new batch replaced. */
@@ -406,6 +519,8 @@ export class ResultList {
             s.box.destroy();
         this._sections.length = 0;
         this._results.clear();
+        this._parts.clear();
+        this._tail = null;
         this._marked = null;
         this._pick = null;
         this._spacer.visible = false;
@@ -455,8 +570,7 @@ export class ResultList {
         });
     }
 
-    private _makeIcon(result: SearchResult): St.Widget {
-        const size = iconSizeFor(this._settings, 'icon-size-apps', 28);
+    private _makeIcon(result: SearchResult, size: number): St.Widget {
         if (typeof result.createIcon === 'function') {
             try {
                 const made = result.createIcon(size);
@@ -513,21 +627,79 @@ export class ResultList {
         }
     }
 
-    private _makeRow(result: SearchResult, query: string): St.Button {
+    /** What a row looks like for `result`: its shape (a change rebuilds the row), "New" pill and shown description. */
+    private _describe(result: SearchResult, rs: RowSettings): {shape: string; markup: boolean; isNew: boolean; description: string | null} {
+        const markup = rs.highlight && !result.plainTitle;
+        const isNew = result.providerId === 'apps' && Boolean(this._host.isNewApp?.(result.id));
+        const description = result.description && (result.alwaysShowDescription || rs.descriptions) ? result.description : null;
+        // The drag source of an app row carries its name from when it was built.
+        const shape = `${markup ? 1 : 0}${isNew ? 1 : 0}${description ? 1 : 0}${result.providerId === 'apps' ? result.title : ''}`;
+        return {shape, markup, isNew, description};
+    }
+
+    private _titleKey(result: SearchResult, query: string, markup: boolean): string {
+        return markup ? highlightMarkup(result.title, query) : result.title;
+    }
+
+    /**
+     * A row of the previous batch for the same result: refresh what can differ and let it leave the stale state.
+     * False when the row has another shape (it is rebuilt then).
+     */
+    private _refreshRow(row: St.Button, result: SearchResult, query: string, rs: RowSettings): boolean {
+        const parts = this._parts.get(row);
+        const d = this._describe(result, rs);
+        if (!parts || parts.shape !== d.shape)
+            return false;
+        row.reactive = true;
+        row.can_focus = true;
+        const key = this._titleKey(result, query, d.markup);
+        if (key !== parts.titleKey) {
+            if (d.markup)
+                parts.title.clutter_text.set_markup(key);
+            else
+                parts.title.text = key;
+            parts.titleKey = key;
+        }
+        if (parts.desc && d.description && parts.desc.text !== d.description)
+            parts.desc.text = d.description;
+        const factory = typeof result.createIcon === 'function';
+        const gicon = result.icon ?? null;
+        const same = gicon === parts.gicon || (gicon !== null && parts.gicon !== null && gicon.equal(parts.gicon));
+        if (factory || parts.factory || parts.iconSize !== rs.iconSize || !same) {
+            const icon = this._makeIcon(result, rs.iconSize);
+            parts.box.remove_child(parts.icon);
+            parts.icon.destroy();
+            parts.box.insert_child_at_index(icon, 0);
+            parts.icon = icon;
+            parts.gicon = gicon;
+            parts.iconSize = rs.iconSize;
+            parts.factory = factory;
+        }
+        const name = newAccessibleName(result.title, d.isNew);
+        const nameKey = `${name}\n${d.description ?? ''}`;
+        if (nameKey !== parts.nameKey) {
+            nameItem(row, name, {label: parts.title, description: d.description, listItem: true});
+            parts.nameKey = nameKey;
+        }
+        return true;
+    }
+
+    private _makeRow(result: SearchResult, query: string, rs: RowSettings): St.Button {
         const button = makeItemButton('spawn-result-row');
         const box = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
-        const icon = this._makeIcon(result);
+        const icon = this._makeIcon(result, rs.iconSize);
         box.add_child(icon);
 
+        const d = this._describe(result, rs);
         const text = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, y_align: Clutter.ActorAlign.CENTER, x_expand: true});
         const title = new St.Label({style_class: 'spawn-row-label'});
-        if (this._settings.get('highlight-search-result-terms') && !result.plainTitle)
-            title.clutter_text.set_markup(highlightMarkup(result.title, query));
+        const titleKey = this._titleKey(result, query, d.markup);
+        if (d.markup)
+            title.clutter_text.set_markup(titleKey);
         else
-            title.text = result.title;
+            title.text = titleKey;
         title.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-        const isNew = result.providerId === 'apps' && Boolean(this._host.isNewApp?.(result.id));
-        if (isNew) {
+        if (d.isNew) {
             const line = new St.BoxLayout({style_class: 'spawn-row-box', x_expand: true});
             title.x_expand = true;
             title.y_align = Clutter.ActorAlign.CENTER;
@@ -537,22 +709,33 @@ export class ResultList {
         } else {
             text.add_child(title);
         }
-        const shownDescription = result.description && (result.alwaysShowDescription || showDescriptions(this._settings)) ? result.description : null;
-        if (shownDescription) {
-            const d = new St.Label({text: shownDescription, style_class: 'spawn-row-description'});
-            d.clutter_text.ellipsize = Pango.EllipsizeMode.END;
-            text.add_child(d);
+        let desc: St.Label | null = null;
+        if (d.description) {
+            desc = new St.Label({text: d.description, style_class: 'spawn-row-description'});
+            desc.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            text.add_child(desc);
         }
         box.add_child(text);
         button.set_child(makeFace('spawn-row-surface', box));
 
-        nameItem(button, newAccessibleName(result.title, isNew), {label: title, description: shownDescription, listItem: true});
+        const name = newAccessibleName(result.title, d.isNew);
+        nameItem(button, name, {label: title, description: d.description, listItem: true});
+        this._parts.set(button, {
+            box, icon, gicon: result.icon ?? null, iconSize: rs.iconSize, factory: typeof result.createIcon === 'function',
+            title, titleKey, desc, nameKey: `${name}\n${d.description ?? ''}`, shape: d.shape,
+        });
         this._host.tooltips?.attach(button, title);
+        // The handlers look the row's current result up: a reused row stands for a newer result.
         wireItem(button, {
-            activate: ctrl => this._activate(result, ctrl),
+            activate: ctrl => {
+                const current = this._results.get(button);
+                if (current)
+                    this._activate(current, ctrl);
+            },
             context: this._host.openResultContext ? () => {
-                if (!this._isStale(result))
-                    this._host.openResultContext?.(button, result);
+                const current = this._results.get(button);
+                if (current && !this._isStale(current))
+                    this._host.openResultContext?.(button, current);
             } : undefined,
         });
         if (result.providerId === 'apps')

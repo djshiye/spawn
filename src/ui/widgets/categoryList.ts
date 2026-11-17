@@ -70,6 +70,8 @@ interface AppList {
     apps: Shell.App[];
     built: number;
     opts: RowOptions;
+    /** apps-show-generic-names, read once when the list was made. */
+    generic: boolean;
     /** Stands in for the rows not built yet (keeps the scroll range); null once every row exists. */
     spacer: St.Widget | null;
 }
@@ -400,6 +402,7 @@ export class CategoryList {
             apps: [],
             built: 0,
             opts: {iconSize: iconSizeFor(settings, 'icon-size-apps', 28), description: showDescriptions(settings)},
+            generic: settings.get('apps-show-generic-names'),
             spacer: null,
         };
         try {
@@ -460,7 +463,7 @@ export class CategoryList {
         const end = Math.min(list.apps.length, list.built + Math.max(0, count));
         for (; list.built < end; list.built++) {
             const app = list.apps[list.built];
-            const row = new AppRow(app, this._host, {...list.opts, name: displayName(app, settings)}).actor;
+            const row = new AppRow(app, this._host, {...list.opts, name: displayName(app, settings, list.generic)}).actor;
             if (list.spacer)
                 list.box.insert_child_below(row, list.spacer);
             else

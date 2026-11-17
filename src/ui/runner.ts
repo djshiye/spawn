@@ -396,8 +396,9 @@ export class SpawnRunner {
                 tooltips: ui.tooltips,
             };
             const opts = {iconSize: iconSizeFor(s, 'icon-size-apps', DEFAULT_ROW_ICON_SIZE), description: showDescriptions(s)};
+            const generic = s.get('apps-show-generic-names');
             for (const app of apps) {
-                const row = new AppRow(app, host, {...opts, name: displayName(app, s)});
+                const row = new AppRow(app, host, {...opts, name: displayName(app, s, generic)});
                 ui.defaultBox.add_child(row.actor);
                 this._defaultRows.push(row.actor);
             }
