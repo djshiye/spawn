@@ -9,8 +9,9 @@
 // entries keep their objects across a reload, so their prepared name and folder are not prepared
 // again. The monitor and the first parse happen on the first enabled search or menu open, never
 // at construction; clear() (menu closed) only cancels the existence checks in flight. The
-// provider is `immediate`: it answers every keystroke, with no debounce (ranking 2000 prepared
-// entries takes ~1-3 ms).
+// provider is `immediate`: it answers every keystroke, with no debounce, in the idle after that
+// keystroke's frame (ranking 2000 prepared entries takes ~1-3 ms, ~10 ms for a single letter), so the
+// apps are on screen first and a faster typist's intermediate keystrokes cost nothing.
 //
 // Entries whose file no longer exists are skipped lazily: all matches are ranked, then walked
 // best first until `max` live files are found. Existence is checked asynchronously (FileProbe:
@@ -172,8 +173,10 @@ export class RecentFilesProvider implements SearchProvider {
     search(query: string, token: CancelToken): SearchResult[] | Promise<SearchResult[]> {
         if (!query.trim() || !hasAlnum(query) || !this._remembering())
             return []; // File History off: nothing is read or shown, as in list()
+        // Ranked in the next idle, so the in-memory sections (apps first) are painted before this runs, and a
+        // keystroke typed before it gets its turn simply skips it.
         const loading = this._ensureLoaded();
-        return loading ? loading.then(() => token.cancelled ? [] : this._searchLoaded(query, token)) : this._searchLoaded(query, token);
+        return (loading ?? Promise.resolve()).then(() => this._idle()).then(() => token.cancelled ? [] : this._searchLoaded(query, token));
     }
 
     /** Hidden entries left out unless show-hidden-recent-files is on. */
