@@ -4,7 +4,7 @@
 //
 // Public API:
 //   backupGroup(ctx: PrefsContext): Adw.PreferencesGroup
-//   restoreFrom(ctx, file): void      read, validate, confirm and apply one backup file (also used by the dev checks)
+//   restoreFrom(ctx, file): Promise<void>   read (asynchronously), validate, confirm and apply one backup file (also used by the dev checks)
 
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
@@ -16,9 +16,9 @@ import {
     DEFAULT_BACKUP_NAME,
     describePlan,
     parseBackup,
-    readBackupFile,
+    readBackupFileAsync,
     type RestorePlan,
-    writeBackupFile,
+    writeBackupFileAsync,
 } from './backup.js';
 import type {PrefsContext} from './context.js';
 import {label, toast} from './widgets.js';
@@ -59,12 +59,9 @@ function backUp(ctx: PrefsContext): void {
         }
         if (!file)
             return;
-        try {
-            writeBackupFile(file, createBackup(ctx.settings, version(ctx)));
-            toast(ctx, 'Settings backed up');
-        } catch (e) {
-            failure(ctx, 'Backing Up Failed', `The file could not be written: ${(e as Error).message}`);
-        }
+        (async () => writeBackupFileAsync(file, createBackup(ctx.settings, version(ctx))))().then(
+            () => toast(ctx, 'Settings backed up'),
+            (e: unknown) => failure(ctx, 'Backing Up Failed', `The file could not be written: ${(e as Error).message}`));
     });
 }
 
@@ -87,10 +84,10 @@ function confirmRestore(ctx: PrefsContext, plan: RestorePlan, apply: () => void)
     dialog.present(ctx.window);
 }
 
-export function restoreFrom(ctx: PrefsContext, file: Gio.File): void {
+export async function restoreFrom(ctx: PrefsContext, file: Gio.File): Promise<void> {
     let plan: RestorePlan;
     try {
-        const parsed = parseBackup(readBackupFile(file), ctx.settings);
+        const parsed = parseBackup(await readBackupFileAsync(file), ctx.settings);
         if (!parsed.ok) {
             failure(ctx, 'Cannot Restore', `${parsed.error} Nothing was changed.`);
             return;
@@ -124,7 +121,7 @@ function restore(ctx: PrefsContext): void {
             return; // dismissed
         }
         if (file)
-            restoreFrom(ctx, file);
+            void restoreFrom(ctx, file);
     });
 }
 

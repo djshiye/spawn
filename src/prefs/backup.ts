@@ -27,10 +27,13 @@
 //                                                             throws (after rolling back) when anything is rejected
 //   readBackupFile(file): string                              size / type checked read (throws Error)
 //   writeBackupFile(file, text): void                         atomic, mode 0600
+//   readBackupFileAsync(file): Promise<string>                the same, without blocking the window (the file may sit on
+//   writeBackupFileAsync(file, text): Promise<void>           a portal / FUSE / network path); the dialogs use these
 //
 // Imports only gi://, so it can be loaded by unit tests with gjs -m.
 
 import Gio from 'gi://Gio';
+import type GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
 
 import {sanitizeEntries} from '../core/entries.js';
@@ -246,7 +249,7 @@ export function applyBackup(settings: SpawnSettings, plan: RestorePlan): Restore
                 settings.deleteFolder(id);
         }
         for (const [id, f] of plan.folders) {
-            const folder = settings.folder(id);
+            const folder = settings.privateFolder(id);
             folder.raw.delay();
             folder.name = f.name;
             folder.raw.set_value('pinned-apps', f.pinnedApps);
@@ -259,29 +262,74 @@ export function applyBackup(settings: SpawnSettings, plan: RestorePlan): Restore
     return result;
 }
 
-export function readBackupFile(file: Gio.File): string {
-    const info = file.query_info('standard::type,standard::size', Gio.FileQueryInfoFlags.NONE, null);
+const TOO_LARGE = 'The file is too large to be a Spawn backup (over 1 MiB).';
+
+function checkInfo(info: Gio.FileInfo): void {
     if (info.get_file_type() !== Gio.FileType.REGULAR)
         throw new Error('This is not a regular file.');
     if (info.get_size() > MAX_BACKUP_BYTES)
-        throw new Error('The file is too large to be a Spawn backup (over 1 MiB).');
-    const stream = file.read(null);
+        throw new Error(TOO_LARGE);
+}
+
+function decodeBackup(bytes: Uint8Array): string {
+    if (bytes.length > MAX_BACKUP_BYTES)
+        throw new Error(TOO_LARGE);
     try {
-        // One byte more than allowed: a file that grew since the size check is still caught.
-        const bytes = stream.read_bytes(MAX_BACKUP_BYTES + 1, null).toArray();
-        if (bytes.length > MAX_BACKUP_BYTES)
-            throw new Error('The file is too large to be a Spawn backup (over 1 MiB).');
         return new TextDecoder('utf-8', {fatal: true}).decode(bytes);
     } catch (e) {
         if (e instanceof TypeError)
             throw new Error('The file is not text.', {cause: e});
         throw e;
+    }
+}
+
+export function readBackupFile(file: Gio.File): string {
+    checkInfo(file.query_info('standard::type,standard::size', Gio.FileQueryInfoFlags.NONE, null));
+    const stream = file.read(null);
+    try {
+        // One byte more than allowed: a file that grew since the size check is still caught.
+        return decodeBackup(stream.read_bytes(MAX_BACKUP_BYTES + 1, null).toArray());
     } finally {
         stream.close(null);
     }
 }
 
+/** Wraps a Gio async call (start(callback)) in a promise; `finish` runs inside the callback. */
+function gio<T>(start: (done: (_source: GObject.Object | null, res: Gio.AsyncResult) => void) => void, finish: (res: Gio.AsyncResult) => T): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        start((_source, res) => {
+            try {
+                resolve(finish(res));
+            } catch (e) {
+                reject(e);
+            }
+        });
+    });
+}
+
+/** readBackupFile() without blocking: the same checks, the same errors. */
+export async function readBackupFileAsync(file: Gio.File): Promise<string> {
+    checkInfo(await gio(done => file.query_info_async('standard::type,standard::size', Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, null, done),
+        res => file.query_info_finish(res)));
+    const stream = await gio(done => file.read_async(GLib.PRIORITY_DEFAULT, null, done), res => file.read_finish(res));
+    try {
+        const bytes = await gio(done => stream.read_bytes_async(MAX_BACKUP_BYTES + 1, GLib.PRIORITY_DEFAULT, null, done),
+            res => stream.read_bytes_finish(res));
+        return decodeBackup(bytes.toArray());
+    } finally {
+        await gio(done => stream.close_async(GLib.PRIORITY_DEFAULT, null, done), res => stream.close_finish(res));
+    }
+}
+
+const WRITE_FLAGS = Gio.FileCreateFlags.PRIVATE | Gio.FileCreateFlags.REPLACE_DESTINATION;
+
 export function writeBackupFile(file: Gio.File, text: string): void {
     // PRIVATE: created with mode 0600; replace() writes a temporary file and renames it over the target.
-    file.replace_contents(new TextEncoder().encode(text), null, false, Gio.FileCreateFlags.PRIVATE | Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+    file.replace_contents(new TextEncoder().encode(text), null, false, WRITE_FLAGS, null);
+}
+
+/** writeBackupFile() without blocking. */
+export async function writeBackupFileAsync(file: Gio.File, text: string): Promise<void> {
+    await gio(done => file.replace_contents_async(new TextEncoder().encode(text), null, false, WRITE_FLAGS, null, done),
+        res => file.replace_contents_finish(res));
 }
