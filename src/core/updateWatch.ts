@@ -12,9 +12,11 @@
 //     running: version-name this code was loaded with
 //     notify:  (installedVersion) => void, shows the message
 //     state:   {notified: boolean}, kept by the Extension object so a disable / enable does not repeat the message
-//   watch.start(): void    start monitoring (and check once)
+//   watch.start(): void    start monitoring; metadata.json is read asynchronously (after a settle delay), and the
+//                          monitor is stopped once the message was shown
 
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 
 import {debounce} from './debounce.js';
 import {error} from './log.js';
@@ -34,16 +36,24 @@ export class UpdateWatch {
     private readonly _scope: Scope;
     private readonly _options: UpdateWatchOptions;
     private readonly _check: {call(): void};
+    private _monitor: Gio.FileMonitor | null = null;
+    private _disposed = false;
+    private readonly _cancellable = new Gio.Cancellable();
 
     constructor(scope: Scope, options: UpdateWatchOptions) {
         this._scope = scope;
         this._options = options;
         this._check = debounce(scope, SETTLE_MS, () => this._checkNow());
+        scope.add(() => {
+            this._disposed = true;
+            this._cancellable.cancel();
+        }, 'UpdateWatch read');
     }
 
     start(): void {
         try {
             const monitor = this._options.file.monitor_file(Gio.FileMonitorFlags.WATCH_MOVES, null);
+            this._monitor = monitor;
             this._scope.add(() => monitor.cancel(), 'UpdateWatch monitor');
             this._scope.connect(monitor, 'changed', () => this._check.call());
         } catch (e) {
@@ -52,20 +62,34 @@ export class UpdateWatch {
     }
 
     private _checkNow(): void {
-        const {file, running, notify, state} = this._options;
+        if (this._options.state.notified)
+            return;
+        const {file} = this._options;
+        file.load_contents_async(this._cancellable, (_f: Gio.File | null, res: Gio.AsyncResult) => {
+            if (this._disposed)
+                return;
+            try {
+                const [ok, bytes] = file.load_contents_finish(res);
+                if (ok)
+                    this._read(bytes);
+            } catch (e) {
+                if (!(e instanceof GLib.Error) || !e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+                    error('cannot read metadata.json', e);
+            }
+        });
+    }
+
+    private _read(bytes: Uint8Array): void {
+        const {running, notify, state} = this._options;
         if (state.notified)
             return;
-        try {
-            const [ok, bytes] = file.load_contents(null);
-            if (!ok)
-                return;
-            const installed = parseMetadataVersion(new TextDecoder().decode(bytes));
-            if (installed && updatePending(running, installed)) {
-                state.notified = true;
-                notify(installed);
-            }
-        } catch (e) {
-            error('cannot read metadata.json', e);
+        const installed = parseMetadataVersion(new TextDecoder().decode(bytes));
+        if (installed && updatePending(running, installed)) {
+            state.notified = true;
+            // Nothing more to say this session: later checks would return at once, so stop listening.
+            this._monitor?.cancel();
+            this._monitor = null;
+            notify(installed);
         }
     }
 }

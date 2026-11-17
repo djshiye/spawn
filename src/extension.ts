@@ -51,6 +51,8 @@ export default class SpawnExtension extends Extension {
     private _startMs: Record<string, number> = {};
     /** The update message was shown (kept across disable / enable, which do not reload the code). */
     private readonly _updateState = {notified: false};
+    /** The schema source, found (a query_exists and a parse of schemas/) on the first enable only. */
+    private _schemaSource: Gio.SettingsSchemaSource | null = null;
 
     override enable(): void {
         const t0 = GLib.get_monotonic_time();
@@ -81,10 +83,13 @@ export default class SpawnExtension extends Extension {
     private _loadSettings(): SpawnSettings {
         // Installed from a zip the schema sits in <extension dir>/schemas; installed from the RPM it is
         // in the system schema directory (no schemas/ here), like Extension.getSettings() does it.
-        const schemaDir = this.dir.get_child('schemas');
-        const source = schemaDir.query_exists(null)
-            ? Gio.SettingsSchemaSource.new_from_directory(schemaDir.get_path() ?? '', Gio.SettingsSchemaSource.get_default(), false)
-            : Gio.SettingsSchemaSource.get_default();
+        if (!this._schemaSource) {
+            const schemaDir = this.dir.get_child('schemas');
+            this._schemaSource = schemaDir.query_exists(null)
+                ? Gio.SettingsSchemaSource.new_from_directory(schemaDir.get_path() ?? '', Gio.SettingsSchemaSource.get_default(), false)
+                : Gio.SettingsSchemaSource.get_default();
+        }
+        const source = this._schemaSource;
         const schema = source?.lookup(SCHEMA_ID, true);
         if (!source || !schema)
             throw new Error(`schema ${SCHEMA_ID} not found`);
