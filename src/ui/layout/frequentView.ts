@@ -72,8 +72,9 @@ export class FrequentView {
         const s = this._services.settings;
         const opts = {iconSize: iconSizeFor(s, 'icon-size-apps', 28), description: showDescriptions(s)};
         const apps = this._services.appIndex.frequent(this._limit());
+        const generic = s.get('apps-show-generic-names');
         for (const app of apps)
-            box.add_child(new AppRow(app, this._tileHost, {...opts, name: displayName(app, s)}).actor);
+            box.add_child(new AppRow(app, this._tileHost, {...opts, name: displayName(app, s, generic)}).actor);
         // each row carries 1 px of the pitch below it: the last one has nothing to separate from (the scroll range)
         (box.get_last_child() as St.Widget | null)?.set_style('padding-bottom: 0;');
         if (apps.length === 0) {

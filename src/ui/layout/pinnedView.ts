@@ -305,7 +305,7 @@ export class PinnedView {
                 if (!app)
                     return {key, entry: ghost(item.id, key)};
                 const {scope, release} = ownedScope(this._scope, key);
-                const name = displayName(app, settings);
+                const name = displayName(app, settings, generic);
                 const tile = list
                     ? new AppRow(app, this._tileHost, {...tileOpts, name, pinned: true})
                     : new AppTile(app, this._tileHost, {...tileOpts, name});

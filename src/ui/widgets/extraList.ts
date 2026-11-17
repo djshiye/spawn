@@ -128,8 +128,9 @@ export class ExtraList {
         const s = this._services.settings;
         const opts = {iconSize: iconSizeFor(s, 'icon-size-apps', 28), description: showDescriptions(s)};
         const apps = this._services.appIndex.favorites();
+        const generic = s.get('apps-show-generic-names');
         for (const app of apps)
-            this.actor.add_child(new AppRow(app, this._host, {...opts, name: displayName(app, s)}).actor);
+            this.actor.add_child(new AppRow(app, this._host, {...opts, name: displayName(app, s, generic)}).actor);
         if (apps.length === 0)
             this._empty(_('No favourites'));
     }

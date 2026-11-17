@@ -16,6 +16,9 @@
 //                                        Dash to Panel panels and the pointer
 //   createFullscreenReveal(scope)        FullscreenReveal (panel/fullscreenReveal.ts) wired to the shell's
 //                                        own panel box and the live Dash to Panel panel boxes
+//   pointInActor(actor, x, y)            is the stage point inside the actor's transformed box (true when unknown)
+//   pointOverAnyPanel(x, y)              is the stage point inside one of the panel boxes (true when unknown); a
+//                                        cheap pre-check that spares a stage pick for pointer motion elsewhere
 //   panelClickDeps()                     PanelClickDeps (panel/panelClick.ts) for the live stage and panels
 //   activatePanelButton(actor, button, press?)  pass the closing click on to a panelClickDeps().isButton actor
 //                                        (panelClickAction: St.Button `clicked`, toggle a panel menu, or replay
@@ -133,6 +136,25 @@ export function createFullscreenReveal(scope: Scope): FullscreenReveal {
         alive: box => isActorAlive(box as Parameters<typeof isActorAlive>[0]),
         untrack: untrackFullscreen,
     });
+}
+
+export function pointInActor(actor: unknown, x: number, y: number): boolean {
+    try {
+        const a = actor as Clutter.Actor;
+        const [ax, ay] = a.get_transformed_position();
+        const [w, h] = a.get_transformed_size();
+        return x >= ax && y >= ay && x < ax + w && y < ay + h;
+    } catch {
+        return true;
+    }
+}
+
+export function pointOverAnyPanel(x: number, y: number): boolean {
+    try {
+        return panelBoxes().some(p => !p.box || pointInActor(p.box, x, y));
+    } catch {
+        return true;
+    }
 }
 
 export function panelClickDeps(): PanelClickDeps {

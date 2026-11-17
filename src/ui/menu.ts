@@ -67,6 +67,8 @@ import {
     panelButtonKind,
     passedContextMenu,
     panelClickDeps,
+    pointInActor,
+    pointOverAnyPanel,
     setPanelHover,
 } from '../panel/targets.js';
 import {isActorAlive} from '../panel/validate.js';
@@ -505,7 +507,10 @@ export class SpawnPopup {
             if (event.type() !== Clutter.EventType.MOTION)
                 return;
             const [x, y] = event.get_coords();
-            const target = this._open ? panelClickTarget({x, y, button: PRIMARY}, this._anchor, panelClickDeps()) : null;
+            // The pick is skipped where it cannot find a panel button: inside the popup, or off every panel.
+            const content = this._menu?.box ?? null;
+            const mayHit = this._open && !(content && pointInActor(content, x, y)) && pointOverAnyPanel(x, y);
+            const target = mayHit ? panelClickTarget({x, y, button: PRIMARY}, this._anchor, panelClickDeps()) : null;
             if (target === this._hovered)
                 return;
             this._clearHover();
