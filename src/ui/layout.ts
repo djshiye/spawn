@@ -15,7 +15,6 @@
 //                                      work area the popup is clamped to) opening towards `side`
 //                                      (reset view, "Auto" search position, focus search)
 //   layout.prepare(anchor, side): void  closed menu (popup prebuild): build the start view for that anchor now
-//   layout.allAppsSteps(): (() => void)[] | null   idle steps of the All Apps prebuild (the popup runs one per idle, menu closed)
 //   layout.onClosed(): void            menu was hidden (clear search, release caches)
 //   layout.handleKey(event): boolean   Escape routing: true when the layout consumed the key
 //   layout.search(query): void         put `query` in the search entry (dev / D-Bus hook)
@@ -549,14 +548,6 @@ export class SpawnLayout implements ShortcutHost {
         } catch (e) {
             error('layout prepare failed', e);
         }
-    }
-
-    /**
-     * The idle steps that build All Apps while the menu is closed (after prepare()), so its first click only shows it;
-     * null when there is nothing to build. A step does nothing when the menu opened or the layout is gone.
-     */
-    allAppsSteps(): (() => void)[] | null {
-        return this._state.destroyed ? null : this._views.allAppsSteps();
     }
 
     onClosed(): void {

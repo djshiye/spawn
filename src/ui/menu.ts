@@ -37,8 +37,7 @@
 //   popup.onOpenStateChanged(scope, cb(open: boolean, anchor: St.Widget | null))
 //   popup.prebuild(anchor?): void      optional, call on idle: build the layout; with `anchor`, also attach
 //                                      to it, build the start view and resolve its styles over the next
-//                                      two idles (no UI shown), so the first open is about as fast as later ones;
-//                                      then builds All Apps hidden, one idle per step, so its first click is quick too
+//                                      two idles (no UI shown), so the first open is about as fast as later ones
 //   popup.side: St.Side                the arrow side of the current attachment
 //   popup.menuActor / popup.layoutActor   dev hooks: the PopupMenu actor / the layout root (or null)
 //   popup.resetLayout() / popup.layoutBuilt   dev / benchmark: drop the built layout; is it built
@@ -237,25 +236,6 @@ export class SpawnPopup {
                     } catch (e) {
                         error('popup prebuild (styles) failed', e);
                     }
-                    // Then All Apps, hidden, one step per idle (its first screenful and its styles).
-                    const steps = current() ? layout.allAppsSteps() ?? [] : [];
-                    const next = (): void => {
-                        const step = steps.shift();
-                        if (!step)
-                            return;
-                        this._scope.idle(() => {
-                            try {
-                                if (!current() || this._anchor !== anchor)
-                                    return;
-                                step();
-                            } catch (e) {
-                                error('popup prebuild (All Apps) failed', e);
-                                return;
-                            }
-                            next();
-                        });
-                    };
-                    next();
                 });
             } catch (e) {
                 error('popup prebuild (start view) failed', e);

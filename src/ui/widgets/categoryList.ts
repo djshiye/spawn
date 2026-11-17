@@ -7,8 +7,8 @@
 // part plus BUFFER_ROWS, and a spacer stands in for the others so the scroll range is right from the start.
 // Scrolling builds the rows that come into view (before the next frame). Selecting another category drops the
 // previous list (except All Apps: that list stays alive, hidden and cut back to its first screenful, so returning
-// to All Apps is a show, not a rebuild; refresh() and a pending change drop it), and while the view is hidden (another view, the menu closed) the list keeps only its first
-// screenful, so a long list's actors do not stay around.
+// to All Apps is a show, not a rebuild; refresh() and a pending change drop it), and while the view is hidden
+// (another view, the menu closed) the list keeps only its first screenful, so a long list's actors do not stay around.
 // Keyboard navigation sees the rows it needs: during a key press appRows() first builds the rows ahead of
 // the focused one (two screenfuls), and all of them for End / Page Down or when the focus comes into the list
 // with Up (its last row); completeRows() builds all of them on request.
@@ -18,7 +18,6 @@
 //   list.actor: St.Widget
 //   list.showCategory(id: string): void   ('all' | 'frequent' | GMenu id)
 //   list.ensureBuilt(): void              call when the view becomes visible
-//   list.buildColumn(): void              build the category column now (the idle prebuild does it in a step of its own)
 //   list.refresh(): void                  rebuild the column and the selected list (AppIndex / settings changed)
 //   list.setColumnVisible(visible)        false = flat "all apps" list without the category column
 //   list.columnScroll() / list.appScroll()   the two scroll views (scroll settings are re-applied live)
@@ -146,8 +145,6 @@ export class CategoryList {
     private _kept: AppList | null = null;
     /** Natural height of one row (measured on the first row built; 0 = not known yet). */
     private _rowHeight = 0;
-    /** The row height was measured while the list was not mapped: measure once more when it shows. */
-    private _remeasure = false;
     private _cancelTrim: (() => void) | null = null;
     /** Pending BEFORE_REDRAW later of _queueFill (0 = none). */
     private _laterId = 0;
@@ -236,12 +233,6 @@ export class CategoryList {
     get pendingRows(): number {
         const list = this._list;
         return list ? list.apps.length - list.built : 0;
-    }
-
-    /** Build the category column (when not built yet); the selection is shown by showCategory() / ensureBuilt(). */
-    buildColumn(): void {
-        if (!this._destroyed && !this._built)
-            this._buildColumn();
     }
 
     /** Build the category column and show the selection; call when the view becomes visible. */
@@ -518,11 +509,8 @@ export class CategoryList {
                 list.box.insert_child_below(row, list.spacer);
             else
                 list.box.add_child(row);
-            if (this._rowHeight <= 0 && row.get_stage()) {
+            if (this._rowHeight <= 0 && row.get_stage())
                 this._rowHeight = row.get_preferred_height(-1)[1];
-                // Measured before the list was ever on screen (the idle prebuild): checked again once it shows.
-                this._remeasure = !this.actor.mapped;
-            }
         }
         const pending = list.apps.length - list.built;
         if (pending > 0) {
@@ -601,18 +589,7 @@ export class CategoryList {
     /** The rows down to the bottom of the visible part of the list, plus BUFFER_ROWS. */
     private _fill(): void {
         const list = this._list;
-        if (!list || this._destroyed || !this.actor.mapped)
-            return;
-        if (this._remeasure) {
-            this._remeasure = false;
-            const first = this._rows(list)[0];
-            const h = first ? first.get_preferred_height(-1)[1] : 0;
-            if (h > 0 && h !== this._rowHeight) {
-                this._rowHeight = h;
-                this._buildRows(list, 0); // resize the spacer
-            }
-        }
-        if (list.built >= list.apps.length)
+        if (!list || this._destroyed || list.built >= list.apps.length || !this.actor.mapped)
             return;
         const bottom = this._appsScroll.vadjustment.value + this._viewHeight();
         const need = Math.ceil(bottom / this._rowPitch()) + BUFFER_ROWS;

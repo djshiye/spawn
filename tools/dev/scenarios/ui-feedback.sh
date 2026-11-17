@@ -9,8 +9,7 @@
 #   U13c the last app out of a folder keeps the folder's slot
 F_INTERNET=7d610436-4b17-46cf-99db-97578edac1c1
 K=/org/gnome/shell/extensions/spawn/
-# known-apps / new-apps are the "New" badge bookkeeping, written whenever the app index (re)builds, which Undo does not touch
-dump_settings() { dconf dump "$K" | grep -av -e '^dev-mode=' -e '^known-apps=' -e '^new-apps='; }
+dump_settings() { dconf dump "$K" | grep -av '^dev-mode='; }
 tmp="$(mktemp -d)"
 click_text() { # label [nth]
     local r
