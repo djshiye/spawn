@@ -15,7 +15,7 @@ import {error} from '../../core/log.js';
 import type {SpawnSettings} from '../../core/settings.js';
 import {appInfoOf} from '../../model/appInfo.js';
 import type {AppIndex, AppSearchEntry} from '../../model/appIndex.js';
-import {matchAppActions, type ActionApp, type AppAction} from '../appActions.js';
+import {ActionMatchCache, matchAppActions, type ActionApp, type AppAction} from '../appActions.js';
 import type {CancelToken, SearchProvider, SearchResult} from '../engine.js';
 import {maxSearchResults} from '../limit.js';
 
@@ -29,6 +29,10 @@ export class AppActionsProvider implements SearchProvider {
     readonly immediate = true;
 
     private _wrapped: WeakMap<AppSearchEntry, EntryWithActions> = new WeakMap();
+    /** The wrapped searchEntries() list, rebuilt only when the index hands out a new list. */
+    private _apps: EntryWithActions[] = [];
+    private _appsOf: AppSearchEntry[] | null = null;
+    private readonly _cache = new ActionMatchCache<EntryWithActions>();
 
     constructor(private readonly _index: AppIndex, private readonly _settings: SpawnSettings) {}
 
@@ -41,8 +45,12 @@ export class AppActionsProvider implements SearchProvider {
             return [];
         if (!this._index.built)
             this._index.build();
-        const apps = this._index.searchEntries().map(e => this._wrap(e));
-        const matches = matchAppActions(query, apps, maxSearchResults(this._settings));
+        const entries = this._index.searchEntries();
+        if (entries !== this._appsOf) {
+            this._appsOf = entries;
+            this._apps = entries.map(e => this._wrap(e));
+        }
+        const matches = matchAppActions(query, this._apps, maxSearchResults(this._settings), this._cache);
         if (token.cancelled)
             return [];
         return matches.map(({app, action, score}) => ({

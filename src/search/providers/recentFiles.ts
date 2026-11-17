@@ -2,9 +2,15 @@
 // available inside the shell, so the file is read with GLib.BookmarkFile).
 //
 // The parsed list is cached for the session (also between menu opens). A Gio.FileMonitor on the
-// file only sets a dirty flag; the next search reparses lazily, so a search costs no parsing at
-// all while the file is unchanged. The monitor and the first parse happen on the first enabled
-// search, never at construction; clear() (menu closed) only cancels the existence checks in flight.
+// file only sets a dirty flag; the next search (or warmUp(), on menu open) reloads it in the
+// background: the size check and the read run in GIO's worker threads, and the parse and the
+// per-entry work are split over idle callbacks, so no keystroke or frame waits for the file (a
+// search during a load returns a promise; its rows arrive once the load is done). Unchanged
+// entries keep their objects across a reload, so their prepared name and folder are not prepared
+// again. The monitor and the first parse happen on the first enabled search or menu open, never
+// at construction; clear() (menu closed) only cancels the existence checks in flight. The
+// provider is `immediate`: it answers every keystroke, with no debounce (ranking 2000 prepared
+// entries takes ~1-3 ms).
 //
 // Entries whose file no longer exists are skipped lazily: all matches are ranked, then walked
 // best first until `max` live files are found. Existence is checked asynchronously (FileProbe:
@@ -37,6 +43,7 @@
 // Public API:
 //   new RecentFilesProvider(scope: Scope, settings: SpawnSettings)  implements SearchProvider
 //   clear(): cancel the existence checks in flight (the parsed list and the monitor stay)
+//   warmUp(): menu opened: (re)load the list and prepare it for matching in the background
 //   list(max): RecentList | Promise<RecentList>   the newest `max` live files {entries, more, remembering}
 //   open(entry: RecentItem): void         open with the default application (notifies on failure)
 //   RecentItem                            {uri, name, folder (~-shortened parent), path, mime, hidden, modified}
@@ -64,6 +71,10 @@ const RETRY_US = 3_000_000;
 const PROBE_TIMEOUT_MS = 400;
 /** A folder match counts at half a name match. */
 const FOLDER_WEIGHT = 0.5;
+/** Entries read from the parsed file per idle (2000 entries take ~15-45 ms of GI calls in all). */
+const ENTRY_CHUNK = 250;
+/** Items prepared for matching per idle after a warm-up. */
+const PREPARE_CHUNK = 400;
 
 export interface RecentItem {
     uri: string;
@@ -95,6 +106,7 @@ function tryGet<T>(fn: () => T, fallback: T): T {
 export class RecentFilesProvider implements SearchProvider {
     readonly id = 'recentFiles';
     readonly title = 'Recent Files';
+    readonly immediate = true;
 
     private readonly _monitorScope: Scope;
     private readonly _settings: SpawnSettings;
@@ -108,11 +120,18 @@ export class RecentFilesProvider implements SearchProvider {
     private _privacy: Gio.Settings | null | undefined;
     /** Prepared name + folder per item; items are replaced wholesale on a reparse. */
     private _fields = new WeakMap<RecentItem, readonly Field[]>();
+    private readonly _loadScope: Scope;
+    private _loading: Promise<void> | null = null;
+    private _loadCancellable: Gio.Cancellable | null = null;
+    /** _items without the hidden ones, built once per parse (null = not built yet). */
+    private _visible: RecentItem[] | null = null;
 
     constructor(scope: Scope, settings: SpawnSettings) {
         this._monitorScope = scope.child('recent files monitor');
         this._settings = settings;
         this._probe = new FileProbe(scope.child('recent files probe'), {timeoutMs: PROBE_TIMEOUT_MS});
+        this._loadScope = scope.child('recent files load');
+        this._loadScope.add(() => this._loadCancellable?.cancel(), 'recent files load cancel');
     }
 
     isEnabled(): boolean {
@@ -137,11 +156,13 @@ export class RecentFilesProvider implements SearchProvider {
         const remembering = this._remembering();
         if (!remembering)
             return {entries: [], more: false, remembering};
-        this._ensureLoaded();
-        const items = this._settings.get('show-hidden-recent-files') ? this._items : this._items.filter(i => !i.hidden);
         const make = (live: RecentItem[]): RecentList => ({entries: live.slice(0, max), more: live.length > max, remembering});
-        const live = this._live(items, max + 1, null);
-        return Array.isArray(live) ? make(live) : live.then(make);
+        const listNow = (): RecentList | Promise<RecentList> => {
+            const live = this._live(this._shown(), max + 1, null);
+            return Array.isArray(live) ? make(live) : live.then(make);
+        };
+        const loading = this._ensureLoaded();
+        return loading ? loading.then(listNow) : listNow();
     }
 
     open(item: RecentItem): void {
@@ -151,15 +172,29 @@ export class RecentFilesProvider implements SearchProvider {
     search(query: string, token: CancelToken): SearchResult[] | Promise<SearchResult[]> {
         if (!query.trim() || !hasAlnum(query) || !this._remembering())
             return []; // File History off: nothing is read or shown, as in list()
-        this._ensureLoaded();
+        const loading = this._ensureLoaded();
+        return loading ? loading.then(() => token.cancelled ? [] : this._searchLoaded(query, token)) : this._searchLoaded(query, token);
+    }
+
+    /** Hidden entries left out unless show-hidden-recent-files is on. */
+    private _shown(): RecentItem[] {
+        if (this._settings.get('show-hidden-recent-files'))
+            return this._items;
+        this._visible ??= this._items.filter(i => !i.hidden);
+        return this._visible;
+    }
+
+    private _searchLoaded(query: string, token: CancelToken): SearchResult[] | Promise<SearchResult[]> {
+        const max = maxSearchResults(this._settings);
+        const ranked = rankFields(query, this._shown(), item => this._fieldsOf(item));
         if (token.cancelled)
             return [];
-
-        const showHidden = this._settings.get('show-hidden-recent-files');
-        const max = maxSearchResults(this._settings);
-        const items = showHidden ? this._items : this._items.filter(i => !i.hidden);
-        const ranked = rankFields(query, items, item => this._fieldsOf(item));
-        const scores = new Map(ranked.map(r => [r.item, r.score]));
+        const scores = new Map<RecentItem, number>();
+        const order: RecentItem[] = new Array(ranked.length);
+        for (let i = 0; i < ranked.length; i++) {
+            order[i] = ranked[i].item;
+            scores.set(ranked[i].item, ranked[i].score);
+        }
         const make = (live: RecentItem[]): SearchResult[] => live.map(item => ({
             id: item.uri,
             providerId: this.id,
@@ -170,7 +205,7 @@ export class RecentFilesProvider implements SearchProvider {
             score: scores.get(item) ?? 0,
             activate: () => this._open(item),
         }));
-        const live = this._live(ranked.map(r => r.item), max, token);
+        const live = this._live(order, max, token);
         return Array.isArray(live) ? make(live) : live.then(make);
     }
 
@@ -296,23 +331,87 @@ export class RecentFilesProvider implements SearchProvider {
         return GLib.build_filenamev([GLib.get_user_data_dir(), 'recently-used.xbel']);
     }
 
-    private _ensureLoaded(): void {
+    /**
+     * Makes sure the list is current: null when it is (or a recent failure says to keep what we have), else the
+     * load in flight (started now if needed). A search during a load waits for it; its rows arrive a moment later.
+     */
+    private _ensureLoaded(): Promise<void> | null {
         if (!this._monitorStarted)
             this._startMonitor();
+        if (this._loading)
+            return this._loading;
         if (!this._dirty && this._monitored)
-            return;
+            return null;
         const now = GLib.get_monotonic_time();
         if (now < this._retryAt)
-            return; // a recent parse failed; keep what we have for a moment
+            return null; // a recent parse failed; keep what we have for a moment
         this._dirty = false;
-        this._exists.clear();
-        const parsed = this._parse();
+        const cancellable = new Gio.Cancellable();
+        this._loadCancellable = cancellable;
+        this._loading = this._load(cancellable).finally(() => {
+            if (this._loadCancellable === cancellable) {
+                this._loading = null;
+                this._loadCancellable = null;
+            }
+        });
+        return this._loading;
+    }
+
+    /** Menu opened: read and prepare the list in the background now, so the first keystroke does not wait for it. */
+    warmUp(): void {
+        if (!this.isEnabled() || !this._remembering())
+            return;
+        this._ensureLoaded()?.then(() => this._prepareFields()).catch(e => error('warming up recent files failed', e));
+    }
+
+    private async _load(cancellable: Gio.Cancellable): Promise<void> {
+        let parsed: RecentItem[] | null;
+        try {
+            parsed = await this._parse(cancellable);
+        } catch (e) {
+            error('reading recently-used.xbel failed', e);
+            parsed = null;
+        }
+        if (cancellable.is_cancelled())
+            return;
         if (parsed) {
-            this._items = parsed;
+            this._items = this._reuse(parsed);
+            this._visible = null;
         } else {
             this._dirty = true; // keep the previous list while the retry window runs
-            this._retryAt = now + RETRY_US;
+            this._retryAt = GLib.get_monotonic_time() + RETRY_US;
         }
+    }
+
+    /**
+     * Keeps the previous object of every unchanged entry, so its prepared name and folder (the _fields WeakMap)
+     * survive a reparse: the file changes whenever any app opens a file.
+     */
+    private _reuse(parsed: RecentItem[]): RecentItem[] {
+        const old = new Map<string, RecentItem>();
+        for (const item of this._items)
+            old.set(item.uri, item);
+        return parsed.map(item => {
+            const prev = old.get(item.uri);
+            return prev && prev.name === item.name && prev.folder === item.folder && prev.path === item.path &&
+                prev.mime === item.mime && prev.hidden === item.hidden && prev.modified === item.modified ? prev : item;
+        });
+    }
+
+    /** Prepares the name and folder of every item for matching, PREPARE_CHUNK items per idle. */
+    private async _prepareFields(): Promise<void> {
+        const items = this._items;
+        for (let i = 0; i < items.length; i += PREPARE_CHUNK) {
+            if (items !== this._items)
+                return; // reparsed meanwhile; the next warm-up prepares the new list
+            for (let k = i; k < Math.min(i + PREPARE_CHUNK, items.length); k++)
+                this._fieldsOf(items[k]);
+            await this._idle();
+        }
+    }
+
+    private _idle(): Promise<void> {
+        return new Promise(resolve => this._loadScope.idle(resolve));
     }
 
     private _startMonitor(): void {
@@ -322,6 +421,10 @@ export class RecentFilesProvider implements SearchProvider {
             this._monitorScope.connect(monitor, 'changed', () => {
                 this._dirty = true;
                 this._retryAt = 0;
+                // A load in flight read the old contents: drop it, the next search / warm-up starts a fresh one.
+                this._loadCancellable?.cancel();
+                this._loadCancellable = null;
+                this._loading = null;
             });
             this._monitorScope.add(() => monitor.cancel(), 'recent files monitor');
             this._monitored = true;
@@ -331,33 +434,49 @@ export class RecentFilesProvider implements SearchProvider {
         }
     }
 
-    /** The parsed items, or null when the file could not be read for a non-permanent reason. */
-    private _parse(): RecentItem[] | null {
-        const path = this._path();
+    /**
+     * The parsed items, or null when the file could not be read for a non-permanent reason. The size check and the
+     * read run in GIO's worker threads; the parse and the entries (main thread, GLib.BookmarkFile) are split over
+     * idles, ENTRY_CHUNK entries at a time, so no frame waits for a large file.
+     */
+    private async _parse(cancellable: Gio.Cancellable): Promise<RecentItem[] | null> {
+        const file = Gio.File.new_for_path(this._path());
+        let bytes: Uint8Array;
         try {
-            const info = Gio.File.new_for_path(path).query_info('standard::size', Gio.FileQueryInfoFlags.NONE, null);
+            const info = await queryInfo(file, cancellable);
             if (info.get_size() > MAX_XBEL_BYTES) {
                 warn(`recently-used.xbel is larger than ${MAX_XBEL_BYTES} bytes, recent files are skipped`);
                 return [];
             }
+            bytes = await loadContents(file, cancellable);
         } catch (e) {
             if (e instanceof GLib.Error && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))
                 return []; // no file yet: the monitor fires once it exists
             return null;
         }
+        if (bytes.length > MAX_XBEL_BYTES)
+            return []; // grew between the size check and the read
+        await this._idle();
+        if (cancellable.is_cancelled())
+            return null;
 
         const bookmarks = GLib.BookmarkFile.new();
         try {
-            bookmarks.load_from_file(path);
-        } catch (e) {
-            if (e instanceof GLib.Error && e.matches(GLib.BookmarkFileError, GLib.BookmarkFileError.FILE_NOT_FOUND))
-                return [];
+            bookmarks.load_from_data(bytes);
+        } catch {
             return null; // half-written (or unreadable): retry shortly
         }
 
         const home = GLib.get_home_dir();
         const items: RecentItem[] = [];
-        for (const uri of tryGet(() => bookmarks.get_uris(), [] as string[])) {
+        const uris = tryGet(() => bookmarks.get_uris(), [] as string[]);
+        for (let i = 0; i < uris.length; i++) {
+            if (i > 0 && i % ENTRY_CHUNK === 0) {
+                await this._idle();
+                if (cancellable.is_cancelled())
+                    return null;
+            }
+            const uri = uris[i];
             try {
                 const file = Gio.File.new_for_uri(uri);
                 const filePath = file.get_path();
@@ -377,6 +496,30 @@ export class RecentFilesProvider implements SearchProvider {
         items.sort((a, b) => b.modified - a.modified);
         return items.slice(0, MAX_ITEMS);
     }
+}
+
+function queryInfo(file: Gio.File, cancellable: Gio.Cancellable): Promise<Gio.FileInfo> {
+    return new Promise((resolve, reject) => {
+        file.query_info_async('standard::size', Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, cancellable, (_f, res) => {
+            try {
+                resolve(file.query_info_finish(res));
+            } catch (e) {
+                reject(e);
+            }
+        });
+    });
+}
+
+function loadContents(file: Gio.File, cancellable: Gio.Cancellable): Promise<Uint8Array> {
+    return new Promise((resolve, reject) => {
+        file.load_contents_async(cancellable, (_f, res) => {
+            try {
+                resolve(file.load_contents_finish(res)[1]);
+            } catch (e) {
+                reject(e);
+            }
+        });
+    });
 }
 
 /** Hidden: the name starts with "." or any directory below $HOME does (~/.config/..., ~/.cache/...). */

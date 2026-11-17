@@ -11,10 +11,13 @@
 // Public API:
 //   AppAction                          {id, name}
 //   ActionApp                          AppRankable + {actions(): AppAction[]} (read lazily, only for apps that match)
-//   matchAppActions(query, apps, limit?): ActionMatch[]     best first
+//   matchAppActions(query, apps, limit?, cache?): ActionMatch[]     best first; `cache` (an ActionMatchCache kept
+//                                      by the caller for one `apps` list) remembers the app-part rankings and the
+//                                      scored action names between keystrokes ("firefox p", "firefox pr", ...)
+//   ActionMatchCache                   new ActionMatchCache()
 //   ActionMatch                        {app, action, score}
 
-import {normalize, rankApps, scoreNormalized, type AppRankable} from './rank.js';
+import {normalize, rankApps, scoreNormalized, type AppRankable, type Ranked} from './rank.js';
 
 export interface AppAction {
     id: string;
@@ -35,8 +38,47 @@ const APP_MIN_SCORE = 540;
 const ACTION_MIN_SCORE = 400;
 const MAX_TERMS = 6;
 const APPS_PER_SPLIT = 4;
+/** App parts remembered by an ActionMatchCache (a few splits of the last few queries). */
+const CACHE_APP_PARTS = 32;
 
-export function matchAppActions<T extends ActionApp>(query: string, apps: readonly T[], limit = 5): ActionMatch<T>[] {
+/** The prepared action names / ids are plain strings; only the app-part rankings depend on the apps list. */
+export class ActionMatchCache<T extends ActionApp = ActionApp> {
+    apps: readonly T[] | null = null;
+    readonly ranked = new Map<string, Ranked<T>[]>();
+    readonly spacedIds = new Map<string, string>();
+}
+
+/**
+ * The apps an app part can mean. The typo pass of rankApps is skipped: it only runs when nothing scored
+ * SUBSTRING_BAND (400), and every typo score is below that, so below APP_MIN_SCORE (540) as well.
+ */
+function appsFor<T extends ActionApp>(appPart: string, apps: readonly T[], cache: ActionMatchCache<T> | undefined): Ranked<T>[] {
+    if (!cache)
+        return rankApps(appPart, apps, APPS_PER_SPLIT, undefined, {typo: false});
+    if (cache.apps !== apps) {
+        cache.apps = apps;
+        cache.ranked.clear();
+    }
+    let ranked = cache.ranked.get(appPart);
+    if (!ranked) {
+        ranked = rankApps(appPart, apps, APPS_PER_SPLIT, undefined, {typo: false});
+        if (cache.ranked.size >= CACHE_APP_PARTS)
+            cache.ranked.clear();
+        cache.ranked.set(appPart, ranked);
+    }
+    return ranked;
+}
+
+function spacedId(id: string, cache: ActionMatchCache | undefined): string {
+    let spaced = cache?.spacedIds.get(id);
+    if (spaced === undefined) {
+        spaced = id.replace(/[-_]+/g, ' ');
+        cache?.spacedIds.set(id, spaced);
+    }
+    return spaced;
+}
+
+export function matchAppActions<T extends ActionApp>(query: string, apps: readonly T[], limit = 5, cache?: ActionMatchCache<T>): ActionMatch<T>[] {
     const terms = normalize(query).split(' ').filter(t => t.length > 0);
     if (terms.length < 2 || terms.length > MAX_TERMS)
         return [];
@@ -46,13 +88,13 @@ export function matchAppActions<T extends ActionApp>(query: string, apps: readon
         const actionPart = terms.slice(k).join(' ');
         if (actionPart.length < 2)
             continue;
-        for (const {item: app, score: appScore} of rankApps(appPart, apps, APPS_PER_SPLIT)) {
+        for (const {item: app, score: appScore} of appsFor(appPart, apps, cache)) {
             if (appScore < APP_MIN_SCORE)
                 continue;
             for (const action of app.actions()) {
                 const s = Math.max(
                     scoreNormalized(actionPart, action.name),
-                    Math.round(scoreNormalized(actionPart, action.id.replace(/[-_]+/g, ' ')) * 0.9),
+                    Math.round(scoreNormalized(actionPart, spacedId(action.id, cache as ActionMatchCache | undefined)) * 0.9),
                 );
                 if (s < ACTION_MIN_SCORE)
                     continue;

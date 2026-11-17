@@ -177,33 +177,37 @@ function wordsOf(lower: string, boundary: boolean[]): string[] {
 const ABBREVIATION_DROP = 2;
 
 function acronymMatch(q: string, words: string[], skip: boolean): boolean {
-    const failed = new Set<number>();
-    const walk = (qi: number, wi: number): boolean => {
-        if (qi === q.length)
-            return true;
-        if (wi >= words.length)
-            return false;
-        const key = qi * 64 + wi;
-        if (failed.has(key))
-            return false;
-        const w = words[wi];
-        let k = 0;
-        while (k < w.length && qi + k < q.length && q[qi + k] === w[k]) {
-            k++;
-            // A piece that stops inside its word must drop at least two letters ("sys" of System,
-            // not "dis" of Disk): shaving one letter off a short word is not an abbreviation.
-            // The last piece may stop anywhere (a plain prefix).
-            if (qi + k < q.length && k < w.length && w.length - k < ABBREVIATION_DROP)
-                continue;
-            if (walk(qi + k, wi + 1))
-                return true;
-        }
-        if (skip && walk(qi, wi + 1))
-            return true;
-        failed.add(key);
+    ACRONYM_FAILED.clear();
+    return acronymWalk(q, words, skip, 0, 0);
+}
+
+/** Dead ends (qi * 64 + wi) of the current acronymMatch; one shared set, so a call allocates nothing. */
+const ACRONYM_FAILED = new Set<number>();
+
+function acronymWalk(q: string, words: string[], skip: boolean, qi: number, wi: number): boolean {
+    if (qi === q.length)
+        return true;
+    if (wi >= words.length)
         return false;
-    };
-    return walk(0, 0);
+    const key = qi * 64 + wi;
+    if (ACRONYM_FAILED.has(key))
+        return false;
+    const w = words[wi];
+    let k = 0;
+    while (k < w.length && qi + k < q.length && q[qi + k] === w[k]) {
+        k++;
+        // A piece that stops inside its word must drop at least two letters ("sys" of System,
+        // not "dis" of Disk): shaving one letter off a short word is not an abbreviation.
+        // The last piece may stop anywhere (a plain prefix).
+        if (qi + k < q.length && k < w.length && w.length - k < ABBREVIATION_DROP)
+            continue;
+        if (acronymWalk(q, words, skip, qi + k, wi + 1))
+            return true;
+    }
+    if (skip && acronymWalk(q, words, skip, qi, wi + 1))
+        return true;
+    ACRONYM_FAILED.add(key);
+    return false;
 }
 
 /**
@@ -815,7 +819,12 @@ export function prepareApps(items: readonly AppRankable[]): void {
         preparedApp(item);
 }
 
-export function rankApps<T extends AppRankable>(query: string, items: readonly T[], limit?: number, usageOf?: UsageOf): Ranked<T>[] {
+/** typo: false skips the one-typo retry (a caller that drops everything under SUBSTRING_BAND anyway). */
+export interface RankAppsOptions {
+    typo?: boolean;
+}
+
+export function rankApps<T extends AppRankable>(query: string, items: readonly T[], limit?: number, usageOf?: UsageOf, options?: RankAppsOptions): Ranked<T>[] {
     let aq: AppQuery | null = null;
     let aqFor = '';
     const pass = (typo: boolean) => rankItemsBy(query, items, (item, q) => {
@@ -827,7 +836,7 @@ export function rankApps<T extends AppRankable>(query: string, items: readonly T
     });
     let ranked = pass(false);
     // Nothing matched at the substring tier or better: allow one typo per term (see the header).
-    if ((ranked[0]?.score ?? 0) < SUBSTRING_BAND && aq !== null && (aq as AppQuery).pq.typoTerms > 0)
+    if (options?.typo !== false && (ranked[0]?.score ?? 0) < SUBSTRING_BAND && aq !== null && (aq as AppQuery).pq.typoTerms > 0)
         ranked = pass(true);
     const cut = applyRelativeCutoff(ranked);
     const ordered = usageOf ? applyUsageBoost(cut, usageOf) : cut;
@@ -849,6 +858,17 @@ export function candidate(raw: string): Candidate {
     return {prepared: prepare(raw)};
 }
 
+/** The best weighted score of `query` over `fields`. */
+function weightedScore(query: PreparedQuery, fields: readonly Field[]): number {
+    let best = 0;
+    for (const f of fields) {
+        const s = Math.round(scoreCandidate(query, f.candidate.prepared, false) * f.weight);
+        if (s > best)
+            best = s;
+    }
+    return best;
+}
+
 /** Weighted fields (see the header); the multi-word retry needs every term (>= 2 chars) above the fuzzy band. */
 export function rankFields<T>(query: string, items: readonly T[], fieldsOf: (item: T) => readonly Field[], limit?: number): Ranked<T>[] {
     let pq: PreparedQuery | null = null;
@@ -867,20 +887,11 @@ export function rankFields<T>(query: string, items: readonly T[], fieldsOf: (ite
             have |= f.candidate.prepared?.mask ?? 0;
         if (missingBits(mask, have) > 0)
             return 0;
-        const weighted = (query_: PreparedQuery): number => {
-            let best = 0;
-            for (const f of fields) {
-                const s = Math.round(scoreCandidate(query_, f.candidate.prepared, false) * f.weight);
-                if (s > best)
-                    best = s;
-            }
-            return best;
-        };
-        let s = weighted(pq);
+        let s = weightedScore(pq, fields);
         if (s < SUBSTRING_BAND && across && fields.length > 1) {
             let worst = Infinity;
             for (const term of across as PreparedQuery[]) {
-                const t = weighted(term);
+                const t = weightedScore(term, fields);
                 if (t <= FUZZY_MAX) {
                     worst = 0;
                     break;

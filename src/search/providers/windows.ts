@@ -16,7 +16,7 @@ import {error} from '../../core/log.js';
 import type {SpawnSettings} from '../../core/settings.js';
 import type {CancelToken, SearchProvider, SearchResult} from '../engine.js';
 import {maxSearchResults} from '../limit.js';
-import {candidate, hasAlnum, rankFields} from '../rank.js';
+import {candidate, hasAlnum, rankFields, type Field} from '../rank.js';
 
 const APP_NAME_WEIGHT = 0.8;
 
@@ -34,6 +34,7 @@ export class WindowsProvider implements SearchProvider {
     readonly immediate = true;
 
     private readonly _settings: SpawnSettings;
+    private readonly _prepared = new WeakMap<Meta.Window, {title: string; appName: string; fields: readonly Field[]}>();
 
     constructor(settings: SpawnSettings) {
         this._settings = settings;
@@ -50,10 +51,7 @@ export class WindowsProvider implements SearchProvider {
         if (token.cancelled)
             return [];
 
-        const ranked = rankFields(query, windows, (info: WindowInfo) => [
-            {candidate: candidate(info.title), weight: 1},
-            {candidate: candidate(info.appName), weight: APP_NAME_WEIGHT},
-        ], maxSearchResults(this._settings));
+        const ranked = rankFields(query, windows, (info: WindowInfo) => this._fieldsOf(info), maxSearchResults(this._settings));
 
         return ranked.map(({item, score}) => ({
             id: String(item.window.get_id()),
@@ -74,6 +72,19 @@ export class WindowsProvider implements SearchProvider {
                 }
             },
         }));
+    }
+
+    /** Prepared title + app name per window, prepared again only when either changed. */
+    private _fieldsOf(info: WindowInfo): readonly Field[] {
+        const hit = this._prepared.get(info.window);
+        if (hit && hit.title === info.title && hit.appName === info.appName)
+            return hit.fields;
+        const fields = [
+            {candidate: candidate(info.title), weight: 1},
+            {candidate: candidate(info.appName), weight: APP_NAME_WEIGHT},
+        ];
+        this._prepared.set(info.window, {title: info.title, appName: info.appName, fields});
+        return fields;
     }
 
     private _windows(): WindowInfo[] {

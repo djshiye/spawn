@@ -15,7 +15,8 @@
 //   services.recentFiles  the RecentFilesProvider registered in services.search (also feeds the Recent Files view)
 //   services.warmUp()     (call from layout onOpen) create the search engine and start loading the
 //                         GNOME shell search providers in the background, so the first query of
-//                         the session already includes them. Cheap, idempotent, never throws.
+//                         the session already includes them, and (re)load recent files when they changed.
+//                         Cheap, idempotent, never throws.
 //   ExtensionInfo         {uuid, path, iconDir}
 
 import Shell from 'gi://Shell';
@@ -55,6 +56,7 @@ export class Services {
     private _search: SearchEngine | null = null;
     private _shell: ShellProviders | null = null;
     private _recent: RecentFilesProvider | null = null;
+    private _panels: SettingsPanelsProvider | null = null;
 
     constructor(scope: Scope, settings: SpawnSettings, info: ExtensionInfo) {
         this.scope = scope;
@@ -109,7 +111,8 @@ export class Services {
             engine.addProvider(new UnitConversionProvider(this.settings));
             engine.addProvider(new AppActionsProvider(this.appIndex, this.settings));
             engine.addProvider(new AppsProvider(this.appIndex, this.settings));
-            engine.addProvider(new SettingsPanelsProvider(this.settings));
+            this._panels = new SettingsPanelsProvider(this.settings, {}, scope);
+            engine.addProvider(this._panels);
             engine.addProvider(new PowerActionsProvider(scope, this.settings));
             engine.addProvider(new WindowsProvider(this.settings));
             this._recent = new RecentFilesProvider(scope, this.settings);
@@ -131,6 +134,8 @@ export class Services {
         try {
             void this.search;
             this._shell?.warmUp();
+            this._recent?.warmUp();
+            this._panels?.warmUp();
         } catch (e) {
             error('warming up search failed', e);
         }
