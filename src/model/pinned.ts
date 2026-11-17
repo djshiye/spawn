@@ -96,6 +96,8 @@ export class PinnedStore {
     private readonly _folders = new Map<string, FolderWatch>();
     private readonly _listeners = new Set<() => void>();
     private _writing = 0;
+    /** The sanitised pinned list and folder lists as last read; dropped by every change to them (see _forget). */
+    private _cache: ops.PinnedSnapshot | null = null;
     private readonly _externalEmit: {call(): void};
 
     constructor(scope: Scope, settings: SpawnSettings, opts: PinnedStoreOptions = {}) {
@@ -106,6 +108,7 @@ export class PinnedStore {
 
         this._externalEmit = debounce(scope, EXTERNAL_COALESCE_MS, () => this._emit());
         settings.onChanged(scope, ['pinned-apps'], () => {
+            this._cache = null;
             if (this._writing > 0)
                 return;
             this._watchFolders(this._settings.get('pinned-apps'));
@@ -122,7 +125,7 @@ export class PinnedStore {
 
     items(includeMissing = false): PinnedItem[] {
         const out: PinnedItem[] = [];
-        for (const entry of this._settings.get('pinned-apps')) {
+        for (const entry of this._snapshot().top) {
             if (ops.isFolderEntry(entry)) {
                 // A hand-edited / imported id that cannot be a dconf path element has no folder settings.
                 if (!isValidFolderId(entry.id))
@@ -141,11 +144,11 @@ export class PinnedStore {
     }
 
     folderApps(uuid: string, includeMissing = false): Entry[] {
-        const top = this._settings.get('pinned-apps');
-        if (!isValidFolderId(uuid) || !top.some(e => ops.isFolderEntry(e) && e.id === uuid))
+        const snap = this._snapshot();
+        if (!isValidFolderId(uuid) || !snap.top.some(e => ops.isFolderEntry(e) && e.id === uuid))
             return [];
-        const list = this._watch(uuid).folder.pinnedApps;
-        return includeMissing ? list : list.filter(e => !isAppEntry(e) || this._exists(e.id));
+        const list = snap.folders[uuid] ?? [];
+        return includeMissing ? [...list] : list.filter(e => !isAppEntry(e) || this._exists(e.id));
     }
 
     isPinned(id: string): boolean {
@@ -217,12 +220,12 @@ export class PinnedStore {
 
     /** Everything an undo of pin / unpin / remove-from-folder has to put back; `name` is for the caller's banner. */
     captureState(name: string): FolderUndo {
-        const folders = ops.folderUuids(this._settings.get('pinned-apps')).filter(isValidFolderId);
+        const folders = ops.folderUuids(this._snapshot().top).filter(isValidFolderId);
         return {uuid: '', name, snapshot: this._settings.snapshot(['pinned-apps'], folders), after: null};
     }
 
     captureFolder(uuid: string): FolderUndo | null {
-        const entry = this._settings.get('pinned-apps').find(e => ops.isFolderEntry(e) && e.id === uuid);
+        const entry = this._snapshot().top.find(e => ops.isFolderEntry(e) && e.id === uuid);
         if (!entry || !isValidFolderId(uuid))
             return null;
         return {uuid, name: entry.name || this._folderName(uuid), snapshot: this._settings.snapshot(['pinned-apps'], [uuid]), after: null};
@@ -242,7 +245,8 @@ export class PinnedStore {
         this._writing++;
         try {
             this._settings.restore(undo.snapshot);
-            this._watchFolders(this._settings.get('pinned-apps'));
+            this._cache = null;
+            this._watchFolders(this._snapshot().top);
         } finally {
             this._writing--;
         }
@@ -281,8 +285,9 @@ export class PinnedStore {
 
     /** The pinned list plus the lists of the folders the undo remembers (a folder app removed behind its back counts). */
     private _stateKey(undo: FolderUndo): string {
-        const folders = [...undo.snapshot.folders.keys()].map(id => this._settings.folder(id).pinnedApps);
-        return JSON.stringify([this._settings.get('pinned-apps'), folders]);
+        // A folder the undo remembers may no longer be in the pinned list, so its lists are read directly.
+        const folders = [...undo.snapshot.folders.keys()].map(id => (this._folders.get(id)?.folder ?? this._settings.folder(id)).pinnedApps);
+        return JSON.stringify([this._snapshot().top, folders]);
     }
 
     /** Full-list indices of the entries items(true) shows (all but folder entries with an unusable id). */
@@ -338,6 +343,7 @@ export class PinnedStore {
         const child = new Scope(`pinned/${uuid}`);
         const release = this._scope.add(() => child.dispose(), `folder ${uuid}`);
         folder.onChanged(child, () => {
+            this._cache = null;
             if (this._writing === 0)
                 this._externalEmit.call();
         });
@@ -362,13 +368,17 @@ export class PinnedStore {
             this._watch(uuid);
     }
 
+    /** The pinned list and folder lists, unpacked and sanitised once until one of them changes (ops never edits it in place). */
     private _snapshot(): ops.PinnedSnapshot {
+        if (this._cache)
+            return this._cache;
         const top = this._settings.get('pinned-apps');
         this._watchFolders(top);
         const folders: Record<string, Entry[]> = {};
         for (const uuid of ops.folderUuids(top).filter(isValidFolderId))
             folders[uuid] = this._watch(uuid).folder.pinnedApps;
-        return {top, folders};
+        this._cache = {top, folders};
+        return this._cache;
     }
 
     /** Full-list indices of the entries the UI sees (missing apps left out). */
@@ -423,6 +433,7 @@ export class PinnedStore {
                 this._settings.deleteFolder(uuid);
                 changed = true;
             }
+            this._cache = null;
             this._watchFolders(next.top);
         } finally {
             this._writing--;

@@ -14,6 +14,7 @@
 //   clearLaunched(state, id)            state without `id` in fresh, or null when it was not new
 //   anyFresh(fresh, ids, now)           does one of `ids` count as new (category dots)
 //   sameState(a, b)                     equal known lists and fresh maps
+//   sameList(a, b) / sameFresh(a, b)    the two halves of sameState
 
 export const NEW_APP_TTL_S = 3 * 24 * 60 * 60;
 
@@ -30,11 +31,11 @@ export interface SyncResult {
     seeded: boolean;
 }
 
-function sameList(a: readonly string[], b: readonly string[]): boolean {
+export function sameList(a: readonly string[], b: readonly string[]): boolean {
     return a.length === b.length && a.every((x, i) => x === b[i]);
 }
 
-function sameFresh(a: Record<string, number>, b: Record<string, number>): boolean {
+export function sameFresh(a: Record<string, number>, b: Record<string, number>): boolean {
     const keys = Object.keys(a);
     return keys.length === Object.keys(b).length && keys.every(k => a[k] === b[k]);
 }
