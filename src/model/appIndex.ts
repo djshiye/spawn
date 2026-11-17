@@ -79,6 +79,8 @@ const REBUILD_DELAY_MS = 500;
 const OTHER_ID = 'Other';
 /** get_most_used() sorts every tracked app: re-read it at most this often while searching. */
 const USAGE_TTL_MS = 5000;
+/** Apps whose search entries / match data one idle prepares after a (re)build. */
+const ENTRY_CHUNK = 60;
 
 export class AppIndex {
     private readonly _scope: Scope;
@@ -102,6 +104,8 @@ export class AppIndex {
     private _allEntries: AppSearchEntry[] | null = null;
     private _entries: AppSearchEntry[] | null = null;
     private _cancelEntriesIdle: (() => void) | null = null;
+    /** Search entries made so far by the chunked idle after a (re)build, by position in _allApps. */
+    private _partialEntries: AppSearchEntry[] = [];
     private readonly _listeners = new Set<() => void>();
     private _usageScores: Map<string, number> | null = null;
     private _usageStamp = 0;
@@ -143,6 +147,7 @@ export class AppIndex {
             this._listeners.clear();
             this._cancelEntriesIdle = null; // the scope cancels its own idle sources
             this._allEntries = null;
+            this._partialEntries = [];
             this._entries = null;
             this._observer = null;
             this._tree = null;
@@ -246,7 +251,10 @@ export class AppIndex {
         if (!this._allEntries) {
             this._cancelEntriesIdle?.();
             this._cancelEntriesIdle = null;
-            this._allEntries = this._allApps.map(app => this._entryFor(app));
+            // Finish what the chunked idle (see _build) started: entries already made are kept.
+            const made = this._partialEntries;
+            this._partialEntries = [];
+            this._allEntries = this._allApps.map((app, i) => made[i] ?? this._entryFor(app));
             this._entries = null;
         }
         if (this._searchFindsHidden)
@@ -440,21 +448,49 @@ export class AppIndex {
         this._allApps = apps;
         this._allCategories = categories;
         this._applyHidden();
-        // Search keys (and rank.ts' per-app match data) are prepared on an idle, so neither the build nor
-        // the first keystroke waits for them.
+        // Search keys (and rank.ts' per-app match data) are prepared on idles, ENTRY_CHUNK apps each, so
+        // neither the build, nor any one frame after it, nor the first keystroke waits for them.
         this._allEntries = null;
         this._entries = null;
         this._cancelEntriesIdle?.();
-        this._cancelEntriesIdle = this._scope.idle(() => {
-            this._cancelEntriesIdle = null;
-            if (this._built)
-                prepareApps(this.searchEntries());
-        });
+        this._partialEntries = [];
+        this._prepareChunk(0);
         try {
             this._observer?.(this.installedIds());
         } catch (e) {
             warn(`AppIndex: apps observer threw: ${e}`);
         }
+    }
+
+    /**
+     * Makes the search entries (desktop-file reads) and then rank.ts' match data ENTRY_CHUNK apps per idle, so
+     * no single frame after a (re)build waits for all of them. A search in the meantime finishes them at once.
+     */
+    private _prepareChunk(from: number): void {
+        this._cancelEntriesIdle = this._scope.idle(() => {
+            this._cancelEntriesIdle = null;
+            if (!this._built || this._allEntries)
+                return; // rebuilt meanwhile (a new chain runs), or a search made them all
+            const apps = this._allApps;
+            const to = Math.min(from + ENTRY_CHUNK, apps.length);
+            for (let i = from; i < to; i++)
+                this._partialEntries[i] ??= this._entryFor(apps[i]);
+            if (to < apps.length)
+                this._prepareChunk(to);
+            else
+                this._prepareMatchChunk(this.searchEntries(), 0); // all made: adopt them, then prepare them
+        });
+    }
+
+    private _prepareMatchChunk(entries: AppSearchEntry[], from: number): void {
+        this._cancelEntriesIdle = this._scope.idle(() => {
+            this._cancelEntriesIdle = null;
+            if (!this._built || this.searchEntries() !== entries)
+                return; // rebuilt or re-filtered meanwhile; the first search prepares whatever is left
+            prepareApps(entries.slice(from, from + ENTRY_CHUNK));
+            if (from + ENTRY_CHUNK < entries.length)
+                this._prepareMatchChunk(entries, from + ENTRY_CHUNK);
+        });
     }
 
     /** The public lists: everything except the hidden apps. */
