@@ -18,6 +18,9 @@ done
 printf '[Desktop Entry]\nType=Application\nName=9 Lives\nExec=true\nIcon=application-x-executable\nCategories=Game;\n' >"$apps/spawn-ga-digit.desktop"
 printf '[Desktop Entry]\nType=Application\nName=\xc3\x89dito\nExec=true\nIcon=application-x-executable\nCategories=Utility;\n' >"$apps/spawn-ga-accent.desktop"
 sleep 5 # installed-changed, then the AppIndex rebuild
+# The stubs would count as new (the index is built before they exist): the rows and tile names are compared without the badge.
+dconf write $K/show-new-apps-badge false
+sleep 1
 
 fname() { ui_call FocusInfo | unwrap | json_get name; }
 fcls() { ui_call FocusInfo | unwrap | json_get cls | cut -d' ' -f1; }

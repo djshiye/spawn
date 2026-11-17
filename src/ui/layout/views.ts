@@ -7,6 +7,12 @@
 // keyboard groups of whichever view shows. The heavier views are their own modules (PinnedView, FrequentView,
 // SearchController, FolderController).
 //
+// All Apps prebuild: the first click on All Apps would build its list (Classic: the category column and the first
+// screenful of rows; Grid: the first letter groups) before it can paint. While the menu is closed and idle, the popup
+// prebuild runs allAppsSteps() one step per idle (create the view hidden, build its first screenful, resolve its
+// styles), so that click only shows it. Nothing is built twice: it is skipped when the start view already is a
+// category list, and the views it makes are the ones setView() uses later (settings changes refresh them as usual).
+//
 // Public API:
 //   new ViewManager(scope, services, state, deps)
 //   views.defaultView(): ViewId      the start view for the current settings
@@ -14,6 +20,7 @@
 //   views.back(toStart = false)      Escape / Back / the mouse back button (Grid: a category goes back to All apps first,
 //                                    unless `toStart`: the header's "Pinned" pill)
 //   views.openAllApps()              the All Apps button (`all-apps-button-action`)
+//   views.allAppsSteps(): (() => void)[] | null   the idle prebuild of All Apps (see below); null when there is nothing to prebuild
 //   views.setView(view)              switch view ('folder' = the popup over the current one)
 //   views.mainGroups() / categoryGroup()   keyboard groups of the shown view / of its category column
 //   views.categories / extraList / extraScroll   the views built here (null until first shown)
@@ -25,7 +32,7 @@ import type St from 'gi://St';
 
 import type {Scope} from '../../core/scope.js';
 import type {Services} from '../../core/services.js';
-import {isPointerEvent} from '../util.js';
+import {isPointerEvent, warmStyles} from '../util.js';
 import {CategoryList} from '../widgets/categoryList.js';
 import {ExtraList} from '../widgets/extraList.js';
 import type {TileHost} from '../widgets/appTile.js';
@@ -164,6 +171,65 @@ export class ViewManager {
         const all = s.get('layout-style') === 'Grid' || s.get('all-apps-button-action') === 'All_Programs';
         this.setView(all ? 'all' : 'categories');
         this._nav.focusMain();
+    }
+
+    /**
+     * The steps of the All Apps prebuild for the layout as it is now (the popup runs one per idle while the menu is
+     * closed), or null when the view exists already (the start view is the category list) or the layout is gone.
+     * Each step checks again, so a settings change or an open in between is harmless.
+     */
+    allAppsSteps(): (() => void)[] | null {
+        if (this._state.destroyed)
+            return null;
+        const alive = () => !this._state.destroyed && !this._state.isOpen;
+        const hide = (actor: Clutter.Actor) => {
+            if (actor.get_parent() !== this._leftPane.stack)
+                this._leftPane.stack.add_child(actor);
+            // Not the view on show (setView() decides which stack child shows): out of the layout until it is wanted.
+            actor.visible = false;
+        };
+        if (this._metrics.grid) {
+            if (this.gridApps)
+                return null;
+            return [
+                () => {
+                    if (alive() && this._metrics.grid && !this.gridApps)
+                        hide(this._ensureGridApps().actor);
+                },
+                () => {
+                    if (alive() && this._metrics.grid && this.gridApps?.actor.get_parent() === this._leftPane.stack && !this.gridApps.actor.visible)
+                        this.gridApps.show('all');
+                },
+                () => {
+                    if (alive() && this.gridApps && !this.gridApps.actor.visible)
+                        warmStyles(this.gridApps.actor);
+                },
+            ];
+        }
+        if (this.categories)
+            return null;
+        const flat = this._services.settings.get('all-apps-button-action') === 'All_Programs';
+        const hidden = (list: CategoryList) => list.actor.get_parent() === this._leftPane.stack && !list.actor.visible;
+        return [
+            () => {
+                if (!alive() || this._metrics.grid || this.categories)
+                    return;
+                const list = this._ensureCategories();
+                hide(list.actor);
+                list.buildColumn();
+            },
+            () => {
+                if (alive() && this.categories && hidden(this.categories)) {
+                    this.categories.setColumnVisible(!flat);
+                    this.categories.showCategory('all');
+                    this.categories.ensureBuilt();
+                }
+            },
+            () => {
+                if (alive() && this.categories && hidden(this.categories))
+                    warmStyles(this.categories.actor);
+            },
+        ];
     }
 
     setView(view: ViewId): void {

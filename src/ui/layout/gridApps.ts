@@ -23,7 +23,9 @@
 // others, so the scroll range is right from the start. Scrolling builds the groups that come into view (before the next
 // frame). A key press builds ahead of the focus (two screenfuls; everything for End / Page Down / Up from below), a
 // letter jump builds the group it lands on. While the view is hidden (another view, the menu closed) only the first
-// screenful is kept.
+// screenful is kept. Picking a category does not destroy the letter groups of All apps: they stay, hidden and cut
+// back to the first screenful, so returning to All apps shows them again instead of building them (a rebuild
+// when the sizes, the apps or the naming settings changed meanwhile drops them).
 //
 // Public API:
 //   new GridAllApps(scope, services, deps)    deps: {tileHost, tooltips, metrics, scrolls, titleButton, host: {titleChanged(name)}}
@@ -132,6 +134,11 @@ export class GridAllApps {
     private _groups: AppGroup[] = [];
     private _category = 'all';
     private _signature = '';
+    /** The category the groups were made for, and the size part of the signature they were made with. */
+    private _madeFor = '';
+    private _madeBase = '';
+    /** The groups of All apps while a category shows: hidden, trimmed (null = none kept). */
+    private _kept: {base: string; groups: AppGroup[]} | null = null;
     private _rowH = 0;
     private _headingH = 0;
     private _want: {index: number; col: number} | null = null;
@@ -187,6 +194,7 @@ export class GridAllApps {
         this.actor.connect('destroy', () => {
             this._destroyed = true;
             this._groups = [];
+            this._kept = null;
             this._cancelFill();
         });
         scope.add(() => this.destroy(), 'GridAllApps');
@@ -234,6 +242,7 @@ export class GridAllApps {
             return;
         this._destroyed = true;
         this._groups = [];
+        this._kept = null;
         this._cancelTrim?.();
         this._cancelTrim = null;
         this._cancelFill();
@@ -268,25 +277,49 @@ export class GridAllApps {
         };
     }
 
-    private _sig(): string {
+    /** What the groups of every category depend on: the sizes and the naming / icon settings. */
+    private _baseSig(): string {
         const m = this._deps.metrics;
         const o = this._tileOptions();
-        return `${m.cols}|${m.tileWidth}|${o.iconSize}|${o.multiLine}|${o.generic}|${o.size}|${this._category}`;
+        return `${m.cols}|${m.tileWidth}|${o.iconSize}|${o.multiLine}|${o.generic}|${o.size}`;
     }
 
     /** Make the groups for `category` and the current sizes (nothing is built yet: placeholders). */
     private _rebuildIfStale(force: boolean): void {
-        const sig = this._sig();
+        const base = this._baseSig();
+        const sig = `${base}|${this._category}`;
         if (!force && !this._dirty && sig === this._signature && this._groups.length > 0)
             return;
+        const clean = !force && !this._dirty;
         this._dirty = false;
         this._signature = sig;
         this.closeOverlay();
         this._deps.tooltips.hide();
-        this._groups = [];
         this._want = null;
-        for (const child of this._box.get_children())
-            child.destroy();
+        // The groups of All apps survive a category (hidden, first screenful) while nothing they depend on changed.
+        let kept = clean && this._kept?.base === base ? this._kept : null;
+        this._kept = null;
+        if (kept && this._category === 'all') {
+            this._dropBoxes(kept.groups);
+            this._groups = kept.groups;
+            this._madeFor = 'all';
+            this._madeBase = base;
+            for (const g of this._groups)
+                g.box.visible = true;
+            this._sizePlaceholders();
+            return;
+        }
+        if (!kept && clean && this._madeFor === 'all' && this._madeBase === base && this._groups.length > 0) {
+            kept = {base, groups: this._groups};
+            this._trimGroups(kept.groups);
+            for (const g of kept.groups)
+                g.box.visible = false;
+        }
+        this._kept = kept;
+        this._groups = [];
+        this._dropBoxes(kept?.groups ?? []);
+        this._madeFor = this._category;
+        this._madeBase = base;
         const settings = this._services.settings;
         const apps = this._services.appIndex.categoryApps(this._category);
         if (apps.length === 0) {
@@ -305,6 +338,15 @@ export class GridAllApps {
         for (const g of groups)
             this._groups.push(this._makeGroup(g.letter, g.apps));
         this._sizePlaceholders();
+    }
+
+    /** Destroy every child of the box except the boxes of `keep`. */
+    private _dropBoxes(keep: AppGroup[]): void {
+        const kept = new Set<Clutter.Actor>(keep.map(g => g.box));
+        for (const child of this._box.get_children()) {
+            if (!kept.has(child))
+                child.destroy();
+        }
     }
 
     private _makeGroup(letter: string | null, apps: Shell.App[]): AppGroup {
@@ -474,9 +516,13 @@ export class GridAllApps {
 
     /** Hidden: drop the tiles below the first screenful (they are built again when they are scrolled into view). */
     private _trim(): void {
+        this._trimGroups(this._groups);
+    }
+
+    private _trimGroups(groups: AppGroup[]): void {
         const keep = this._viewHeight() + BUFFER_PX * this._scale();
         let top = 0;
-        for (const g of this._groups) {
+        for (const g of groups) {
             if (top >= keep)
                 this._unbuild(g);
             top += this._groupHeight(g);

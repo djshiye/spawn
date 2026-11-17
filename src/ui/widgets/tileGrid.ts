@@ -32,6 +32,9 @@ const GUTTER = 16;
 /** The tile's side padding in stylesheet.css (.spawn-tile): the visible face is inset by it, the gutter comes on top. */
 const TILE_INSET = 3;
 
+/** The inline style and width a TileGrid gave each tile last (a tile may move between grids; only TileGrid writes them). */
+const PLACED = new WeakMap<St.Widget, {style: string | null; width: number}>();
+
 export class TileGrid {
     readonly actor: St.BoxLayout;
     private _tiles: St.Widget[] = [];
@@ -91,9 +94,16 @@ export class TileGrid {
             const left = tileWidth > 0 && col === 0;
             const right = tileWidth > 0 && col === this._columns - 1;
             // the gutter is the button's own transparent padding (inline: its class list stays stable)
-            tile.set_style(`${left ? `padding-left: ${gutter + TILE_INSET}px;` : ''}${right ? `padding-right: ${gutter + TILE_INSET}px;` : ''}` || null);
+            // Tiles are re-parented again and again: the inline style and width are only written when they differ.
+            const style = `${left ? `padding-left: ${gutter + TILE_INSET}px;` : ''}${right ? `padding-right: ${gutter + TILE_INSET}px;` : ''}` || null;
             // The tile is `tileWidth` wide where it draws; the gutter is extra, transparent, clickable.
-            tile.set_width(tileWidth > 0 ? tileWidth + (left ? gutter : 0) + (right ? gutter : 0) : -1);
+            const width = tileWidth > 0 ? tileWidth + (left ? gutter : 0) + (right ? gutter : 0) : -1;
+            const was = PLACED.get(tile);
+            if (!was || was.style !== style)
+                tile.set_style(style);
+            if (!was || was.width !== width)
+                tile.set_width(width);
+            PLACED.set(tile, {style, width});
             row?.add_child(tile);
         });
         if (this._columns === 1 && tileWidth <= 0)
