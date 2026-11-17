@@ -188,7 +188,7 @@ export function applyMigration(plan: MigrationPlan, settings: SpawnSettings): Ap
                         settings.deleteFolder(id);
                 }
                 for (const pf of plan.folders) {
-                    const folder = settings.folder(pf.uuid);
+                    const folder = settings.privateFolder(pf.uuid);
                     folder.raw.delay();
                     folder.name = pf.name;
                     folder.pinnedApps = pf.pinnedApps;

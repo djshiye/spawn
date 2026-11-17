@@ -7,7 +7,11 @@
 //                                 Rows are rebuilt on every change, keyboard focus is put back on the
 //                                 button that was used. An app can be pinned only once (top level or
 //                                 in exactly one folder); damaged folder ids show a removable row.
-//   describeEntry(entry, ctx?)    {title, subtitle?, icon: Gio.Icon | string}  (ctx resolves 'Spawn_SpawnIcon')
+//   describeEntry(entry, ctx?)    {title, subtitle?, icon: Gio.Icon | string}  (ctx resolves 'Spawn_SpawnIcon'; with a ctx the
+//                                 .desktop lookup of an id is made once per window, so an app installed or removed
+//                                 while Preferences is open shows its old state until it is reopened)
+//   chooseApplication(ctx, exclude, cb)   "Add Application" dialog: the first rows are built before it is shown, the
+//                                 rest in idle batches (all apps stay searchable, the count covers all of them)
 //   kinds: 'pinned' | 'folder' | 'directory' | 'application' | 'context' (button context menu: apps,
 //          built-in Spawn items, separators)
 
@@ -121,6 +125,29 @@ function friendlyAppName(id: string): string {
     return base ? base.charAt(0).toUpperCase() + base.slice(1) : id;
 }
 
+interface AppLook {
+    name: string;
+    icon: Gio.Icon | null;
+}
+
+/** The .desktop lookups made so far, per Preferences window (null = not installed). */
+const appLooks = new WeakMap<PrefsContext, Map<string, AppLook | null>>();
+
+function appLook(id: string, ctx: PrefsContext | undefined): AppLook | null {
+    const lookup = (): AppLook | null => {
+        const info = GioUnix.DesktopAppInfo.new(id);
+        return info ? {name: info.get_display_name(), icon: info.get_icon()} : null;
+    };
+    if (!ctx)
+        return lookup();
+    let looks = appLooks.get(ctx);
+    if (!looks)
+        appLooks.set(ctx, looks = new Map());
+    if (!looks.has(id))
+        looks.set(id, lookup());
+    return looks.get(id) ?? null;
+}
+
 export function describeEntry(entry: Entry, ctx?: PrefsContext): {title: string; subtitle?: string; tooltip?: string; icon: Gio.Icon | string} {
     if (entry.isFolder === 'true')
         return {title: entry.name || 'Folder', subtitle: 'Folder', icon: 'folder-symbolic'};
@@ -130,9 +157,9 @@ export function describeEntry(entry: Entry, ctx?: PrefsContext): {title: string;
         return {title: entry.name || builtin.title, icon};
     }
     if (entry.id.endsWith('.desktop')) {
-        const info = GioUnix.DesktopAppInfo.new(entry.id);
+        const info = appLook(entry.id, ctx);
         if (info)
-            return {title: entry.name || info.get_display_name(), tooltip: entry.id, icon: info.get_icon() ?? 'application-x-executable'};
+            return {title: entry.name || info.name, tooltip: entry.id, icon: info.icon ?? 'application-x-executable'};
         return {title: entry.name || friendlyAppName(entry.id), subtitle: 'Not installed', tooltip: entry.id, icon: 'dialog-question-symbolic'};
     }
     return {title: entry.name || entry.id, subtitle: entry.id, icon: entry.icon && !entry.icon.startsWith('Spawn_') ? entry.icon : 'application-x-executable-symbolic'};
@@ -192,12 +219,16 @@ export function chooseApplication(ctx: PrefsContext, exclude: ReadonlySet<string
     // would be cut off mid-row with no padding there.
     const list = new Gtk.ListBox({selection_mode: Gtk.SelectionMode.NONE, show_separators: true});
     label(list, 'Applications');
+    const collator = new Intl.Collator();
     const apps = Gio.AppInfo.get_all()
         .filter(app => app.should_show() && app.get_id() && !exclude.has(app.get_id() as string))
-        .sort((a, b) => a.get_display_name().localeCompare(b.get_display_name()));
+        .map(app => ({app, name: app.get_display_name()}))
+        .sort((a, b) => collator.compare(a.name, b.name));
+    const texts = apps.map(({app, name}) => `${name} ${app.get_id()}`.toLowerCase());
     const rows = new Map<Gtk.Widget, string>();
-    for (const app of apps) {
-        const row = new Adw.ActionRow({title: GLib.markup_escape_text(app.get_display_name(), -1), activatable: true});
+    const addRow = (index: number): void => {
+        const {app, name} = apps[index] as {app: Gio.AppInfo; name: string};
+        const row = new Adw.ActionRow({title: GLib.markup_escape_text(name, -1), activatable: true});
         const desc = app.get_description();
         if (desc)
             row.set_subtitle(GLib.markup_escape_text(desc, -1));
@@ -209,7 +240,32 @@ export function chooseApplication(ctx: PrefsContext, exclude: ReadonlySet<string
             cb(app.get_id() as string);
         });
         list.append(row);
-        rows.set(row, `${app.get_display_name()} ${app.get_id()}`.toLowerCase());
+        rows.set(row, texts[index] as string);
+    };
+    // Two hundred rows with icons take a while: the first screenful is built before the dialog opens, the rest
+    // in idle batches (the filter and the count work on `texts`, so every app is searchable at once).
+    const FIRST_ROWS = 24;
+    const BATCH_ROWS = 24;
+    let built = 0;
+    const buildRows = (limit: number): void => {
+        for (const end = Math.min(apps.length, built + limit); built < end; built++)
+            addRow(built);
+    };
+    buildRows(FIRST_ROWS);
+    let idle = 0;
+    if (built < apps.length) {
+        idle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            buildRows(BATCH_ROWS);
+            if (built < apps.length)
+                return GLib.SOURCE_CONTINUE;
+            idle = 0;
+            return GLib.SOURCE_REMOVE;
+        });
+        dialog.connect('closed', () => {
+            if (idle !== 0)
+                GLib.source_remove(idle);
+            idle = 0;
+        });
     }
     list.set_filter_func(row => {
         const q = search.text.trim().toLowerCase();
@@ -219,7 +275,7 @@ export function chooseApplication(ctx: PrefsContext, exclude: ReadonlySet<string
     const count = new Gtk.Label({css_classes: ['dim-label', 'caption'], margin_top: 6, margin_bottom: 6});
     const showCount = (): void => {
         const q = search.text.trim().toLowerCase();
-        const shown = [...rows.values()].filter(text => q === '' || text.includes(q)).length;
+        const shown = texts.filter(text => q === '' || text.includes(q)).length;
         count.set_label(shown === 1 ? '1 application' : `${shown} applications`);
     };
     showCount();

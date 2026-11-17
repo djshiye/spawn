@@ -126,6 +126,12 @@ class MountPlace implements Place {
         this.ejectLabel = _mount.can_unmount() ? _('Unmount') : _mount.can_eject() ? _('Eject') : '';
     }
 
+    /** Same mount, name, icon and eject label (a re-read that changed nothing need not rebuild the pane). */
+    sameAs(other: Place): boolean {
+        return other instanceof MountPlace && other._mount === this._mount && other.kind === this.kind &&
+            other.name === this.name && other.ejectLabel === this.ejectLabel && other.icon.equal(this.icon);
+    }
+
     get root(): Gio.File {
         return this._mount.get_root();
     }
@@ -357,6 +363,10 @@ export class Places {
         for (const volume of networkVolumes)
             add(network, volume.get_mount(), 'network');
 
+        const same = (a: Place[], b: Place[]): boolean =>
+            a.length === b.length && a.every((p, i) => p instanceof MountPlace && p.sameAs(b[i]));
+        if (same(devices, this._devices) && same(network, this._network))
+            return;
         this._devices = devices;
         this._network = network;
         this._emit();
