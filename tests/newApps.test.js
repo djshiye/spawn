@@ -234,4 +234,56 @@ test('store: an edit from outside (reset in Preferences) is read again and annou
     scope.dispose();
 });
 
+test('store: markLaunched writes new-apps only; the badge switch is followed; the store hears no echo of its own write', () => {
+    const {settings, store, clock, scope} = storeFixture();
+    store.sync(['a.desktop']);
+    clock.now += 1;
+    store.sync(['a.desktop', 'n.desktop']);
+    const keys = [];
+    settings.onChanged(scope, [], key => keys.push(key));
+    store.markLaunched('n.desktop');
+    assertEquals(keys, ['new-apps']);
+    clock.now += 1;
+    store.sync(['a.desktop', 'n.desktop', 'm.desktop']);
+    assert(store.showBadge('m.desktop'));
+    settings.set('show-new-apps-badge', false);
+    assert(!store.showBadge('m.desktop'));
+    settings.set('show-new-apps-badge', true);
+    assert(store.showBadge('m.desktop'));
+    scope.dispose();
+});
+
+test('settings: scalar reads follow every change, folder() is shared, batch() can be nested and reused', () => {
+    const {settings, scope} = storeFixture();
+    assertEquals(settings.get('menu-height'), settings.get('menu-height'));
+    const before = settings.get('menu-height');
+    settings.set('menu-height', before + 1);
+    assertEquals(settings.get('menu-height'), before + 1);
+    // a second Gio.Settings on the same backend (what dconf does for an outside edit)
+    const other = Gio.Settings.new_full(source.lookup(SCHEMA_ID, true), settings.raw.backend, settings.raw.path);
+    other.set_int('menu-height', before + 2);
+    assertEquals(settings.get('menu-height'), before + 2);
+    assert(settings.folder('f1') === settings.folder('f1'), 'folder() makes a new instance each call');
+    assert(settings.privateFolder('f1') !== settings.folder('f1'));
+    for (let i = 0; i < 3; i++) {
+        settings.batch(tx => {
+            tx.set('menu-height', 600 + i);
+            settings.batch(inner => inner.set('menu-width-adjustment', i));
+        });
+        assertEquals(settings.get('menu-height'), 600 + i);
+        assertEquals(settings.get('menu-width-adjustment'), i);
+    }
+    let threw = false;
+    try {
+        settings.batch(tx => {
+            tx.set('menu-height', 900);
+            throw new Error('x');
+        });
+    } catch { threw = true; }
+    assert(threw && settings.get('menu-height') === 602, 'a throwing batch was applied');
+    settings.set('menu-height', 650); // the reused throwaway left no pending writes behind
+    assertEquals(settings.raw.get_int('menu-height'), 650);
+    scope.dispose();
+});
+
 run();

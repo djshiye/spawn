@@ -28,7 +28,8 @@
 //     pager.attach(scroll, grid)        the pinned scroll view and its grid (once, when the view is first built)
 //     pager.setShown(shown)             the pinned view is the one showing (dots visible)
 //     pager.reset()                     back to the first page (menu opens)
-//     pager.relayout()                  re-measure rows (settings / tiles changed)
+//     pager.relayout()                  re-measure rows (settings / tiles changed; the rows' height is measured again only when
+//                                       the rows, their tiles, the styles or the scale changed)
 //     pager.page / pager.pages / pager.rows   current page, page count, rows per page (0: not paging)
 //     pager.turn(dir): boolean          turn one page (animated) when the pinned grid shows in pages; false: not paging
 //     pager.showTile(tile)              turn (no animation) to the page holding `tile`: a folder opens next to it
@@ -366,6 +367,11 @@ export class GridPager {
     private _pointer: {x: number; y: number; target: Clutter.Actor | null} | null = null;
     /** Pages of the pinned grid (its rows over the rows on one page). */
     private _gridPages = 1;
+    /** The rows' common height and what it was measured for (row count, `_rowsEpoch`, scale); '' = not measured. */
+    private _rowHeightSig = '';
+    private _rowHeightValue = 0;
+    /** Bumped when the grid's rows or tiles come and go or its style changed: the rows' height must be measured again. */
+    private _rowsEpoch = 0;
     /** The scroll view the pager changed (sizes, classes), so Classic can undo it once. */
     private _paged: St.ScrollView | null = null;
 
@@ -402,8 +408,16 @@ export class GridPager {
         this._deps.stack().connect('notify::height', () => this._queueRelayout());
         grid.connect('notify::height', () => this._queueRelayout());
         // Rows come and go without the height changing (it is a whole number of pages): count the pages again.
-        grid.connect('child-added', () => this._queueRelayout());
-        grid.connect('child-removed', () => this._queueRelayout());
+        grid.connect('child-added', () => {
+            this._rowsEpoch++;
+            this._queueRelayout();
+        });
+        grid.connect('child-removed', () => {
+            this._rowsEpoch++;
+            this._queueRelayout();
+        });
+        // A theme / font change, or a tile whose content changed in place: measure the rows again.
+        grid.connect('style-changed', () => this._rowsEpoch++);
         scroll.vadjustment.connect('notify::upper', () => this._syncDots());
         this.relayout();
     }
@@ -480,6 +494,11 @@ export class GridPager {
      */
     private _rowHeight(): number {
         const rows = this._grid?.get_children() ?? [];
+        // Measuring resets and sets the height of every row (a layout each): not again while the rows, their tiles and
+        // the styles are the ones measured (the pager runs on every open and after every size change it made itself).
+        const sig = `${rows.length}|${this._rowsEpoch}|${St.ThemeContext.get_for_stage(global.stage as Clutter.Stage).scale_factor}`;
+        if (this._rowHeightSig === sig && this._rowHeightValue > 0)
+            return this._rowHeightValue;
         let h = 0;
         for (const row of rows) {
             row.set_height(-1);
@@ -489,6 +508,8 @@ export class GridPager {
             for (const row of rows)
                 row.set_height(h);
         }
+        this._rowHeightSig = sig;
+        this._rowHeightValue = h;
         return h;
     }
 
@@ -516,6 +537,7 @@ export class GridPager {
             // Classic: hands off, unless this scroll view was paged before the switch (then undo the paging once).
             if (this._paged === scroll) {
                 this._paged = null;
+                this._rowHeightSig = '';
                 for (const row of this._grid?.get_children() ?? [])
                     row.set_height(-1);
                 this._grid?.set_height(-1);

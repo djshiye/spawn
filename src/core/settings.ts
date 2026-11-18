@@ -6,19 +6,25 @@
 //   new SpawnSettings(gsettings, schemaSource)
 //   s.get(key) / s.set(key, value)     typed read / write (any GVariant type is handled by
 //                                      reflecting the key's type from the schema); set() returns
-//                                      false when GSettings rejects the value (range / enum)
+//                                      false when GSettings rejects the value (range / enum). Booleans,
+//                                      numbers and strings are cached between reads (the whole cache is
+//                                      dropped on any 'changed' signal, own or outside); lists and
+//                                      objects are unpacked afresh, so callers may keep and edit them.
 //   s.reset(key)
 //   s.onChanged(scope, keys, cb)       cb(key) after any of `keys` changes; owned by scope.
 //                                      Pass [] for "any key".
 //   isValidFolderId(id)                true for ids usable as a dconf path element (no '/', not empty)
-//   s.folder(uuid)                     FolderSettings for folders/<uuid>/ (throws on an invalid id)
+//   s.folder(uuid)                     FolderSettings for folders/<uuid>/ (throws on an invalid id); one
+//                                      instance per uuid is kept for the life of the settings object, so its
+//                                      raw must never be delay()ed: s.privateFolder(uuid) gives an unshared one
 //   s.folderSchema()                   Gio.SettingsSchema of the folder keys
 //   s.deleteFolder(uuid)               resets the folder's keys (removes dconf entries)
 //   s.snapshot(keys, folderIds?)       remembers the user values of keys / folders (for Undo)
 //   s.restore(snapshot)                writes a snapshot back (unset values are reset)
 //   s.batch(fn)                        runs fn(tx) on a THROWAWAY Gio.Settings in delay()/apply() mode:
 //                                      tx.set(key, value) (false when rejected) / tx.reset(key); applied
-//                                      together, or reverted when fn throws (which is rethrown)
+//                                      together, or reverted when fn throws (which is rethrown); the
+//                                      throwaway is created once and reused (a nested batch gets its own)
 //   s.raw                              the underlying Gio.Settings (prefs bindings only). It must NEVER be
 //                                      put into delay()/apply() mode: GSettings has no "undelay", so every
 //                                      later write would stay pending and never reach dconf. Use batch().
@@ -271,16 +277,31 @@ export class SettingsBatch {
 export class SpawnSettings {
     private readonly _schemaSource: Gio.SettingsSchemaSource;
     readonly raw: Gio.Settings;
+    /** Unpacked boolean / number / string values by key; emptied by every 'changed' signal. */
+    private readonly _scalars = new Map<string, unknown>();
+    private readonly _folders = new Map<string, FolderSettings>();
+    private _batchRaw: Gio.Settings | null = null;
+    private _batching = false;
 
     constructor(gsettings: Gio.Settings, schemaSource: Gio.SettingsSchemaSource) {
         this.raw = gsettings;
         this._schemaSource = schemaSource;
+        // Connected first, so it runs before every other handler of the same emission. Dropping the whole
+        // cache (not just the key) keeps a handler for one key of a multi-key write from reading a stale
+        // value of another. The connection ends with `raw`, which this object owns.
+        gsettings.connect('changed', () => this._scalars.clear());
     }
 
     get<K extends SettingKey>(key: K): SettingsMap[K] {
+        if (this._scalars.has(key))
+            return this._scalars.get(key) as SettingsMap[K];
+        const variant = this.raw.get_value(key);
         if (ENTRY_LIST_KEYS.includes(key))
-            return readEntries(key, unpack<unknown>(this.raw.get_value(key))) as SettingsMap[K];
-        return unpack<SettingsMap[K]>(this.raw.get_value(key));
+            return readEntries(key, unpack<unknown>(variant)) as SettingsMap[K];
+        const value = unpack<SettingsMap[K]>(variant);
+        if (typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string')
+            this._scalars.set(key, value);
+        return value;
     }
 
     /** Returns false when GSettings rejects the value (out of range / not an enum nick). */
@@ -299,6 +320,25 @@ export class SpawnSettings {
     folder(uuid: string): FolderSettings {
         if (!isValidFolderId(uuid))
             throw new Error(`invalid folder id '${uuid}'`);
+        let folder = this._folders.get(uuid);
+        if (!folder) {
+            folder = this._newFolder(uuid);
+            this._folders.set(uuid, folder);
+        }
+        return folder;
+    }
+
+    /**
+     * A new, unshared FolderSettings. Use it (not folder()) where raw.delay() / apply() is needed: the shared
+     * instance must never be put into delay mode, which GSettings cannot leave.
+     */
+    privateFolder(uuid: string): FolderSettings {
+        if (!isValidFolderId(uuid))
+            throw new Error(`invalid folder id '${uuid}'`);
+        return this._newFolder(uuid);
+    }
+
+    private _newFolder(uuid: string): FolderSettings {
         const schema = this._schemaSource.lookup(FOLDER_SCHEMA_ID, true);
         if (!schema)
             throw new Error(`schema ${FOLDER_SCHEMA_ID} not found`);
@@ -318,6 +358,7 @@ export class SpawnSettings {
         const f = this.folder(uuid);
         f.raw.reset('name');
         f.raw.reset('pinned-apps');
+        this._folders.delete(uuid);
     }
 
     snapshot(keys: readonly SettingKey[], folderIds: readonly string[] = []): SettingsSnapshot {
@@ -341,15 +382,28 @@ export class SpawnSettings {
         const schema = this.raw.settings_schema;
         if (!schema)
             throw new Error('settings have no schema');
-        const raw = Gio.Settings.new_full(schema, this.raw.backend, this.raw.path);
-        raw.delay();
-        try {
-            fn(new SettingsBatch(raw));
-        } catch (e) {
-            raw.revert();
-            throw e;
+        // The throwaway stays in delay mode between calls (apply() / revert() leave nothing pending); a batch
+        // started inside another one gets a fresh instance.
+        const nested = this._batching;
+        let raw = nested ? null : this._batchRaw;
+        if (!raw) {
+            raw = Gio.Settings.new_full(schema, this.raw.backend, this.raw.path);
+            raw.delay();
+            if (!nested)
+                this._batchRaw = raw;
         }
-        raw.apply();
+        this._batching = true;
+        try {
+            try {
+                fn(new SettingsBatch(raw));
+            } catch (e) {
+                raw.revert();
+                throw e;
+            }
+            raw.apply();
+        } finally {
+            this._batching = nested;
+        }
     }
 
     restore(snap: SettingsSnapshot): void {

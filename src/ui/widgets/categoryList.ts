@@ -6,8 +6,9 @@
 // only the selected category has a list; it holds the rows from its top down to the bottom of the visible
 // part plus BUFFER_ROWS, and a spacer stands in for the others so the scroll range is right from the start.
 // Scrolling builds the rows that come into view (before the next frame). Selecting another category drops the
-// previous list, and while the view is hidden (another view, the menu closed) the list keeps only its first
-// screenful, so a long list's actors do not stay around.
+// previous list (except All Apps: that list stays alive, hidden and cut back to its first screenful, so returning
+// to All Apps is a show, not a rebuild; refresh() and a pending change drop it), and while the view is hidden
+// (another view, the menu closed) the list keeps only its first screenful, so a long list's actors do not stay around.
 // Keyboard navigation sees the rows it needs: during a key press appRows() first builds the rows ahead of
 // the focused one (two screenfuls), and all of them for End / Page Down or when the focus comes into the list
 // with Up (its last row); completeRows() builds all of them on request.
@@ -70,6 +71,8 @@ interface AppList {
     apps: Shell.App[];
     built: number;
     opts: RowOptions;
+    /** apps-show-generic-names, read once when the list was made. */
+    generic: boolean;
     /** Stands in for the rows not built yet (keeps the scroll range); null once every row exists. */
     spacer: St.Widget | null;
 }
@@ -138,6 +141,8 @@ export class CategoryList {
     private readonly _separator: St.Widget;
     private readonly _buttons = new Map<string, St.Button>();
     private _list: AppList | null = null;
+    /** The All Apps list while another category shows: hidden, only its first screenful (null = none kept). */
+    private _kept: AppList | null = null;
     /** Natural height of one row (measured on the first row built; 0 = not known yet). */
     private _rowHeight = 0;
     private _cancelTrim: (() => void) | null = null;
@@ -167,10 +172,12 @@ export class CategoryList {
         this.actor.add_child(this._appsScroll);
 
         services.appIndex.onChanged(scope, () => {
-            if (this.actor.mapped)
+            if (this.actor.mapped) {
                 this.refresh();
-            else
+            } else {
                 this._dirty = true;
+                this._dropKept();
+            }
         });
         // A new app was launched (or aged out): redraw once the click that caused it is over, so the row that
         // was clicked is not destroyed inside its own handler.
@@ -178,10 +185,12 @@ export class CategoryList {
             scope.idle(() => {
                 if (this._destroyed)
                     return;
-                if (this.actor.mapped)
+                if (this.actor.mapped) {
                     this.refresh();
-                else
+                } else {
                     this._dirty = true;
+                    this._dropKept();
+                }
             });
         });
         // Scrolled, or the visible height changed: the rows coming into view. The adjustment also changes while
@@ -210,6 +219,7 @@ export class CategoryList {
         this.actor.connect('destroy', () => {
             this._destroyed = true;
             this._list = null;
+            this._kept = null;
             this._cancelFill();
         });
         scope.add(() => this.destroy(), 'CategoryList');
@@ -253,6 +263,7 @@ export class CategoryList {
             return;
         this._host.tooltips?.hide();
         this._dropList();
+        this._dropKept();
         this._rowHeight = 0; // the icon size or the descriptions may have changed
         for (const c of this._columnBox.get_children())
             c.destroy();
@@ -311,6 +322,7 @@ export class CategoryList {
             return;
         this._destroyed = true;
         this._list = null;
+        this._kept = null;
         this._cancelTrim?.();
         this._cancelTrim = null;
         this._cancelFill();
@@ -373,11 +385,42 @@ export class CategoryList {
         // it stays selected (only its first screenful while the view was hidden).
         const list = this._list;
         if (!list || list.id !== id || id === 'frequent') {
-            this._dropList();
-            this._list = this._buildList(id);
+            // Leaving All Apps: its list stays (hidden); coming back to it shows that list again.
+            const kept = id === 'all' ? this._kept : null;
+            if (kept) {
+                this._kept = null;
+                this._dropList();
+                kept.box.visible = true;
+                this._list = kept;
+            } else {
+                this._keepOrDrop();
+                this._list = this._buildList(id);
+            }
         }
         this._appsScroll.vadjustment.value = 0;
         this._queueFill();
+    }
+
+    /** The selected list goes away; All Apps' is kept, hidden and trimmed, when it was built for the current settings. */
+    private _keepOrDrop(): void {
+        const list = this._list;
+        if (list && list.id === 'all' && !this._kept && !this._dirty && list.apps.length > 0) {
+            this._list = null;
+            this._host.tooltips?.hide();
+            list.box.visible = false;
+            this._kept = list;
+            this._trimList(list);
+            return;
+        }
+        this._dropList();
+    }
+
+    private _dropKept(): void {
+        const kept = this._kept;
+        if (!kept)
+            return;
+        this._kept = null;
+        kept.box.destroy();
     }
 
     private _dropList(): void {
@@ -400,6 +443,7 @@ export class CategoryList {
             apps: [],
             built: 0,
             opts: {iconSize: iconSizeFor(settings, 'icon-size-apps', 28), description: showDescriptions(settings)},
+            generic: settings.get('apps-show-generic-names'),
             spacer: null,
         };
         try {
@@ -460,7 +504,7 @@ export class CategoryList {
         const end = Math.min(list.apps.length, list.built + Math.max(0, count));
         for (; list.built < end; list.built++) {
             const app = list.apps[list.built];
-            const row = new AppRow(app, this._host, {...list.opts, name: displayName(app, settings)}).actor;
+            const row = new AppRow(app, this._host, {...list.opts, name: displayName(app, settings, list.generic)}).actor;
             if (list.spacer)
                 list.box.insert_child_below(row, list.spacer);
             else
@@ -555,9 +599,11 @@ export class CategoryList {
 
     /** Hidden: drop the rows below the first screenful (they are built again when they are scrolled into view). */
     private _trim(): void {
-        const list = this._list;
-        if (!list)
-            return;
+        if (this._list)
+            this._trimList(this._list);
+    }
+
+    private _trimList(list: AppList): void {
         const keep = Math.min(list.built, this._screenful());
         if (keep >= list.built)
             return;

@@ -1,7 +1,7 @@
 // NewAppsStore: the settings-backed state of the "New" badge (known-apps, new-apps).
 //
 // Responsibility: keep newApps.ts's state in memory, write it to dconf in ONE batch and only when it
-// changed. Writes happen when AppIndex (re)builds its catalogue (start-up, an install or removal; both
+// changed (and only the key that changed; the echo of our own write is not read back). Writes happen when AppIndex (re)builds its catalogue (start-up, an install or removal; both
 // are already debounced there) and when a new app is launched, never on a menu open or per signal.
 // Listeners are told after every change, including one made from outside (a reset in Preferences).
 // Launches are reported by whoever sees them: Services listens to Shell.AppSystem's single
@@ -20,7 +20,7 @@
 import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {SpawnSettings} from '../core/settings.js';
-import {anyFresh, clearLaunched, isFresh, sameState, syncNewApps, type NewAppsState} from './newApps.js';
+import {anyFresh, clearLaunched, isFresh, sameFresh, sameList, sameState, syncNewApps, type NewAppsState} from './newApps.js';
 
 export interface NewAppsStoreOptions {
     /** Unix time in seconds; tests replace the clock. */
@@ -32,13 +32,22 @@ export class NewAppsStore {
     private readonly _now: () => number;
     private readonly _listeners = new Set<() => void>();
     private _state: NewAppsState | null = null;
+    /** Nonzero while our own write is applied: its 'changed' signals say nothing new. */
+    private _writing = 0;
+    /** show-new-apps-badge, read once and again after it changes (it is asked for once per tile). */
+    private _badge: boolean | null = null;
 
     constructor(scope: Scope, settings: SpawnSettings, opts: NewAppsStoreOptions = {}) {
         this._settings = settings;
         this._now = opts.now ?? (() => Math.floor(Date.now() / 1000));
         // An edit from outside (dconf, Preferences "reset"): read it again and tell the lists. Our own
         // writes read back equal to the state in memory, so they are not announced a second time.
+        settings.onChanged(scope, ['show-new-apps-badge'], () => {
+            this._badge = null;
+        });
         settings.onChanged(scope, ['known-apps', 'new-apps'], () => {
+            if (this._writing > 0)
+                return;
             const before = this._state;
             this._state = null;
             if (!before || !sameState(before, this._read()))
@@ -48,10 +57,11 @@ export class NewAppsStore {
     }
 
     sync(installed: readonly string[]): void {
-        const result = syncNewApps(this._read(), installed, this._now());
+        const before = this._read();
+        const result = syncNewApps(before, installed, this._now());
         if (!result.changed)
             return;
-        this._write(result.state);
+        this._write(result.state, before);
         // Seeding marks nothing as new, so the lists have nothing to redraw.
         if (!result.seeded)
             this._notify();
@@ -62,18 +72,19 @@ export class NewAppsStore {
     }
 
     showBadge(id: string): boolean {
-        return this._settings.get('show-new-apps-badge') && this.isNew(id);
+        return this._showBadge() && this.isNew(id);
     }
 
     anyNew(ids: Iterable<string>): boolean {
-        return this._settings.get('show-new-apps-badge') && anyFresh(this._read().fresh, ids, this._now());
+        return this._showBadge() && anyFresh(this._read().fresh, ids, this._now());
     }
 
     markLaunched(id: string): void {
-        const next = clearLaunched(this._read(), id);
+        const before = this._read();
+        const next = clearLaunched(before, id);
         if (!next)
             return;
-        this._write(next);
+        this._write(next, before);
         this._notify();
     }
 
@@ -90,15 +101,25 @@ export class NewAppsStore {
         return this._state;
     }
 
-    private _write(state: NewAppsState): void {
+    private _showBadge(): boolean {
+        this._badge ??= this._settings.get('show-new-apps-badge');
+        return this._badge;
+    }
+
+    private _write(state: NewAppsState, before: NewAppsState): void {
         this._state = state;
+        this._writing++;
         try {
             this._settings.batch(tx => {
-                tx.set('known-apps', state.known);
-                tx.set('new-apps', state.fresh);
+                if (!sameList(state.known, before.known))
+                    tx.set('known-apps', state.known);
+                if (!sameFresh(state.fresh, before.fresh))
+                    tx.set('new-apps', state.fresh);
             });
         } catch (e) {
             error('could not save the new apps', e);
+        } finally {
+            this._writing--;
         }
     }
 

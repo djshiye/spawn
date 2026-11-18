@@ -3,7 +3,8 @@
 // Public API:
 //   lookupApp(services, id)                   Shell.App for a desktop id, or null
 //   ownedScope(parent, label)                 child scope + release() that also unregisters it from `parent`
-//   displayName(app, settings)                app name, or its GenericName when apps-show-generic-names is on
+//   displayName(app, settings, generic?)      app name, or its GenericName when apps-show-generic-names is on
+//                                             (`generic`: that setting read once by a caller that names many apps)
 //   launchApp(app, settings, newWindow)       activate or open a new window, per activate-on-launch
 //   iconSizeFor(settings, key, fallback)      icon-size-* setting (<= 0 = default) -> px
 //   iconSizeOrHidden(settings, key, fallback) same for icon-size-shortcuts / -categories, but 0 stays 0 (hide the icons)
@@ -44,9 +45,9 @@ export function ownedScope(parent: Scope, label: string): {scope: Scope; release
     return {scope, release};
 }
 
-export function displayName(app: Shell.App, settings: SpawnSettings): string {
+export function displayName(app: Shell.App, settings: SpawnSettings, generic: boolean = settings.get('apps-show-generic-names')): string {
     const name = app.get_name() ?? '';
-    if (!settings.get('apps-show-generic-names'))
+    if (!generic)
         return name;
     try {
         return appInfoOf(app)?.get_generic_name() || name;

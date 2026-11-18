@@ -36,9 +36,10 @@ sleep 6
 ui_call Search zqxreport. >/dev/null; sleep 0.3
 ui_call Search zqxreport >/dev/null; sleep 1.2
 expect_state "deleted file is no longer listed" layout.results 3
-echo "-- clear() on close: reopening re-reads the list"
+echo "-- a file deleted while the menu is closed is gone after reopening (existence cache TTL: 5 s)"
 close_menu
 rm -f "$files/b/zqxreport.txt"
+sleep 5
 open_menu 1.5
 ui_call Search zqxreport >/dev/null; sleep 1.2
 expect_state "after reopen only 2 files remain" layout.results 2

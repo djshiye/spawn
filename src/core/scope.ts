@@ -33,10 +33,16 @@ interface SignalEmitter {
 interface Entry {
     fn: Teardown;
     label: string;
+    /** Neighbours in the list of live teardowns (older / newer): removing an entry is O(1). */
+    prev: Entry | null;
+    next: Entry | null;
+    live: boolean;
 }
 
 export class Scope {
-    private _entries: Entry[] = [];
+    /** The newest live teardown; the live ones form a linked list towards the oldest. */
+    private _last: Entry | null = null;
+    private _count = 0;
     private readonly _label: string;
     /** For a child scope: the parent and the parent's entry that disposes this scope. */
     private _parent: Scope | null = null;
@@ -52,7 +58,7 @@ export class Scope {
     }
 
     get size(): number {
-        return this._entries.length;
+        return this._count;
     }
 
     add(fn: Teardown, label = 'teardown'): () => void {
@@ -115,7 +121,7 @@ export class Scope {
             // parent is the one disposing us, it already popped the entry and this is a no-op.
             this._detach();
             // Teardowns may register new teardowns while running; loop until empty.
-            for (let entry = this._entries.pop(); entry; entry = this._entries.pop())
+            for (let entry = this._pop(); entry; entry = this._pop())
                 this._run(entry);
         } finally {
             this._disposing = false;
@@ -137,17 +143,35 @@ export class Scope {
         // A disposed child that is used again must be disposed with its parent again.
         if (this._parent && !this._parentEntry && !this._disposing)
             this._attach();
-        const entry: Entry = {fn, label};
-        this._entries.push(entry);
+        const entry: Entry = {fn, label, prev: this._last, next: null, live: true};
+        if (this._last)
+            this._last.next = entry;
+        this._last = entry;
+        this._count++;
         return entry;
     }
 
     private _forget(entry: Entry): boolean {
-        const i = this._entries.indexOf(entry);
-        if (i < 0)
+        if (!entry.live)
             return false;
-        this._entries.splice(i, 1);
+        entry.live = false;
+        if (entry.prev)
+            entry.prev.next = entry.next;
+        if (entry.next)
+            entry.next.prev = entry.prev;
+        else
+            this._last = entry.prev;
+        entry.prev = entry.next = null;
+        this._count--;
         return true;
+    }
+
+    /** Remove and return the newest live teardown. */
+    private _pop(): Entry | null {
+        const entry = this._last;
+        if (entry)
+            this._forget(entry);
+        return entry;
     }
 
     private _run(entry: Entry): void {

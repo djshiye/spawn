@@ -157,44 +157,58 @@ export class LeftPane {
         const links = this.links?.actor ?? null;
         const {header, pager, footer} = this._grid;
         const dots = pager.dots;
-        for (const c of [this._search, this.stack, this._banner, this._nav, links, header.actor, dots, footer]) {
-            if (c && c.get_parent() === this._left)
-                this._left.remove_child(c);
-        }
-        this._search.remove_style_class_name('spawn-search-top');
-        this._search.remove_style_class_name('spawn-search-bottom');
         const linksTop = this.links?.location === 'Top';
+        const grid = this._metrics.grid;
+        const order: St.Widget[] = [];
         const add = (c: St.Widget | null): void => {
             if (c)
-                this._left.add_child(c);
+                order.push(c);
         };
-        if (this._metrics.grid) {
-            this._left.add_style_class_name('spawn-grid-column');
+        if (grid) {
             add(this._search);
             add(header.actor);
             add(this.stack);
             add(dots);
             add(this._banner);
             add(footer);
-            this._search.add_style_class_name('spawn-search-top');
-            this._host.arranged(true);
-            return;
+        } else {
+            if (top)
+                add(this._search);
+            if (linksTop)
+                add(links);
+            add(this.stack);
+            if (!linksTop)
+                add(links);
+            add(this._banner);
+            add(this._nav);
+            if (!top)
+                add(this._search);
         }
-        this._left.remove_style_class_name('spawn-grid-column');
-        if (top)
-            add(this._search);
-        if (linksTop)
-            add(links);
-        add(this.stack);
-        if (!linksTop)
-            add(links);
-        add(this._banner);
-        add(this._nav);
-        if (!top)
-            add(this._search);
-        this._search.add_style_class_name(top ? 'spawn-search-top' : 'spawn-search-bottom');
+        // Children that do not belong to the column any more leave it; the rest is only reordered when the
+        // order is not already right (every re-parenting restyles the subtree).
+        for (const c of [this._search, this.stack, this._banner, this._nav, links, header.actor, dots, footer]) {
+            if (c && c.get_parent() === this._left && !order.includes(c))
+                this._left.remove_child(c);
+        }
+        order.forEach((c, i) => {
+            if (c.get_parent() !== this._left)
+                this._left.insert_child_at_index(c, i);
+            else if (this._left.get_child_at_index(i) !== c)
+                this._left.set_child_at_index(c, i);
+        });
+        const toggle = (c: St.Widget, name: string, on: boolean): void => {
+            if (c.has_style_class_name(name) !== on) {
+                if (on)
+                    c.add_style_class_name(name);
+                else
+                    c.remove_style_class_name(name);
+            }
+        };
+        toggle(this._search, 'spawn-search-top', grid || top);
+        toggle(this._search, 'spawn-search-bottom', !grid && !top);
+        toggle(this._left, 'spawn-grid-column', grid);
         // Entry below the list: the best match sits right above it.
-        this._host.arranged(top);
+        this._host.arranged(grid || top);
     }
 
     /** The enabled quick links, minus the start view itself and All Apps where its nav button shows (none for the category list). */

@@ -5,6 +5,29 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-11-17
+
+### Changed
+
+- **Faster everywhere.** A full optimisation pass, measured in a GNOME Shell 51 test session with about 330 apps:
+  - **Typing in search:** results appear about 40% sooner (18.6 ms to 11.2 ms per key). Rows that stay in the
+    results are now updated instead of rebuilt.
+  - **Recent files in search:** their rows show up about three times sooner (115 ms to 35 ms per key). They no longer
+    wait for you to pause typing, and the file list is read in the background instead of on a keystroke.
+  - **Matching itself** is 10 to 45% quicker, with exactly the same results.
+  - **Categories in All apps** switch faster, going back to All apps is close to instant, and the list updates
+    sooner after you install an app.
+  - **Opening the menu** skips rebuilding the Frequent list, the runner list and folders when nothing in them changed.
+  - **Less work in the background:** plugging in drives no longer rebuilds the side bar unless something you can
+    see changed, and settings are read once instead of on every row.
+  - **Settings window:** "Add Application" opens straight away, even with hundreds of apps, and backups are read and
+    written without freezing the window.
+
+### Fixed
+
+- **A slow network folder can no longer freeze the desktop** while you type its path into the runner (with
+  "Run commands" on): the check now runs in the background with a time limit.
+
 ## [1.5.1] - 2026-11-16
 
 ### Fixed

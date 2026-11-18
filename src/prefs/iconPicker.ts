@@ -56,6 +56,9 @@ export function iconImage(ctx: PrefsContext, value: string, size: number): Gtk.I
     return image;
 }
 
+/** One collator for all the icon names: localeCompare builds one per call, which for thousands of names is slow. */
+const NAMES = new Intl.Collator();
+
 function bundledIcons(ctx: PrefsContext): string[] {
     const names: string[] = [];
     try {
@@ -69,14 +72,14 @@ function bundledIcons(ctx: PrefsContext): string[] {
     } catch (e) {
         console.error(`[spawn] cannot list bundled icons: ${e}`);
     }
-    return names.sort((a, b) => a.localeCompare(b));
+    return names.sort(NAMES.compare);
 }
 
 function systemIcons(): string[] {
     const display = Gdk.Display.get_default();
     if (!display)
         return [];
-    return Gtk.IconTheme.get_for_display(display).get_icon_names().sort((a, b) => a.localeCompare(b));
+    return Gtk.IconTheme.get_for_display(display).get_icon_names().sort(NAMES.compare);
 }
 
 /** Which source a setting value belongs to: bundled files end in .svg, theme names never do. */

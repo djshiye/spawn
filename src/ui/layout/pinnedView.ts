@@ -18,7 +18,8 @@
 //   pinned.subscribed                      the store subscription was made (first ensure)
 //   pinned.showing(): boolean              the grid is on screen (its own view, or under an open folder popup)
 //   pinned.syncIfNeeded()                  rebuild the tiles if `dirty` (never throws)
-//   pinned.refreshFrequent()               rebuild the frequent section for the current start view
+//   pinned.refreshFrequent()               bring the frequent section up to date for the current start view (it is kept as
+//                                          it is while the rows it would show are the same: see FrequentView.fill)
 //   pinned.tileWidget(key)                 the cached tile's widget, if any
 //   pinned.groups(): Group[]               keyboard groups of the view (tiles, empty-state button, frequent rows)
 //   pinned.ghostCount(): number            tiles of apps that are not installed (debug)
@@ -94,6 +95,9 @@ export class PinnedView {
     private _empty: St.BoxLayout | null = null;
     private _emptyButton: St.Button | null = null;
     private _frequentSection: St.BoxLayout | null = null;
+    private _frequentRows: St.BoxLayout | null = null;
+    /** The section was built for the list (not the grid) pinned look. */
+    private _frequentList = false;
     /** Icon size / label mode / naming the cached tiles were built with; a change rebuilds them. */
     private _tileSignature = '';
 
@@ -199,11 +203,19 @@ export class PinnedView {
         const box = this._box;
         if (!box)
             return;
+        const wanted = this._services.settings.get('default-menu-view') === 'Pinned_And_Frequent_Apps' && !this._metrics.grid;
+        // The section stays when it is still wanted in the same look: its rows are only refilled if they would differ.
+        if (wanted && this._frequentSection && this._frequentRows && this._frequentList === this._metrics.listMode()
+            && this._frequentSection.get_parent() === box) {
+            this._frequent.fill(this._frequentRows);
+            return;
+        }
         if (this._frequentSection) {
             this._frequentSection.destroy();
             this._frequentSection = null;
+            this._frequentRows = null;
         }
-        if (this._services.settings.get('default-menu-view') !== 'Pinned_And_Frequent_Apps' || this._metrics.grid)
+        if (!wanted)
             return;
         const section = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
         section.add_child(new St.Widget({style_class: 'spawn-separator', x_expand: true}));
@@ -214,6 +226,8 @@ export class PinnedView {
         this._frequent.fill(rows);
         box.add_child(section);
         this._frequentSection = section;
+        this._frequentRows = rows;
+        this._frequentList = this._metrics.listMode();
     }
 
 
@@ -305,7 +319,7 @@ export class PinnedView {
                 if (!app)
                     return {key, entry: ghost(item.id, key)};
                 const {scope, release} = ownedScope(this._scope, key);
-                const name = displayName(app, settings);
+                const name = displayName(app, settings, generic);
                 const tile = list
                     ? new AppRow(app, this._tileHost, {...tileOpts, name, pinned: true})
                     : new AppTile(app, this._tileHost, {...tileOpts, name});

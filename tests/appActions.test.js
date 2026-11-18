@@ -1,4 +1,4 @@
-import {matchAppActions} from '../build/search/appActions.js';
+import {ActionMatchCache, matchAppActions} from '../build/search/appActions.js';
 import {assert, assertEquals, run, test} from './harness.js';
 
 const app = (id, name, actions, keys = []) => ({id, name, keys: [name.toLowerCase(), ...keys], description: '',
@@ -43,6 +43,23 @@ test('no app part, no action part, wrong order, weak or no matches give nothing'
     assertEquals(m('firefox p'), []); // one-letter action part
     assertEquals(m(''), []);
     assertEquals(m('a b c d e f g h'), []);
+});
+
+test('a cache kept between keystrokes gives the same matches, and follows a new apps list', () => {
+    const cache = new ActionMatchCache();
+    const queries = ['f', 'fi', 'firefox', 'firefox p', 'firefox pr', 'firefox private', 'firefox private w',
+        'chrome incognito', 'vsc empty', 'visual studio code empty', 'firefxo private', 'text editor new window',
+        'firefox profile-manager', 'fx private'];
+    for (let pass = 0; pass < 2; pass++) {
+        for (const q of queries) {
+            const plain = matchAppActions(q, APPS).map(r => `${r.app.name}: ${r.action.name} ${r.score}`);
+            const cached = matchAppActions(q, APPS, 5, cache).map(r => `${r.app.name}: ${r.action.name} ${r.score}`);
+            assertEquals(cached, plain, q);
+        }
+    }
+    const fewer = [CHROME, CODE];
+    assertEquals(matchAppActions('firefox private', fewer, 5, cache), []);
+    assertEquals(matchAppActions('chrome incognito', fewer, 5, cache).map(r => r.action.name), ['New Incognito Window']);
 });
 
 run();

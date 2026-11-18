@@ -57,6 +57,7 @@ import {pageTarget} from '../model/listNav.js';
 import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
 import {closeMenu, openMenu, silenceSourceKeys} from './menuParams.js';
+import type {DetectedCommand} from '../search/command.js';
 import type {SearchResult} from '../search/engine.js';
 import {detectTypedCommand, runTypedCommand} from './runCommand.js';
 import {SearchSession} from './searchSession.js';
@@ -111,8 +112,14 @@ export class SpawnRunner {
     private _ui: Ui | null = null;
     private _open = false;
     private _disposed = false;
+    /** The query whose Run row an asynchronous path check may still add (see _offerRun). */
+    private _runQuery = '';
+    /** That check, while it runs. */
+    private _runCheck: Promise<unknown> | null = null;
     private readonly _session: SearchSession;
     private _defaultRows: St.Button[] = [];
+    /** What the default list shows now (see _fillDefault); '' = nothing built. */
+    private _defaultSig = '';
 
     constructor(scope: Scope, services: Services, host: RunnerHost) {
         this._scope = scope;
@@ -279,6 +286,7 @@ export class SpawnRunner {
                 this._session.cancel();
                 this._session.arm(false);
                 this._defaultRows = [];
+                this._defaultSig = '';
             }, 'runner search state');
             return ui;
         } catch (e) {
@@ -361,10 +369,6 @@ export class SpawnRunner {
     }
 
     private _fillDefault(ui: Ui): void {
-        ui.tooltips.hide();
-        for (const c of ui.defaultBox.get_children())
-            c.destroy();
-        this._defaultRows = [];
         const s = this._services.settings;
         const view = s.get('runner-default-view');
         const apps: Shell.App[] = [];
@@ -380,6 +384,19 @@ export class SpawnRunner {
                     break;
             }
         }
+        // Opened again with the same apps, names, icons and sizes: the rows stay as they are.
+        const opts = {iconSize: iconSizeFor(s, 'icon-size-apps', DEFAULT_ROW_ICON_SIZE), description: showDescriptions(s)};
+        const sig = `${view}|${opts.iconSize}|${opts.description}|${apps.map(a => [a.get_id() ?? '', displayName(a, s),
+            a.get_icon()?.to_string() ?? '', opts.description ? a.get_description() ?? '' : ''].join('\u0001')).join('\u0002')}`;
+        if (sig === this._defaultSig && ui.defaultBox.get_n_children() === (apps.length > 0 ? apps.length + 1 : 0)) {
+            this._showView(ui, false);
+            return;
+        }
+        this._defaultSig = sig;
+        ui.tooltips.hide();
+        for (const c of ui.defaultBox.get_children())
+            c.destroy();
+        this._defaultRows = [];
         if (apps.length > 0) {
             ui.defaultBox.add_child(new St.Label({
                 text: view === 'Pinned_Apps' ? _('Pinned Apps') : _('Frequent Apps'),
@@ -390,9 +407,9 @@ export class SpawnRunner {
                 openContext: () => {},
                 tooltips: ui.tooltips,
             };
-            const opts = {iconSize: iconSizeFor(s, 'icon-size-apps', DEFAULT_ROW_ICON_SIZE), description: showDescriptions(s)};
+            const generic = s.get('apps-show-generic-names');
             for (const app of apps) {
-                const row = new AppRow(app, host, {...opts, name: displayName(app, s)});
+                const row = new AppRow(app, host, {...opts, name: displayName(app, s, generic)});
                 ui.defaultBox.add_child(row.actor);
                 this._defaultRows.push(row.actor);
             }
@@ -418,6 +435,8 @@ export class SpawnRunner {
         if (this._disposed)
             return;
         const query = text.trim();
+        this._runQuery = '';
+        this._runCheck = null;
         this._session.cancel();
         this._session.arm(false);
         // New rows under a resting pointer must not take the highlight from the best match.
@@ -438,9 +457,25 @@ export class SpawnRunner {
     private _offerRun(ui: Ui, query: string): void {
         if (!this._services.settings.get('runner-run-commands'))
             return;
-        const cmd = detectTypedCommand(query);
-        if (!cmd)
+        this._runQuery = query;
+        const detected = detectTypedCommand(query);
+        if (detected instanceof Promise) {
+            // A typed path is being checked (asynchronously): the row joins this query's results when it answers.
+            const check = detected.then(cmd => {
+                if (cmd && !this._disposed && this._runQuery === query && this._ui === ui)
+                    this._addRunRow(ui, query, cmd);
+            }).catch(e => error('offering to run a command failed', e)).finally(() => {
+                if (this._runCheck === check)
+                    this._runCheck = null;
+            });
+            this._runCheck = check;
             return;
+        }
+        if (detected)
+            this._addRunRow(ui, query, detected);
+    }
+
+    private _addRunRow(ui: Ui, query: string, cmd: DetectedCommand): void {
         const result: SearchResult = {
             id: 'run',
             providerId: 'runCommand',
@@ -460,6 +495,16 @@ export class SpawnRunner {
     private _onActivate(ui: Ui, ctrl = false): void {
         if (ui.search.text.trim().length === 0) {
             this._defaultRows[0]?.emit('clicked', ctrl ? 2 : 1);
+            return;
+        }
+        const pending = this._runCheck;
+        if (pending && this._runQuery === ui.search.text.trim()) {
+            // Return straight after typing a path: let its (millisecond) check answer first, so Return
+            // still picks the row it would have picked with the check done.
+            pending.finally(() => {
+                if (!this._disposed && this._ui === ui && this._runQuery === ui.search.text.trim())
+                    this._session.activate(ui.results, ctrl);
+            });
             return;
         }
         this._session.activate(ui.results, ctrl);

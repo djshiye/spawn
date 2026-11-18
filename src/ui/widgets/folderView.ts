@@ -17,7 +17,9 @@
 // focus (nothing highlighted) until the pointer or an arrow key picks an app; opened with the keyboard,
 // the first app has it (as GNOME 51's own popup menus do).
 // Tiles are draggable (reorder inside the folder via ui/dnd.ts); dropping one outside the card (on
-// the scrim) or on the header takes it out of the folder. Rebuilt from PinnedStore whenever it changes.
+// the scrim) or on the header takes it out of the folder. Rebuilt from PinnedStore whenever it changes: the tiles
+// (and their drag sources / drop targets) are only rebuilt when the folder's entries, their names, icons and "New"
+// badges or the metrics differ from what was built, so reopening an unchanged folder does not rebuild it.
 //
 // Public API:
 //   new FolderView(scope: Scope, services: Services, host: FolderViewHost)
@@ -161,6 +163,8 @@ export class FolderView {
     private _cancelFocusOut: (() => void) | null = null;
     private _uuid: string | null = null;
     private _tiles: St.Widget[] = [];
+    /** What the tiles were built from (folder, entries, metrics); '' = nothing built. */
+    private _builtSig = '';
     private _columns = 1;
     private _tileScope: Scope;
     private _destroyed = false;
@@ -392,6 +396,24 @@ export class FolderView {
         markDialog(this._card, _('Folder: %s').replace('%s', folder.name));
 
         this._host.tooltips?.hide();
+        const metrics: FolderMetrics = this._host.metrics?.() ?? {columns: 4, tileWidth: 96, iconSize: 48};
+        const entries = store.folderApps(uuid, true);
+        const settings = this._services.settings;
+        const sig = [uuid, metrics.columns, metrics.tileWidth, metrics.iconSize, metrics.multiLine ? 1 : 0, metrics.width ?? 0, metrics.height ?? 0,
+            ...entries.map(e => {
+                const app = lookupApp(this._services, e.id);
+                return app ? [e.id, displayName(app, settings), this._host.isNew?.(app) ? 1 : 0, app.get_icon()?.to_string() ?? ''].join('\u0001') : `${e.id}\u0001missing`;
+            })].join('\u0002');
+        if (sig === this._builtSig && this._tiles.length === entries.length) {
+            // Nothing the card shows changed: keep its tiles and their wiring; a tile the pointer was on gets its crossing again.
+            for (const t of this._tiles) {
+                if (t.hover)
+                    t.hover = false;
+            }
+            this._place();
+            return;
+        }
+        this._builtSig = sig;
         // Per-tile drag/drop registrations live in a scope that is reset on every rebuild.
         this._tileScope.dispose();
         // Outside the card (the scrim) and the header take an app out of the folder; the rest of the
@@ -402,17 +424,16 @@ export class FolderView {
 
         for (const t of this._tiles)
             t.destroy();
-        const metrics: FolderMetrics = this._host.metrics?.() ?? {columns: 4, tileWidth: 96, iconSize: 48};
         const iconSize = metrics.iconSize >= 64 ? FOLDER_ICON_LARGE : FOLDER_ICON;
         const tiles: St.Widget[] = [];
-        const settings = this._services.settings;
-        for (const entry of store.folderApps(uuid, true)) {
+        const generic = settings.get('apps-show-generic-names');
+        for (const entry of entries) {
             const app = lookupApp(this._services, entry.id);
             if (!app) {
                 tiles.push(this._ghostTile(entry.id, iconSize, metrics.multiLine));
                 continue;
             }
-            const name = displayName(app, settings);
+            const name = displayName(app, settings, generic);
             const actor = new AppTile(app, this._host, {
                 folderUuid: uuid, iconSize, multiLine: metrics.multiLine, name,
             }).actor;

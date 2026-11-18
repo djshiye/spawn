@@ -344,12 +344,19 @@ export class PowerBar {
 
     /** The pane's 8 px at the ends belong to the first / last visible button. */
     private _markEnds(): void {
-        for (const b of this._row.get_children() as St.Widget[]) {
-            b.remove_style_class_name('spawn-power-first');
-            b.remove_style_class_name('spawn-power-last');
-        }
         const shown = this.buttons();
-        shown[0]?.add_style_class_name('spawn-power-first');
-        shown[shown.length - 1]?.add_style_class_name('spawn-power-last');
+        const first = shown[0];
+        const last = shown[shown.length - 1];
+        // Only the classes that change are touched (every change restyles the button).
+        for (const b of this._row.get_children() as St.Widget[]) {
+            if (b !== first && b.has_style_class_name('spawn-power-first'))
+                b.remove_style_class_name('spawn-power-first');
+            if (b !== last && b.has_style_class_name('spawn-power-last'))
+                b.remove_style_class_name('spawn-power-last');
+        }
+        if (first && !first.has_style_class_name('spawn-power-first'))
+            first.add_style_class_name('spawn-power-first');
+        if (last && !last.has_style_class_name('spawn-power-last'))
+            last.add_style_class_name('spawn-power-last');
     }
 }

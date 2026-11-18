@@ -6,7 +6,8 @@
 // $XDG_RUNTIME_DIR/spawn/<token>/theme.css (a fresh <token> directory per Theme instance,
 // i.e. per enable, so a late unload of a previous instance can never touch our file), loaded
 // with St.ThemeContext theme.load_stylesheet and unloaded (and the file removed) before every
-// reload and on dispose. Re-generated on settings changes, debounced. No async file creation
+// reload and on dispose (a reload that generates byte-identical CSS while it is loaded does nothing).
+// Re-generated on settings changes, debounced. No async file creation
 // anywhere, so dispose cannot race a pending write.
 //
 // Public API:
@@ -84,6 +85,8 @@ export class Theme {
     private readonly _token = GLib.uuid_string_random().slice(0, 8);
     private _cssPath: string | null = null;
     private _loadedFile: Gio.File | null = null;
+    /** The CSS text of the stylesheet loaded now (null: none). */
+    private _loadedCss: string | null = null;
     private _interface: Gio.Settings | null = null;
     private _started = false;
 
@@ -197,6 +200,7 @@ export class Theme {
     private _unload(): void {
         const file = this._loadedFile;
         this._loadedFile = null;
+        this._loadedCss = null;
         if (file) {
             try {
                 this._theme()?.unload_stylesheet(file);
@@ -217,8 +221,11 @@ export class Theme {
 
     private _reload(): void {
         try {
-            this._unload();
             const css = buildCss(this._input());
+            // Byte-identical CSS that is still loaded (and its file still there): nothing to redo.
+            if (css !== '' && css === this._loadedCss && this._loadedFile && this._cssPath && GLib.file_test(this._cssPath, GLib.FileTest.EXISTS))
+                return;
+            this._unload();
             if (css === '')
                 return;
             const dir = this._dir();
@@ -232,6 +239,7 @@ export class Theme {
                 throw new Error('no St theme');
             theme.load_stylesheet(file);
             this._loadedFile = file;
+            this._loadedCss = css;
             log(`theme loaded: ${path}`);
         } catch (e) {
             error('theme reload failed', e);
