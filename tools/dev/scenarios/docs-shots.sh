@@ -1,8 +1,8 @@
 # README screenshots (docs/screenshots/). Not a test: it sets up a tidy menu and takes the pictures the README shows.
 # Run it with a realistic app set (real names and icons) mounted at /usr/local/share/applications, and with GNOME's
 # wallpapers at /usr/share/backgrounds/gnome, on SPAWN_MONITOR=3200x1800 (it switches that monitor to 200 %). Then
-# tools/dev/docs-crop.sh cuts each picture down to the panel corner and the menu. A "crop" line per shot logs the
-# menu's rectangle (logical pixels) in case the menu grows.
+# tools/dev/docs-compose.cjs cuts the menus out and lays them out as the README pictures. A "crop" line per shot
+# logs the menu's rectangle (logical pixels) in case the menu grows.
 K=/org/gnome/shell/extensions/spawn
 SHOTS_PREFIX=docs
 
@@ -81,8 +81,12 @@ for scheme in d l; do
         ui_call Search "$q" >/dev/null; sleep 1.2
         crop_line "search-$q-$scheme"; screenshot "$SHOTS_PREFIX-search-$q-$scheme"
     done
-    ui_call Search "5 km in miles" >/dev/null; sleep 1.2
-    crop_line "calc-$scheme"; screenshot "$SHOTS_PREFIX-calc-$scheme"
+    # smart answers and shortcuts typed into the search box (name:query)
+    for a in "calc:15% of 80" "maths:sqrt(2) * 10" "units:5 km in miles" "temp:72 f in c" "data:2 gib in mb" \
+            "action:firefox private" "panel:bluetooth"; do
+        ui_call Search "${a#*:}" >/dev/null; sleep 1.2
+        crop_line "${a%%:*}-$scheme"; screenshot "$SHOTS_PREFIX-${a%%:*}-$scheme"
+    done
     ui_call Search "" >/dev/null; sleep 0.5
     close_menu
 done

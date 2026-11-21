@@ -5,6 +5,11 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- **New README:** a Spawn logo, one picture of both layouts that follows GitHub's light or dark style, and a
+  "Search that answers" section that lists what you can type (sums, unit conversions, Settings panels, app actions).
+
 ## [1.5.2] - 2026-11-17
 
 ### Changed
