@@ -1,7 +1,9 @@
 // CalculatorProvider ('calculator') and UnitConversionProvider ('conversion'): answers typed into the search box.
 //
-// "2+2", "15% of 80", "sqrt(16)" show one result "= 4" (title: the answer, description: the expression);
-// "5 km in miles" shows "= 3.106856 mi". Return / click copies the answer to the clipboard (CLIPBOARD, not
+// "2+2", "15% of 80", "sqrt(16)", "sin(30°)", "0xFF + 1" show one result "= 4" (title: the answer, long numbers
+// with spaces between the thousands; description: the expression); "5 km in miles" shows "= 3.106856 mi"
+// (description: "5 km → mi", plus a friendlier split such as "5 ft 10 in" where there is one). The copied text
+// never has the grouping spaces. Return / click copies the answer to the clipboard (CLIPBOARD, not
 // PRIMARY) and, like every result, closes the menu. The maths is src/search/calc.ts and units.ts (pure, no
 // eval). Both providers are in memory, cheap and answer on every keystroke; each is switched off by its
 // setting (search-calculator / search-unit-conversion, on by default). A plain number, a constant or a
@@ -19,7 +21,7 @@ import {gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js'
 
 import {error} from '../../core/log.js';
 import type {SpawnSettings} from '../../core/settings.js';
-import {calculate} from '../calc.js';
+import {calculate, groupDigits} from '../calc.js';
 import type {CancelToken, SearchProvider, SearchResult} from '../engine.js';
 import {convertText} from '../units.js';
 
@@ -62,7 +64,7 @@ export class CalculatorProvider implements SearchProvider {
         const r = calculate(query.trim());
         if (!r)
             return [];
-        return answer(this.id, 'calc', r.text, r.text, query.trim(), 'accessories-calculator-symbolic');
+        return answer(this.id, 'calc', groupDigits(r.text), r.text, query.trim(), 'accessories-calculator-symbolic');
     }
 }
 
@@ -81,6 +83,7 @@ export class UnitConversionProvider implements SearchProvider {
         const r = convertText(query);
         if (!r)
             return [];
-        return answer(this.id, 'convert', r.text, r.text, `${r.from} \u2192 ${r.unit}`, 'accessories-calculator-symbolic');
+        const description = `${r.from} \u2192 ${r.unit}`;
+        return answer(this.id, 'convert', r.text, r.text, r.note ? `${description} \u00B7 ${r.note}` : description, 'accessories-calculator-symbolic');
     }
 }

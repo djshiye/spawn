@@ -65,7 +65,7 @@ function quickLinksSummary(ctx: PrefsContext): string {
 function searchSourceGroups(ctx: PrefsContext): Adw.PreferencesGroup[] {
     const providerKeys: SettingKey[] = [
         'search-provider-open-windows', 'search-provider-recent-files', 'search-provider-shell', 'show-hidden-recent-files',
-        'search-calculator', 'search-unit-conversion', 'search-settings-panels', 'search-app-actions', 'search-power-actions', 'max-search-results',
+        'search-calculator', 'search-unit-conversion', 'search-smart-answers', 'search-quick-tools', 'search-quick-toggles', 'search-settings-panels', 'search-app-actions', 'search-power-actions', 'max-search-results',
     ];
     const hiddenRecent = switchRow(ctx, 'show-hidden-recent-files', 'Include hidden recent files');
     const syncHiddenRecent = (): void => hiddenRecent.set_visible(ctx.settings.get('search-provider-recent-files'));
@@ -76,8 +76,11 @@ function searchSourceGroups(ctx: PrefsContext): Adw.PreferencesGroup[] {
         switchRow(ctx, 'search-provider-recent-files', 'Recent files'),
         hiddenRecent,
         switchRow(ctx, 'search-provider-shell', 'GNOME Shell search providers', 'Results from Calculator, Settings, Characters and other providers'),
-        switchRow(ctx, 'search-calculator', 'Calculator', 'Type a sum such as 2+2 or 15% of 80; Return copies the answer'),
-        switchRow(ctx, 'search-unit-conversion', 'Unit conversion', 'Type 5 km in miles or 100 f in c; Return copies the answer'),
+        switchRow(ctx, 'search-calculator', 'Calculator', 'Type a sum such as 2+2, 15% of 80 or sqrt(2) * sin(30°); Return copies the answer'),
+        switchRow(ctx, 'search-unit-conversion', 'Unit conversion', 'Type 5 km in miles, 100 f in c or 30 mpg in l/100km; Return copies the answer'),
+        switchRow(ctx, 'search-smart-answers', 'Smart answers', 'Time zones, dates, number bases, colours and subnets, such as “3pm london in tokyo”, “days until 25 dec” or “192.168.1.0/24”'),
+        switchRow(ctx, 'search-quick-tools', 'Quick tools', 'Type password, uuid, sha256 text, my ip or emoji smile; Return copies the result'),
+        switchRow(ctx, 'search-quick-toggles', 'Quick settings', 'Type dark mode, night light, do not disturb, wifi off or bluetooth on'),
         switchRow(ctx, 'search-settings-panels', 'Settings panels', 'Find Wi-Fi, Bluetooth, Display and other panels of GNOME Settings'),
         switchRow(ctx, 'search-app-actions', 'App actions', 'For example “firefox private” for New Private Window'),
         switchRow(ctx, 'search-power-actions', 'Power actions', 'Lock, log out, restart and power off from the search'),

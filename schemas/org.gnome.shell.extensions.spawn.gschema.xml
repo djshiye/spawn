@@ -466,6 +466,21 @@
       <summary>Convert units in the search box</summary>
       <description>Typing a conversion such as 5 km in miles shows the answer; activating it copies it</description>
     </key>
+    <key name="search-smart-answers" type="b">
+      <default>true</default>
+      <summary>Answer time zones, dates, number bases, colours and subnets in the search box</summary>
+      <description>Typing for example "time in tokyo", "days until 25 dec", "0xFF", "#3584e4" or "192.168.1.0/24" shows the answer; activating it copies it. Worked out on this computer, without the network</description>
+    </key>
+    <key name="search-quick-tools" type="b">
+      <default>true</default>
+      <summary>Offer quick tools in the search box</summary>
+      <description>Passwords, UUIDs, hashes, Base64, random numbers, this computer's own addresses ("my ip") and emoji or characters by name ("emoji smile"); activating a result copies it. Worked out on this computer, without the network</description>
+    </key>
+    <key name="search-quick-toggles" type="b">
+      <default>true</default>
+      <summary>Switch quick settings from the search box</summary>
+      <description>Typing "dark mode", "night light", "do not disturb", "wifi off" or "bluetooth on" offers the switch; activating it flips it</description>
+    </key>
     <key name="search-settings-panels" type="b">
       <default>true</default>
       <summary>Search GNOME Settings panels</summary>

@@ -36,8 +36,8 @@
 //   engine.clear(): void                                 drop caches in providers (menu closed)
 //
 // SearchProvider contract (search/providers/*.ts):
-//   id, title                      stable ids: 'calculator' | 'conversion' | 'appActions' | 'apps' | 'settingsPanels' |
-//                                  'power' | 'windows' | 'recentFiles' | 'shell:<appId>' (the runner adds 'runCommand', a row of its own)
+//   id, title                      stable ids: 'calculator' | 'conversion' | 'answers' | 'appActions' | 'apps' | 'settingsPanels' |
+//                                  'power' | 'toggles' | 'tools' | 'localNetwork' | 'characters' | 'windows' | 'recentFiles' | 'shell:<appId>' (the runner adds 'runCommand', a row of its own)
 //   isEnabled(): boolean           reads settings; called per query
 //   immediate?: boolean            (addition) in memory, synchronous and cheap (apps, open windows):
 //                                  runs on every keystroke, without the debounce. Only for providers

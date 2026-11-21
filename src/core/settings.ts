@@ -144,6 +144,9 @@ export interface SettingsMap {
     'search-provider-shell': boolean;
     'search-calculator': boolean;
     'search-unit-conversion': boolean;
+    'search-smart-answers': boolean;
+    'search-quick-tools': boolean;
+    'search-quick-toggles': boolean;
     'search-settings-panels': boolean;
     'search-app-actions': boolean;
     'search-power-actions': boolean;

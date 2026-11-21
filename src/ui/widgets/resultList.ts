@@ -77,7 +77,7 @@ import type {Scope} from '../../core/scope.js';
 import type {SpawnSettings} from '../../core/settings.js';
 import type {SearchBatch, SearchResult} from '../../search/engine.js';
 import {error} from '../../core/log.js';
-import {pickLeader, sectionRank} from '../../search/bestMatch.js';
+import {ANSWER_ROWS, MULTI_ROW_PROVIDERS, pickLeader, sectionRank} from '../../search/bestMatch.js';
 import {highlightMarkup} from '../../search/highlight.js';
 import {iconSizeFor, showDescriptions} from '../util.js';
 import {stepIndex} from '../../model/listNav.js';
@@ -266,7 +266,7 @@ export class ResultList {
     }
 
     addBatch(batch: SearchBatch): void {
-        const max = Math.max(1, this._settings.get('max-search-results'));
+        const max = MULTI_ROW_PROVIDERS.has(batch.providerId) ? ANSWER_ROWS : Math.max(1, this._settings.get('max-search-results'));
         const results = batch.results.slice(0, max);
         if (results.length === 0)
             return;
