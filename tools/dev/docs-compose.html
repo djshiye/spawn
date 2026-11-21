@@ -41,9 +41,12 @@ const cut = (name, x, y, w, h, style) =>
 // The menu rectangles are the scenario's "crop" lines times two: Classic [6,32,647,624], Grid [6,32,658,672],
 // less the 6 px gap above the menu.
 if (q.get('kind') === 'answers') {
-    const names = ['calc', 'units', 'maths', 'temp', 'data', 'action'];
-    document.body.innerHTML = `<div class="stage answers">${names.map(n =>
-        `<div class="strip">${cut(n, 12, 76, 1316, 358, '--z:.4985')}</div>`).join('')}</div>`;
+    // [name, rows of results]: a strip with more than one row is taller (48 px a row at 100 %).
+    const names = [['calc', 1], ['units', 1], ['time', 1], ['days', 1], ['password', 1], ['action', 1],
+        ['colour', 3], ['toggle', 3]];
+    document.body.innerHTML = `<div class="stage answers">${names.map(([n, rows]) =>
+        `<div class="strip" style="height:${178 + (rows - 1) * 48}px">${
+            cut(n, 12, 76, 1316, 358 + (rows - 1) * 96, '--z:.4985')}</div>`).join('')}</div>`;
 } else if (q.get('kind') === 'gallery') {
     document.body.innerHTML = `<div class="stage gallery">${['allapps', 'folder', 'panel'].map((n, i) =>
         cut(n, 12, 76, 1316, 1330, `left:${142 + i * 1458}px;top:142px;--z:.31`)).join('')}</div>`;

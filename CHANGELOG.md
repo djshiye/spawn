@@ -30,7 +30,8 @@ is in [docs/SEARCH.md](docs/SEARCH.md), and each group has a switch under Settin
 ### Changed
 
 - **New README:** a Spawn logo, one picture of both layouts that follows GitHub's light or dark style, and a
-  "Search that answers" section that lists what you can type (sums, unit conversions, Settings panels, app actions).
+  "Search that answers" section that lists what you can type, from sums and conversions to time zones and
+  quick settings.
 
 ## [1.5.2] - 2026-11-17
 
