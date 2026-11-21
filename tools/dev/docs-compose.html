@@ -1,0 +1,56 @@
+<!doctype html>
+<!-- README pictures made from the docs-shots screenshots: see tools/dev/docs-compose.cjs.
+     ?kind=hero|answers|gallery  &theme=d|l  &shots=<file URL of the shots folder> -->
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; }
+  body { width: 1400px; overflow: hidden; font-family: sans-serif; }
+  .stage { position: relative; width: 1400px; border-radius: 28px; overflow: hidden; }
+  .d .stage { background:
+      radial-gradient(900px 600px at 12% 0%, rgba(98, 160, 234, .55), transparent 65%),
+      radial-gradient(800px 620px at 100% 100%, rgba(145, 65, 172, .65), transparent 65%),
+      linear-gradient(135deg, #16284f, #1b1637 60%, #2a1640); }
+  .l .stage { background:
+      radial-gradient(900px 600px at 12% 0%, rgba(153, 193, 241, .95), transparent 65%),
+      radial-gradient(800px 620px at 100% 100%, rgba(220, 138, 221, .6), transparent 65%),
+      linear-gradient(135deg, #dbe9fb, #e9e2f8 60%, #f3dff3); }
+  /* One menu cut out of a full-screen shot (3200 x 1800, 200 %): --x --y --w --h in screenshot pixels. */
+  .cut { position: absolute; width: calc(var(--w) * 1px); height: calc(var(--h) * 1px); zoom: var(--z, .5);
+         background-repeat: no-repeat; background-position: calc(var(--x) * -1px) calc(var(--y) * -1px);
+         border-radius: 44px; }
+  .d .cut { box-shadow: 0 60px 120px rgba(0, 0, 0, .55), 0 0 0 2px rgba(255, 255, 255, .08); }
+  .l .cut { box-shadow: 0 60px 120px rgba(40, 30, 90, .28), 0 0 0 2px rgba(0, 0, 0, .06); }
+
+  .hero { height: 740px; }
+  .gallery { height: 500px; }
+  .gallery .cut { border-radius: 40px; }
+  .answers { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; padding: 44px; box-sizing: border-box; }
+  .strip { position: relative; height: 178px; border-radius: 22px; overflow: hidden; }
+  .strip .cut { box-shadow: none; left: 0; top: 0; }
+  .d .strip { box-shadow: 0 18px 40px rgba(0, 0, 0, .45); }
+  .l .strip { box-shadow: 0 18px 40px rgba(40, 30, 90, .2); }
+</style>
+<body>
+<script>
+const q = new URLSearchParams(location.search);
+const theme = q.get('theme') === 'l' ? 'l' : 'd';
+const shots = q.get('shots');
+document.body.className = theme;
+const cut = (name, x, y, w, h, style) =>
+    `<div class="cut" style="--x:${x};--y:${y};--w:${w};--h:${h};background-image:url('${shots}/docs-${name}-${theme}.png');${style}"></div>`;
+// The menu rectangles are the scenario's "crop" lines times two: Classic [6,32,647,624], Grid [6,32,658,672],
+// less the 6 px gap above the menu.
+if (q.get('kind') === 'answers') {
+    const names = ['calc', 'units', 'maths', 'temp', 'data', 'action'];
+    document.body.innerHTML = `<div class="stage answers">${names.map(n =>
+        `<div class="strip">${cut(n, 12, 76, 1316, 358, '--z:.4985')}</div>`).join('')}</div>`;
+} else if (q.get('kind') === 'gallery') {
+    document.body.innerHTML = `<div class="stage gallery">${['allapps', 'folder', 'panel'].map((n, i) =>
+        cut(n, 12, 76, 1316, 1330, `left:${142 + i * 1458}px;top:142px;--z:.31`)).join('')}</div>`;
+} else {
+    document.body.innerHTML = `<div class="stage hero">
+        ${cut('classic', 12, 76, 1294, 1234, 'left:91px;top:138px;--z:.49')}
+        ${cut('grid', 12, 76, 1316, 1330, 'left:1450px;top:90px;--z:.49')}
+    </div>`;
+}
+</script>
