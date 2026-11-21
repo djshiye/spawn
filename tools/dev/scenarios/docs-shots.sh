@@ -83,8 +83,8 @@ for scheme in d l; do
         crop_line "search-$q-$scheme"; screenshot "$SHOTS_PREFIX-search-$q-$scheme"
     done
     # smart answers and shortcuts typed into the search box (name:query)
-    for a in "calc:15% of 80" "maths:sqrt(2) * 10" "units:5 km in miles" "temp:72 f in c" "data:2 gib in mb" \
-            "action:firefox private" "panel:bluetooth"; do
+    for a in "calc:15% of 80" "units:5 ft 10 in in cm" "time:3pm london in tokyo" "days:days until 25 dec" \
+            "password:password 24" "action:firefox private" "colour:#3584e4" "toggle:dark mode" "panel:bluetooth"; do
         ui_call Search "${a#*:}" >/dev/null; sleep 1.2
         crop_line "${a%%:*}-$scheme"; screenshot "$SHOTS_PREFIX-${a%%:*}-$scheme"
     done
