@@ -34,7 +34,7 @@ Press Super and your apps, folders, search and power buttons are there. Spawn is
 ## Why Spawn
 
 <table>
-  <tr><td><strong>Two layouts</strong></td><td><em>Classic</em> has two panes: pinned apps on the left; folders, shortcuts and power on the right. <em>Grid</em> is one calm column of large icons, a page at a time.</td></tr>
+  <tr><td><strong>Two layouts</strong></td><td><em>Classic</em> has two panes: pinned apps on the left, as a list or an icon grid; folders, shortcuts and power on the right. <em>Grid</em> is one calm column of large icons, a page at a time.</td></tr>
   <tr><td><strong>Search that answers</strong></td><td>Apps, Settings panels and app actions, with one best match on top. Sums and unit conversions are answered as you type.</td></tr>
   <tr><td><strong>Pins and folders</strong></td><td>Drag to arrange, drop one app onto another to make a folder, drag from All apps to pin. Pinning, unpinning, hiding an app and deleting a folder can all be undone.</td></tr>
   <tr><td><strong>Fast</strong></td><td>Opens in about 20 ms and keeps up with your typing, even with hundreds of apps.</td></tr>

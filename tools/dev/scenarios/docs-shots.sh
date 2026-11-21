@@ -48,7 +48,8 @@ dconf write $K/folders/c27e1d90-3b5a-4e2f-8c61-7a9d0b4e2f35/pinned-apps "[{'id':
 dconf write $K/application-shortcuts "[{'id': 'org.gnome.Software.desktop'}, {'id': 'org.gnome.Settings.desktop'}, {'id': 'org.gnome.Ptyxis.desktop'}]"
 dconf write $K/directory-shortcuts "[{'id': 'Spawn_Home', 'name': 'Home', 'icon': 'Spawn_Home'}, {'id': 'Spawn_Documents', 'name': 'Documents', 'icon': 'Spawn_Documents'}, {'id': 'Spawn_Downloads', 'name': 'Downloads', 'icon': 'Spawn_Downloads'}, {'id': 'Spawn_Pictures', 'name': 'Pictures', 'icon': 'Spawn_Pictures'}]"
 dconf write $K/power-options "[(0, true), (1, true), (2, true), (3, true), (4, false), (5, false), (6, false), (7, false)]"
-dconf write $K/pinned-apps-display "'Grid'"
+# Classic keeps its default: pinned apps as a list, one per line (pinned-apps-display 'List')
+dconf reset $K/pinned-apps-display
 dconf write $K/layout-style "'Classic'"
 # the sandbox image ships ImageMagick's viewer, which no desktop needs in a picture of the menu
 dconf write $K/hidden-apps "['display-im7.q16.desktop']"
