@@ -5,6 +5,28 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+All of this works offline: nothing you type leaves the computer. Return or a click copies the result. The full list
+is in [docs/SEARCH.md](docs/SEARCH.md), and each group has a switch under Settings > Menu > Search sources.
+
+- **Harder maths in search:** trigonometry in radians or degrees (`sin(30°)`), logarithms, roots (`√16`,
+  `root(27, 3)`), factorials (`5!`), combinations, `min` / `max` / `avg`, hex and binary numbers (`0xFF + 1`), bit
+  operations (`1 << 10`), multiplication without the sign (`2pi`) and plain words (`what is 15% of 80?`,
+  `20% off 80`). Long answers are easier to read, with spaces between the thousands.
+- **Many more unit conversions:** area, pressure, energy, power, force, torque, angle, frequency, data rate
+  (`100 mbps in mb/s`) and fuel economy (`30 mpg in l/100km`), plus more units of length, mass, volume and time.
+  Mixed amounts work (`5 ft 10 in in cm`), as does `how many feet in a mile`.
+- **Time zones:** `time in tokyo`, `3pm london in tokyo`, `9am pst in cet`.
+- **Dates:** `days until 25 dec`, `today + 90 days`, `week number`, `what day is 1 jan 2030`, `unix time`.
+- **Number bases and colours:** `0xFF`, `255 in binary`; `#3584e4` shows the colour with its RGB and HSL values.
+- **Network helpers:** `192.168.1.130/26` shows the network, host range, mask, broadcast and host count;
+  `192.168.1.0/24 into /26` lists the subnets; IPv6 and MAC addresses work too. `my ip`, `gateway`, `dns` and
+  `mac address` show this computer's own details, with no internet lookup.
+- **Emoji and characters:** `emoji smile`, `char arrow right`, `symbol pi`, then Return to copy.
+- **Quick text tools:** `password 24`, `uuid`, `sha256 text`, `base64 text`, `random 1-100`, `roll 2d6`.
+- **Quick settings:** `dark mode`, `night light`, `do not disturb`, `wifi off`, `bluetooth on`, `aeroplane mode`.
+
 ## [1.5.2] - 2026-11-17
 
 ### Changed

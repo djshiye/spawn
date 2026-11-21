@@ -183,6 +183,9 @@ was rebuilt after an install or removal, an app was launched), never when the me
 | `search-provider-shell` | b | `false` | new |
 | `search-calculator` | b | `true` | new |
 | `search-unit-conversion` | b | `true` | new |
+| `search-smart-answers` | b | `true` | new. Time zones, dates, number bases, colours and subnets in the search |
+| `search-quick-tools` | b | `true` | new. Passwords, UUIDs, hashes, local addresses, emoji and characters in the search |
+| `search-quick-toggles` | b | `true` | new. Dark mode, Night Light, Do Not Disturb, Wi-Fi, Bluetooth and aeroplane mode from the search |
 | `search-settings-panels` | b | `true` | new |
 | `search-app-actions` | b | `true` | new |
 | `search-power-actions` | b | `false` | new. Power actions (lock, log out, restart...) in the search |

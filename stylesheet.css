@@ -732,6 +732,26 @@
     color: rgba(255, 255, 255, 0.6);
 }
 
+/* Search answers: a sample of a typed colour, or an emoji / character, where the row icon goes (the size is
+ * set inline from the row's icon size). The hairline keeps a sample visible on a background of its own colour. */
+.spawn-answer-swatch {
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+}
+
+.spawn-light .spawn-answer-swatch {
+    border-color: rgba(0, 0, 0, 0.22);
+}
+
+.spawn-answer-glyph {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.spawn-light .spawn-answer-glyph {
+    color: rgba(0, 0, 0, 0.87);
+}
+
 /* Plain lists (Frequent, a category's apps, search results, the runner): no container spacing or
  * padding, so no dead pixel between two rows: the 1 px pitch and the 4 px right inset (scroll bar
  * room) are the rows' own padding. A list row outside a .spawn-list (Frequent under the pinned
