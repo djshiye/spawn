@@ -117,3 +117,17 @@ Preferences can be screenshotted the same way with `tools/dev-prefs.sh [--apply-
 See `docs/SPEC.md` (spec and module ownership), `docs/SETTINGS.md` (every setting and the
 ArcMenu key it migrates from), `docs/RELEASING.md` (packaging and publishing the DNF repository)
 and `docs/research/` (notes on ArcMenu's internals).
+
+## README pictures
+
+The pictures in the README (`docs/screenshots/`) come from the sandbox, never from a real desktop:
+
+```sh
+SPAWN_MONITOR=3200x1800 tools/dev-shell.sh docs-shots   # full-screen shots of a tidy menu, dark and light
+node tools/dev/docs-compose.cjs                         # cuts the menus out: hero, gallery and answers pictures
+```
+
+The scenario wants a realistic set of apps (real names and icons) in `/usr/local/share/applications` and GNOME's
+wallpapers. The second step needs Playwright with Chromium; it is not part of the build or the tests. To show a new
+search answer, add its query to the list in `tools/dev/scenarios/docs-shots.sh` and its name to `names` in
+`tools/dev/docs-compose.html`. The logo is `docs/branding/logo.svg`.

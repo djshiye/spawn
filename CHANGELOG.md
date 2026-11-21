@@ -26,6 +26,10 @@ is in [docs/SEARCH.md](docs/SEARCH.md), and each group has a switch under Settin
 - **Emoji and characters:** `emoji smile`, `char arrow right`, `symbol pi`, then Return to copy.
 - **Quick text tools:** `password 24`, `uuid`, `sha256 text`, `base64 text`, `random 1-100`, `roll 2d6`.
 - **Quick settings:** `dark mode`, `night light`, `do not disturb`, `wifi off`, `bluetooth on`, `aeroplane mode`.
+### Changed
+
+- **New README:** a Spawn logo, one picture of both layouts that follows GitHub's light or dark style, and a
+  "Search that answers" section that lists what you can type (sums, unit conversions, Settings panels, app actions).
 
 ## [1.5.2] - 2026-11-17
 
