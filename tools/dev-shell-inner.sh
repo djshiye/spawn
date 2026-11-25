@@ -301,11 +301,19 @@ if [ -f "$root/tools/dev/scenarios/$scenario.sh" ] && grep -q '^# uses: tray-sta
     cp -r "$root/tools/dev/tray-standin" "$ext_dir/$tray_uuid"
     with_tray=1
 fi
+# ... and "# uses: recorder-standin": GNOME's screen recording stop button shown (tools/dev/recorder-standin).
+recorder_uuid="spawn-recorder-standin@djshiye.github.io"
+with_recorder=0
+if [ -f "$root/tools/dev/scenarios/$scenario.sh" ] && grep -q '^# uses: recorder-standin' "$root/tools/dev/scenarios/$scenario.sh"; then
+    cp -r "$root/tools/dev/recorder-standin" "$ext_dir/$recorder_uuid"
+    with_recorder=1
+fi
 
 # ---------------------------------------------------------------- seed the ISOLATED dconf
 enabled="['$uuid'"
 [ "$with_dtp" = 1 ] && enabled="$enabled, '$dtp_uuid'"
 [ "$with_tray" = 1 ] && enabled="$enabled, '$tray_uuid'"
+[ "$with_recorder" = 1 ] && enabled="$enabled, '$recorder_uuid'"
 theme_uuid="user-theme@gnome-shell-extensions.gcampax.github.com"
 theme_name="Orchis-Dark-Compact"
 if [ "$seeded" = 1 ] && [ -d "$SPAWN_REAL_DATA_HOME/gnome-shell/extensions/$theme_uuid" ] && [ -d "$SPAWN_REAL_HOME/.themes/$theme_name" ]; then

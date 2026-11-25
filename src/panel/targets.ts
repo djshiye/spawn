@@ -21,7 +21,8 @@
 //                                        cheap pre-check that spares a stage pick for pointer motion elsewhere
 //   panelClickDeps()                     PanelClickDeps (panel/panelClick.ts) for the live stage and panels
 //   activatePanelButton(actor, button, press?)  pass the closing click on to a panelClickDeps().isButton actor
-//                                        (panelClickAction: St.Button `clicked`, toggle a panel menu, or replay
+//                                        (panelClickAction: St.Button `clicked`, toggle a panel menu, run a
+//                                        menu-less indicator's click action (the screen recorder), or replay
 //                                        `press` to a tray icon that handles presses itself); true: it acted
 //   forwardNextRelease(scope, actor, button)  a tray icon that got the closing press replayed also gets the
 //                                        matching release (legacy tray icons click on release), unless the
@@ -161,7 +162,9 @@ export function panelClickDeps(): PanelClickDeps {
     return {
         panels: () => panelBoxes().map(p => p.box).filter(Boolean),
         actorAt: (x, y) => global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x, y),
-        isButton: actor => actor instanceof St.Button || actor instanceof PanelMenu.Button,
+        // PanelMenu.ButtonBox: every status-area indicator (PanelMenu.Button is one), also those without a menu,
+        // like the screen recording stop button.
+        isButton: actor => actor instanceof St.Button || actor instanceof PanelMenu.ButtonBox,
     };
 }
 
@@ -169,6 +172,15 @@ export function panelClickDeps(): PanelClickDeps {
 export function panelButtonKind(actor: unknown): PanelButtonKind {
     if (actor instanceof St.Button)
         return {kind: 'launcher'};
+    if (actor instanceof PanelMenu.ButtonBox && !(actor instanceof PanelMenu.Button)) {
+        // An indicator without a menu (the screen recording / screen sharing stop buttons): it acts on its own
+        // click gesture, or (an extension's) reads raw presses itself.
+        const gesture = indicatorClickGesture(actor);
+        if (!gesture)
+            return {kind: 'raw'};
+        const required = Number(gesture.required_button ?? 0);
+        return {kind: 'action', gestureButton: Number.isFinite(required) ? required : 0};
+    }
     if (!(actor instanceof PanelMenu.Button))
         return null;
     if (actor === (Main.panel.statusArea as Record<string, unknown>)['activities'])
@@ -180,6 +192,26 @@ export function panelButtonKind(actor: unknown): PanelButtonKind {
         return {kind: 'raw'};
     const required = Number(gesture?.required_button ?? 0);
     return {kind: 'gesture', gestureButton: Number.isFinite(required) ? required : 0};
+}
+
+interface ClickGestureLike {
+    enabled?: boolean;
+    required_button?: number;
+    emit?: (signal: string) => unknown;
+}
+
+/** The enabled click gesture a menu-less indicator acts on (its `_clickGesture`, else one among its actions), or null. */
+function indicatorClickGesture(actor: unknown): ClickGestureLike | null {
+    try {
+        const own = (actor as {_clickGesture?: ClickGestureLike})._clickGesture;
+        const ClickGesture = (Clutter as unknown as {ClickGesture?: new () => unknown}).ClickGesture;
+        const found = own ?? (ClickGesture
+            ? (actor as Clutter.Actor).get_actions().find(a => a instanceof ClickGesture) as ClickGestureLike | undefined
+            : undefined);
+        return found && found.enabled !== false && typeof found.emit === 'function' ? found : null;
+    } catch {
+        return null;
+    }
 }
 
 /**
@@ -207,6 +239,15 @@ export function activatePanelButton(actor: unknown, button: number, press: Clutt
         if (typeof menu?.toggle !== 'function')
             return false;
         menu.toggle();
+        return true;
+    }
+    case 'recognize': {
+        // The indicator's own click handler (the screen recorder's: stop the recording) is connected to its
+        // gesture's `recognize`, which the grab kept from firing: fire it now.
+        const gesture = indicatorClickGesture(actor);
+        if (!gesture)
+            return false;
+        gesture.emit?.('recognize');
         return true;
     }
     case 'context': {

@@ -14,6 +14,8 @@
 //   - a panel menu button that uses the shell's own click gesture (the clock, quick settings, the system
 //     status icons, most extension indicators) toggles its menu, with any button the gesture accepts (in
 //     GNOME 49+ that is any button: a right click on the clock opens the calendar too);
+//   - a panel indicator with no menu that acts on its own click gesture (GNOME's screen recording and screen
+//     sharing stop buttons, a PanelMenu.ButtonBox) runs that action: one click stops the recording;
 //   - a touchscreen tap on any of these works like a primary click (a tray icon gets the touch event itself);
 //   - a panel button that handles raw presses itself (tray icons of the AppIndicator extension: Steam, Slack,
 //     Discord...; legacy tray icons) gets the press itself, replayed, so left (menu or activate), middle
@@ -31,7 +33,7 @@
 //     anchor: the Spawn button the menu is open on (never a target)
 //     deps:  {panels(): unknown[] (every panel box), actorAt(x, y), isButton(actor)}
 //   panelClickAction(kind, button, canReplay)  what to do with that button: 'clicked' | 'overview' | 'toggle'
-//                                          | 'replay' | 'context' | null (see PanelButtonKind)
+//                                          | 'recognize' | 'replay' | 'context' | null (see PanelButtonKind)
 //   closingClick(kind, x, y, button)       the ClickLike a closing event stands for: a mouse press / release as is,
 //                                          a touchscreen tap (touch begin / end) as a primary click
 //   canReplayEvent(kind)                   the closing event can be delivered to the button again (a press or a
@@ -111,17 +113,23 @@ export function panelClickTarget(click: ClickLike | null, anchor: unknown, deps:
  *   'activities'  the shell's Activities button
  *   'gesture'     a panel menu button opened by the shell's click gesture; `gestureButton` is the one mouse
  *                 button that gesture wants (0: any)
+ *   'action'      a panel indicator without a menu that acts on its own click gesture (the screen recording /
+ *                 screen sharing stop buttons); `gestureButton` as for 'gesture'
  *   'raw'         a panel button that turned the gesture off and handles presses itself (AppIndicator / tray)
  */
 export type PanelButtonKind =
     | {kind: 'launcher'}
     | {kind: 'activities'}
     | {kind: 'gesture'; gestureButton: number}
+    | {kind: 'action'; gestureButton: number}
     | {kind: 'raw'}
     | null;
 
-/** 'context': open the launcher's own context menu (targets.ts calls its `popupMenu()`). */
-export type PanelClickAction = 'clicked' | 'overview' | 'toggle' | 'replay' | 'context' | null;
+/**
+ * 'context': open the launcher's own context menu (targets.ts calls its `popupMenu()`).
+ * 'recognize': run the indicator's own click action (targets.ts makes its click gesture recognise).
+ */
+export type PanelClickAction = 'clicked' | 'overview' | 'toggle' | 'recognize' | 'replay' | 'context' | null;
 
 /**
  * What passing `button` on to a button of that kind means. `canReplay`: the closing event was a press that can
@@ -137,6 +145,8 @@ export function panelClickAction(kind: PanelButtonKind, button: number, canRepla
         return button === PRIMARY ? 'overview' : null;
     case 'gesture':
         return kind.gestureButton === 0 || kind.gestureButton === button ? 'toggle' : null;
+    case 'action':
+        return kind.gestureButton === 0 || kind.gestureButton === button ? 'recognize' : null;
     case 'raw':
         if (canReplay)
             return 'replay';

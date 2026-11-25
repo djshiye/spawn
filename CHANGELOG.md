@@ -27,6 +27,13 @@ is in [docs/SEARCH.md](docs/SEARCH.md), and each group has a switch under Settin
 - **Quick text tools:** `password 24`, `uuid`, `sha256 text`, `base64 text`, `random 1-100`, `roll 2d6`.
 - **Quick settings:** `dark mode`, `night light`, `do not disturb`, `wifi off`, `bluetooth on`, `aeroplane mode`.
 
+### Fixed
+
+- **Stopping a screen recording over a game:** with the menu open (also over a fullscreen game, after Super), one
+  click on GNOME's screen recording stop button in the panel now stops the recording, instead of only closing the
+  menu and sending you back to the game. The same goes for the screen sharing stop button and any other panel
+  indicator without a menu.
+
 ### Changed
 
 - **New README:** a Spawn logo, one picture of both layouts that follows GitHub's light or dark style, and a

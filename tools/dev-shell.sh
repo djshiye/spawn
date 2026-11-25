@@ -86,7 +86,7 @@ case "$scenario" in ui | ui-* | dtp-open | dtp-intellihide | core-fullscreen | c
 if [ "$scenario" = "all" ]; then
     # Each scenario runs in its own fresh isolated shell (this script, recursively).
     mkdir -p "$dev/logs"
-    runs=("smoke" "lifecycle" "hotkeys" "theme" "dtp-toggle --with-dtp" "dtp-open --with-dtp" "dtp-intellihide --with-dtp" "core-fullscreen" "core-fullscreen --with-dtp" "core-fullscreen-rightclick" "core-fullscreen-rightclick --with-dtp" "ui" "runner" "shots" "bench")
+    runs=("smoke" "lifecycle" "hotkeys" "theme" "dtp-toggle --with-dtp" "dtp-open --with-dtp" "dtp-intellihide --with-dtp" "core-fullscreen" "core-fullscreen --with-dtp" "core-fullscreen-rightclick" "core-fullscreen-rightclick --with-dtp" "core-recorder-passthrough" "core-recorder-passthrough --with-dtp" "ui" "runner" "shots" "bench")
     summary=()
     failed=0
     for run in "${runs[@]}"; do

@@ -1,0 +1,6 @@
+{
+  "uuid": "spawn-recorder-standin@djshiye.github.io",
+  "name": "Spawn test: screen recorder stand-in",
+  "description": "Dev sandbox only: shows GNOME's own screen recording stop button, as if a recording were running, plus a menu-less extension indicator.",
+  "shell-version": ["49", "50", "51"]
+}

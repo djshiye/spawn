@@ -101,6 +101,19 @@ test('panelClickAction: the clock, quick settings and indicators toggle their me
     assert(panelClickAction(leftOnly, SECONDARY, true) === null);
 });
 
+test('panelClickAction: an indicator without a menu (the screen recorder stop button) runs its own click action', () => {
+    const any = {kind: 'action', gestureButton: 0};
+    assert(panelClickAction(any, PRIMARY, true) === 'recognize');
+    assert(panelClickAction(any, PRIMARY, false) === 'recognize');
+    assert(panelClickAction(any, SECONDARY, true) === 'recognize');
+    assert(panelClickAction(any, MIDDLE, true) === 'recognize');
+    assert(panelClickAction(any, closingClick('touch-begin', 0, 0, 0).button, true) === 'recognize');
+    const leftOnly = {kind: 'action', gestureButton: PRIMARY};
+    assert(panelClickAction(leftOnly, PRIMARY, true) === 'recognize');
+    assert(panelClickAction(leftOnly, SECONDARY, true) === null);
+    assert(panelClickAction(any, 8, true) === null);
+});
+
 test('panelClickAction: tray icons that read raw presses get the press replayed (any button)', () => {
     const raw = {kind: 'raw'};
     assert(panelClickAction(raw, PRIMARY, true) === 'replay');
