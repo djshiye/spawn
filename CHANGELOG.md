@@ -5,6 +5,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-25
+
 ### Added
 
 All of this works offline: nothing you type leaves the computer. Return or a click copies the result. The full list
