@@ -10,6 +10,7 @@ mkdir -p "$apps"
 rm -f "$apps/zqxhide.desktop" "$apps/zqxnew.desktop"
 
 row_index() { # name -> index of the row named "name" or "name, new" in the visible app list; fails when absent
+    ui_call CompleteRows >/dev/null 2>&1 # All Apps builds its rows lazily: build them all before reading
     state_get layout.appRows | python3 -c '
 import json, sys
 name = sys.argv[1]
@@ -20,6 +21,7 @@ for i, row in enumerate(json.load(sys.stdin)):
 sys.exit(1)' "$1"
 }
 row_name() { # name -> the accessible name of that row ("Zqxnew Probe, new"); empty when absent
+    ui_call CompleteRows >/dev/null 2>&1
     state_get layout.appRows | python3 -c '
 import json, sys
 name = sys.argv[1]

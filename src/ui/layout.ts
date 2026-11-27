@@ -19,6 +19,7 @@
 //   layout.handleKey(event): boolean   Escape routing: true when the layout consumed the key
 //   layout.search(query): void         put `query` in the search entry (dev / D-Bus hook)
 //   layout.showView(id): void          'pinned' | 'frequent' | 'categories' | 'all' | 'favorites' | 'recent' | 'results' | 'default'
+//   layout.completeAppRows(): void     dev hook: build every row of the All Apps / category list now
 //   layout.setFakePlaces(specs | null) dev hook: fake devices / bookmarks in the right pane
 //   layout.debugState(): object        view, focus, counts (dev hook)
 //   LayoutHost                         what the layout may ask of the popup:
@@ -623,6 +624,10 @@ export class SpawnLayout implements ShortcutHost {
     }
 
     /** Dev hook (Ui.SetPlaces): show fake devices / network locations / bookmarks, null = the real ones. */
+    completeAppRows(): void {
+        this._views.categories?.completeRows();
+    }
+
     setFakePlaces(specs: FakePlace[] | null): void {
         this._rightPane.setFakePlaces(specs);
     }

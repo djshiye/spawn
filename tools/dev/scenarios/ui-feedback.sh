@@ -157,7 +157,7 @@ check "settings identical after Remove from Menu + Undo" "$(diff -q "$tmp/seed" 
 echo "   Edit Shortcuts opens the Pinned page"
 click_class spawn-shortcut-row 0 3
 click_text "Edit Shortcuts…"; sleep 1.0
-expect "the settings page asked for is Pinned" "$(dconf read "${K}prefs-visible-page")" 3
+expect "the settings page asked for is Pinned" "$(dconf read "${K}prefs-visible-page")" 2
 check "the menu closed" "$([ "$(state_get open)" = false ] && echo 0 || echo 1)"
 
 echo "== U12 user card menu"

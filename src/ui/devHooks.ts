@@ -30,6 +30,7 @@
 //   MenuItems(s cls) -> s    JSON: the items of the visible menu whose actor carries `cls` (e.g. spawn-button-menu):
 //                            [{kind: 'item'|'separator'|'submenu', label, visible, open?, items?}]
 //   Windows() -> s           JSON: [{title, appId, type, minimized, skipTaskbar}] of every window (Show Desktop checks)
+//   CompleteRows()           build every row of the Classic All Apps / category list (it builds them lazily)
 //   FocusInfo() -> s         JSON: {type, cls, name (accessible name)} of the actor holding the keyboard focus (null when none)
 //   HitSweep(s itemCls) -> s JSON: hit-tests every pixel of the visible pinned list / grid (the first visible
 //                            `spawn-tile-grid`, clipped to its scroll view) with Clutter.PickMode.REACTIVE and
@@ -104,6 +105,7 @@ const IFACE = `
     <method name="FocusActor"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/></method>
     <method name="MenuItems"><arg type="s" direction="in" name="cls"/><arg type="s" direction="out" name="json"/></method>
     <method name="Windows"><arg type="s" direction="out" name="json"/></method>
+    <method name="CompleteRows"/>
     <method name="FocusInfo"><arg type="s" direction="out" name="json"/></method>
     <method name="HitSweep"><arg type="s" direction="in" name="itemCls"/><arg type="s" direction="out" name="json"/></method>
     <method name="HitSweepIn"><arg type="s" direction="in" name="containerCls"/><arg type="s" direction="in" name="itemCls"/><arg type="s" direction="in" name="rangeCls"/><arg type="s" direction="out" name="json"/></method>
@@ -625,6 +627,7 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
         AppearanceAsync: ([cls, nth]: [string, number], inv: Invocation) => reply(inv, () => new GLib.Variant('(s)', [appearance(cls, nth)])),
         DumpAsync: (_p: unknown[], inv: Invocation) => reply(inv, () => new GLib.Variant('(s)', [dump()])),
         SearchAsync: ([q]: [string], inv: Invocation) => reply(inv, () => popup.search(q)),
+        CompleteRowsAsync: (_p: unknown[], inv: Invocation) => reply(inv, () => popup.completeAppRows()),
         ShowViewAsync: ([id]: [string], inv: Invocation) => reply(inv, () => popup.showView(id)),
         OpenFolderAsync: ([i]: [number], inv: Invocation) => reply(inv, () => popup.openFolderByIndex(i)),
         KeyAsync: ([name]: [string], inv: Invocation) => reply(inv, () => pressKey(name)),
