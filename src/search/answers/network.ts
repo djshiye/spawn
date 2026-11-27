@@ -21,7 +21,7 @@
 //   maskToPrefix(mask): number | null    null unless the mask is contiguous ones then zeros
 //   prefixToMask(prefix): number         0..32
 //   parseIPv6(text): bigint | null       any RFC 4291 text form, including "::" and an embedded IPv4
-//   compressIPv6(value): string          RFC 5952 (lower case, longest zero run as "::")
+//   compressIPv6(value): string          RFC 5952 (lower case, longest zero run as "::", IPv4-mapped as ::ffff:a.b.c.d)
 
 import type {Answer} from './types.js';
 
@@ -119,6 +119,9 @@ function ipv6Groups(value: bigint): string[] {
 }
 
 export function compressIPv6(value: bigint): string {
+    // RFC 5952 section 5: IPv4-mapped addresses use the dotted form for the last 32 bits.
+    if ((value >> 32n) === 0xffffn)
+        return `::ffff:${formatIPv4(Number(value & 0xffffffffn))}`;
     const g = ipv6Groups(value);
     let bestStart = -1, bestLen = 0;
     for (let i = 0; i < 8;) {

@@ -34,6 +34,12 @@ test('ipv6 helpers', () => {
     assertEquals(compressIPv6(parseIPv6('1:0:2:0:3:0:4:0')), '1:0:2:0:3:0:4:0');
     assertEquals(compressIPv6(parseIPv6('1:0:0:2:0:0:3:4')), '1::2:0:0:3:4');
     assertEquals(compressIPv6(parseIPv6('FE80::')), 'fe80::');
+    assertEquals(compressIPv6(parseIPv6('::ffff:0:0')), '::ffff:0.0.0.0');
+    assertEquals(compressIPv6(parseIPv6('::ffff:255.255.255.255')), '::ffff:255.255.255.255');
+    assertEquals(compressIPv6(0xffffn), '::ffff');
+    assertEquals(compressIPv6(parseIPv6('::192.0.2.1')), '::c000:201');
+    assertEquals(compressIPv6(parseIPv6('64:ff9b::192.0.2.1')), '64:ff9b::c000:201');
+    assertEquals(compressIPv6(parseIPv6('0:0:0:0:1:ffff:c000:201')), '::1:ffff:c000:201');
     assert(parseIPv6('::ffff:192.0.2.1') === 0xffffc0000201n);
     assert(parseIPv6('1::') === 1n << 112n);
     assert(parseIPv6('::') === 0n);
@@ -257,7 +263,12 @@ test('ipv6 addresses', () => {
     };
     for (const [ip, t] of Object.entries(types))
         assertEquals(byId(ip, 'type').title, t, ip);
-    assertEquals(byId('::ffff:192.0.2.1', 'compressed').title, '::ffff:c000:201');
+    assertEquals(byId('::ffff:192.0.2.1', 'compressed').title, '::ffff:192.0.2.1');
+    assertEquals(byId('::ffff:192.0.2.1', 'type').copy, '::ffff:192.0.2.1');
+    assertEquals(byId('::FFFF:c000:0201', 'compressed').title, '::ffff:192.0.2.1');
+    assertEquals(byId('::ffff:192.0.2.1', 'expanded').title, '0000:0000:0000:0000:0000:ffff:c000:0201');
+    assertEquals(byId('::ffff:10.0.0.0/104', 'network').title, '::ffff:10.0.0.0/104');
+    assertEquals(byId('::ffff:10.0.0.0/104', 'last').title, '::ffff:10.255.255.255');
     assertEquals(byId('::1', 'ptr').title, `1.${'0.'.repeat(31)}ip6.arpa`);
     assertEquals(byId('fe80::1', 'type').description, 'fe80::/10 · RFC 4291');
     assertEquals(byId('FE80:0:0:0:0:0:0:1', 'compressed').title, 'fe80::1');
