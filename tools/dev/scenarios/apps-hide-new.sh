@@ -10,6 +10,7 @@ mkdir -p "$apps"
 rm -f "$apps/zqxhide.desktop" "$apps/zqxnew.desktop"
 
 row_index() { # name -> index of the row named "name" or "name, new" in the visible app list; fails when absent
+    ui_call CompleteRows >/dev/null 2>&1 # All Apps builds its rows lazily: build them all before reading
     state_get layout.appRows | python3 -c '
 import json, sys
 name = sys.argv[1]
@@ -20,6 +21,7 @@ for i, row in enumerate(json.load(sys.stdin)):
 sys.exit(1)' "$1"
 }
 row_name() { # name -> the accessible name of that row ("Zqxnew Probe, new"); empty when absent
+    ui_call CompleteRows >/dev/null 2>&1
     state_get layout.appRows | python3 -c '
 import json, sys
 name = sys.argv[1]
@@ -153,6 +155,12 @@ screenshot apps-new-row
 ui_call ShowView categories >/dev/null; sleep 1
 n="$(count spawn-new-dot)"
 check "a category dot is on screen ($n)" "$([ "$n" -ge 1 ]; echo $?)"
+cat_new="$(ui_call A11y | unwrap | python3 -c '
+import json, sys
+names = [i.get("name", "") for i in json.load(sys.stdin)["items"]
+         if "spawn-category-row" in i.get("cls", "").split() and "spawn-grid-category" not in i.get("cls", "").split()]
+print(sum(1 for n in names if n.endswith(", contains new apps")))')"
+check "the dotted category says it contains new apps ($cat_new)" "$([ "$cat_new" -ge 1 ]; echo $?)"
 screenshot apps-new-category-dot
 echo "-- search result"
 ui_call Search zqxnew >/dev/null; sleep 1.5

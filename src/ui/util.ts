@@ -28,6 +28,7 @@ import type {Services} from '../core/services.js';
 import type {SpawnSettings} from '../core/settings.js';
 import {iconSize as clampIconSize} from '../core/limits.js';
 import {appInfoOf} from '../model/appInfo.js';
+import {scrollTarget} from '../model/scroll.js';
 
 export function lookupApp(services: Services, id: string): Shell.App | null {
     try {
@@ -115,13 +116,7 @@ export function scrollIntoView(scroll: St.ScrollView | null, actor: Clutter.Acto
     const viewH = box.y2 - box.y1;
     const [, top] = relativeY(actor, scroll.get_child() as unknown as Clutter.Actor | null);
     const h = actor.height;
-    const margin = 8;
-    let value = adj.value;
-    if (top - margin < value)
-        value = top - margin;
-    else if (top + h + margin > value + viewH)
-        value = top + h + margin - viewH;
-    adj.value = Math.max(0, value);
+    adj.value = scrollTarget({value: adj.value, viewH, top, height: h});
 }
 
 function relativeY(actor: Clutter.Actor, ancestor: Clutter.Actor | null): [boolean, number] {

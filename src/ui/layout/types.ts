@@ -78,4 +78,6 @@ export interface TileEntry {
     scope: Scope;
     release(): void;
     folder?: FolderTile | FolderRow;
+    /** What the tile shows (name + icon): a cached app / command tile is rebuilt when it changes. */
+    sig?: string;
 }

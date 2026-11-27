@@ -307,25 +307,41 @@ export class PinnedView {
             return {scope, release, widget: tile.actor};
         };
 
+        // A cached tile whose name or icon changed (app update, edit in Settings) is dropped and rebuilt; the keyboard
+        // focus it held moves to the new tile.
+        let refocusKey: string | null = null;
+        const stale = (key: string, existing: TileEntry | undefined, sig: string): TileEntry | undefined => {
+            if (!existing || existing.sig === sig)
+                return existing;
+            const focus = global.stage.key_focus as Clutter.Actor | null;
+            if (focus && (focus === existing.widget || existing.widget.contains(focus)))
+                refocusKey = key;
+            this.entries.delete(key);
+            existing.release();
+            existing.widget.destroy();
+            return undefined;
+        };
+
         const make = (item: PinnedItem): {key: string; entry: TileEntry} | null => {
             switch (item.kind) {
             case 'app': {
                 const app = item.missing ? null : lookupApp(this._services, item.id);
                 // A badge on/off flips the key, so the cached entry is replaced when the app stops being new.
                 const key = `${app ? 'a' : 'm'}:${item.id}${app && this._tileHost.isNew?.(app) ? '*' : ''}`;
+                const name = app ? displayName(app, settings, generic) : '';
+                const sig = `${name}\n${app?.get_icon()?.to_string() ?? ''}`;
                 const existing = this.entries.get(key);
-                if (existing)
+                if (existing && (!app || keep.has(key) || stale(key, existing, sig)))
                     return {key, entry: existing};
                 if (!app)
                     return {key, entry: ghost(item.id, key)};
                 const {scope, release} = ownedScope(this._scope, key);
-                const name = displayName(app, settings, generic);
                 const tile = list
                     ? new AppRow(app, this._tileHost, {...tileOpts, name, pinned: true})
                     : new AppTile(app, this._tileHost, {...tileOpts, name});
                 enableDrag(scope, tile.actor, {id: item.id});
                 acceptDrops(scope, tile.actor, store, {kind: 'app', id: item.id}, dropOpts);
-                return {key, entry: {widget: tile.actor, scope, release}};
+                return {key, entry: {widget: tile.actor, scope, release, sig}};
             }
             case 'folder': {
                 const key = `f:${item.uuid}`;
@@ -344,20 +360,25 @@ export class PinnedView {
             }
             case 'custom': {
                 const key = `c:${item.entry.id}`;
-                const existing = this.entries.get(key);
+                const id = item.entry.id;
+                // Built-in shortcuts, folders and URIs show their own name and icon; a plain command keeps the generic look.
+                const builtin = /^(Spawn_|ArcMenu_|\/|[a-z][a-z0-9+.-]*:\/\/)/.test(id) ? resolveShortcut(item.entry) : null;
+                const shownName = builtin?.name || item.entry.name || id;
+                const shownIcon = builtin?.icon || item.entry.icon || 'application-x-executable';
+                const sig = `${shownName}\n${shownIcon}`;
+                const cached = this.entries.get(key);
+                // A key already placed in this sync is reused as it is: rebuilding it would destroy the tile just handed to the grid.
+                const existing = keep.has(key) ? cached : stale(key, cached, sig);
                 if (existing)
                     return {key, entry: existing};
                 const {scope, release} = ownedScope(this._scope, key);
-                const id = item.entry.id;
                 const Action = list ? ActionRow : ActionTile;
-                // Built-in shortcuts, folders and URIs show their own name and icon; a plain command keeps the generic look.
-                const builtin = /^(Spawn_|ArcMenu_|\/|[a-z][a-z0-9+.-]*:\/\/)/.test(id) ? resolveShortcut(item.entry) : null;
-                const tile = new Action(builtin?.name || item.entry.name || id, builtin?.icon || item.entry.icon || 'application-x-executable',
+                const tile = new Action(shownName, shownIcon,
                     () => this._runCustom(item.entry), {tooltips: this._tooltips},
                     {...tileOpts, context: () => this._context.open(tile.actor, {kind: 'custom', id})});
                 enableDrag(scope, tile.actor, {id, isCustom: true});
                 acceptDrops(scope, tile.actor, store, {kind: 'app', id, isCustom: true}, dropOpts);
-                return {key, entry: {widget: tile.actor, scope, release}};
+                return {key, entry: {widget: tile.actor, scope, release, sig}};
             }
             }
         };
@@ -381,6 +402,13 @@ export class PinnedView {
             }
         }
         this.grid.setTiles(tiles, list ? 1 : this._metrics.cols, list ? -1 : this._metrics.tileWidth, size);
+        if (refocusKey) {
+            try {
+                this.entries.get(refocusKey)?.widget.grab_key_focus();
+            } catch (e) {
+                error('could not move the focus to the rebuilt tile', e);
+            }
+        }
         const empty = tiles.length === 0;
         this.grid.actor.visible = !empty;
         // Grid layout: the header above the view says "Pinned".

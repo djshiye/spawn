@@ -156,6 +156,11 @@ export class SpawnPopup {
         this._layout?.openFolderByIndex(index);
     }
 
+    /** Dev hook (Ui.CompleteRows): build every row of the Classic app list, which is otherwise built lazily. */
+    completeAppRows(): void {
+        this._layout?.completeAppRows();
+    }
+
     /** Dev hook (Ui.SetPlaces): fake devices / bookmarks in the right pane; null = the real ones. */
     setFakePlaces(specs: FakePlace[] | null): void {
         this._ensureLayout().setFakePlaces(specs);

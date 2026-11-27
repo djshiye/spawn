@@ -83,6 +83,7 @@ export function layoutDebugState(p: DebugParts): Record<string, unknown> {
         rightWidth: staged ? p.right.width : 0,
         renaming: p.folders.view?.renaming ?? false,
         pinnedScroll: p.pinned.scroll?.vadjustment.value ?? 0,
+        appsScroll: p.views.categories?.appScroll().vadjustment.value ?? 0,
         ghosts: p.pinned.ghostCount(),
         // accessible names of the app rows of the visible category list ("Firefox", "Firefox, new")
         appRows: (p.views.categories?.appRows() ?? []).map(r => r.accessible_name ?? ''),

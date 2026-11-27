@@ -198,7 +198,7 @@ expect_state "one link" layout.links 1
 click_class spawn-list-row "$(( $(count spawn-list-row) - 1 ))"
 sleep 1.2
 expect_state "the Recent Files view is showing" layout.view recent
-expect_state "25 newest files + 'More Recent Files...' (hidden and deleted files left out)" layout.extraRows 26
+expect_state "25 newest files + 'More Recent Files…' (hidden and deleted files left out)" layout.extraRows 26
 screenshot ui-extras-recent
 sweep_in "recent files over the whole left pane" spawn-frequent spawn-list-row spawn-left-pane 20
 edge "the recent rows" spawn-list-row spawn-left-pane both
