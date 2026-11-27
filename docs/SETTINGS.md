@@ -14,7 +14,7 @@ Writes: single settings are written immediately. Multi-key operations (group Res
 through `SpawnSettings.batch()`, which delays and applies on a throwaway `Gio.Settings`; the prefs' own `settings.raw`
 (every row is bound to it) is never put in delay mode, because GSettings has no way back and later writes would stay pending.
 Integer keys with a `<range>` in the schema: `menu-height` 360..1600, `left-panel-width` 420..1200,
-`right-panel-width` 180..600, `menu-width-adjustment` -350..800, `max-frequent-apps` 1..50, `runner-menu-width` 300..2000, `runner-menu-height` 300..1000, `menu-position-alignment` 0..100, `runner-font-size` 0..30 (the UI floors are 360 / 420 / 180; the migration
+`right-panel-width` 180..600, `menu-width-adjustment` -350..800, `max-frequent-apps` 1..50, `runner-menu-width` 300..2000, `runner-menu-height` 300..1000, `menu-position-alignment` 0..100, `runner-font-size` 0..30, `max-search-results` 1..50, `menu-button-icon-size` 8..64, `menu-button-padding` -1..64, `icon-size-apps` / `-shortcuts` / `-categories` / `-buttons` / `-misc` -1..128 (the UI floors are 360 / 420 / 180; the migration
 clamps ArcMenu values into these ranges and warns). GSettings rejects anything outside, so `SpawnSettings.set()`
 returns false for it.
 The ArcMenu import never writes a value equal to Spawn's default (it resets the key instead), so a later change of
