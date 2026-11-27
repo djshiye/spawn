@@ -23,6 +23,7 @@
 //   createBackup(settings, extensionVersion): string          the JSON text
 //   parseBackup(text, settings): ParseResult                  {ok: true, plan} | {ok: false, error}
 //   describePlan(plan): string                                one line for the confirmation dialog
+//   describeCommands(plan): string                            the commands the restore adds to the menu ('' when none)
 //   applyBackup(settings, plan): RestoreResult                replaces the current settings; {undo} for settings.restore();
 //                                                             throws (after rolling back) when anything is rejected
 //   readBackupFile(file): string                              size / type checked read (throws Error)
@@ -36,7 +37,7 @@ import Gio from 'gi://Gio';
 import type GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
 
-import {sanitizeEntries} from '../core/entries.js';
+import {isCommandEntry, type RawEntry, sanitizeEntries} from '../core/entries.js';
 import type {Entry} from '../core/settings.js';
 import * as ops from '../model/pinnedOps.js';
 import {isValidFolderId} from '../core/folderId.js';
@@ -75,6 +76,8 @@ export interface RestorePlan {
     skipped: string[];
     /** Folder ids the file's pinned list points at but the file does not hold; their entries are dropped from the plan. */
     missingFolders: string[];
+    /** Display lines of the commands the restore adds to the menu (entries that run their id as a command line when clicked). */
+    commands: string[];
     extensionVersion: string | null;
 }
 
@@ -142,6 +145,38 @@ function checkEntries(variant: GLib.Variant): void {
     const list = variant.recursiveUnpack() as unknown[];
     if (sanitizeEntries(list).length !== list.length)
         throw new Error('an entry has no id');
+}
+
+const COMMAND_KEYS = ['pinned-apps', 'directory-shortcuts', 'application-shortcuts', 'context-menu-items'] as const;
+
+function shorten(text: string, max: number): string {
+    return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/**
+ * The entries the restore would add that run a command line when clicked, as display lines. Entries already in the
+ * menu today are left out (restoring your own backup shows nothing new). Folder contents never run (they show as
+ * ghost tiles), so they are not looked at.
+ */
+function commandsAdded(values: ReadonlyMap<string, GLib.Variant>, settings: SpawnSettings): string[] {
+    const current = new Set<string>();
+    for (const key of COMMAND_KEYS)
+        for (const e of settings.get(key) as RawEntry[])
+            current.add(e.id);
+    const out: string[] = [];
+    for (const key of COMMAND_KEYS) {
+        const v = values.get(key);
+        if (!v)
+            continue;
+        for (const e of sanitizeEntries(v.recursiveUnpack())) {
+            if (!isCommandEntry(e, key === 'pinned-apps') || current.has(e.id))
+                continue;
+            const line = e.name && e.name !== e.id ? `"${shorten(e.name, 60)}" runs ${shorten(e.id, 120)}` : shorten(e.id, 120);
+            if (!out.includes(line))
+                out.push(line);
+        }
+    }
+    return out;
 }
 
 export function parseBackup(text: string, settings: SpawnSettings): ParseResult {
@@ -244,7 +279,15 @@ export function parseBackup(text: string, settings: SpawnSettings): ParseResult 
         }
     }
     const ext = doc['extensionVersion'];
-    return {ok: true, plan: {values, folders, ignored, skipped, missingFolders, extensionVersion: typeof ext === 'string' ? ext.slice(0, 40) : null}};
+    return {ok: true, plan: {values, folders, ignored, skipped, missingFolders, commands: commandsAdded(values, settings), extensionVersion: typeof ext === 'string' ? ext.slice(0, 40) : null}};
+}
+
+/** One sentence naming the commands the restore adds (at most 8), or '' when there are none. */
+export function describeCommands(plan: RestorePlan): string {
+    if (plan.commands.length === 0)
+        return '';
+    const more = plan.commands.length - 8;
+    return `Commands it adds to the menu, run when clicked: ${plan.commands.slice(0, 8).join(', ')}${more > 0 ? `, and ${more} more` : ''}.`;
 }
 
 export function describePlan(plan: RestorePlan): string {

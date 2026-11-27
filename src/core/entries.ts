@@ -13,6 +13,8 @@
 //   sanitizeEntries(raw, onSkip?): Entry[]  the entries of `raw` that are plain objects with a non-empty string
 //                                         `id` (kept as they are, in order); onSkip(entry, why) is called once for
 //                                         each dropped one
+//   isCommandEntry(entry, inPinned): boolean  true when clicking the entry would run its id as a command line
+//                                         (the restore dialog lists such entries before they are added)
 //   reinsertAt(list, item, index): T[]    a copy of `list` with `item` inserted at `index`, clamped to 0..length
 
 export interface RawEntry {
@@ -41,6 +43,28 @@ export function sanitizeEntries<T extends RawEntry = RawEntry>(raw: unknown, onS
         out.push(entry as T);
     }
     return out;
+}
+
+/** Desktop-file ids (what Shell.AppSystem looks up); anything with a space or shell syntax is not one. */
+const DESKTOP_ID = /^[A-Za-z0-9_.+-]+\.desktop$/;
+
+/**
+ * True when clicking the entry would run its id as a command line: resolveShortcut's shell fallback
+ * (ui/widgets/shortcutRow.ts) or pinnedView._runCustom (create_from_commandline). Keep in step with those.
+ * `inPinned`: the entry is in the top-level pinned-apps, where {isFolder: 'true'} entries are folders and never
+ * run (resolveShortcut ignores isFolder).
+ */
+export function isCommandEntry(entry: RawEntry, inPinned: boolean): boolean {
+    const id = entry.id;
+    if (id.trim() === '')
+        return false;
+    if (inPinned && entry.isFolder === 'true')
+        return false;
+    if (id.startsWith('Spawn_') || id.startsWith('ArcMenu_'))
+        return false; // built-ins, or nothing (unknown ones resolve to null)
+    if (id.startsWith('/') || id.includes('://'))
+        return false; // opened as a path / URI, never run
+    return !DESKTOP_ID.test(id);
 }
 
 export function reinsertAt<T>(list: readonly T[], item: T, index: number): T[] {

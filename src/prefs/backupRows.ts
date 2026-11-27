@@ -14,6 +14,7 @@ import {
     applyBackup,
     createBackup,
     DEFAULT_BACKUP_NAME,
+    describeCommands,
     describePlan,
     parseBackup,
     readBackupFileAsync,
@@ -72,6 +73,9 @@ function nameList(names: readonly string[]): string {
 
 function confirmRestore(ctx: PrefsContext, plan: RestorePlan, apply: () => void): void {
     let body = `This replaces your current Spawn settings, pinned apps and folders.\n\n${describePlan(plan)}`;
+    const commands = describeCommands(plan);
+    if (commands)
+        body += `\n\n${commands} Restore only a backup you trust.`;
     if (plan.missingFolders.length > 0)
         body += `\n\nLeft out (folder missing from the backup): ${nameList(plan.missingFolders)}.`;
     if (plan.skipped.length > 0)
