@@ -37,6 +37,8 @@ import type GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
 
 import {sanitizeEntries} from '../core/entries.js';
+import type {Entry} from '../core/settings.js';
+import * as ops from '../model/pinnedOps.js';
 import {isValidFolderId} from '../core/folderId.js';
 import type {SettingKey, SettingsSnapshot, SpawnSettings} from '../core/settings.js';
 
@@ -202,6 +204,20 @@ export function parseBackup(text: string, settings: SpawnSettings): ParseResult 
             folders.set(id, {name, pinnedApps: apps});
         } catch (e) {
             return {ok: false, error: `The folder '${id}' in the backup is not valid: ${(e as Error).message}.`};
+        }
+    }
+    // Repair a damaged pinned structure the way the ArcMenu import does (an app once, a folder once, no nested
+    // folders): the menu's operations rely on it. Silent: what goes are exact duplicates the menu never shows.
+    if (values.has('pinned-apps')) {
+        const original = {
+            top: pinned as Entry[],
+            folders: Object.fromEntries([...folders].map(([id, f]) => [id, sanitizeEntries<Entry>(f.pinnedApps.recursiveUnpack())])),
+        };
+        const fixed = ops.normalizeSnapshot(original);
+        if (fixed !== original) {
+            values.set('pinned-apps', new GLib.Variant('aa{ss}', fixed.top as never));
+            for (const [id, f] of folders)
+                f.pinnedApps = new GLib.Variant('aa{ss}', (fixed.folders[id] ?? []) as never);
         }
     }
     for (const id of wanted) {

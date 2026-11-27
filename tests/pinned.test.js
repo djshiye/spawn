@@ -253,4 +253,49 @@ test('visibleToRaw / visibleToRawMove map hidden-entry indices', () => {
     assertEquals(ops.visibleToRawMove(vis, 4, 99), 3);
 });
 
+test('normalizeSnapshot drops duplicates: top level first, then folders in order; nested folders go', () => {
+    const r = ops.normalizeSnapshot(snap(
+        [app('a'), folder('F', 'F'), app('c'), folder('F', 'F'), folder('G', 'G'), app('a')],
+        {F: [app('a'), app('b'), app('b'), folder('G', 'G')], G: [app('b'), app('t')], X: [app('z')]},
+    ));
+    assertEquals(ids(r), ['a.desktop', 'F', 'c.desktop', 'G']);
+    assertEquals(r.folders.F.map(e => e.id), ['b.desktop']);
+    assertEquals(r.folders.G.map(e => e.id), ['t.desktop']);
+    assert(!('X' in r.folders), 'an unreferenced folder is dropped');
+});
+
+test('normalizeSnapshot returns the same object for a valid snapshot', () => {
+    const s = withFolder();
+    assert(ops.normalizeSnapshot(s) === s);
+    const e = snap([folder('F', 'F')], {F: []});
+    assert(ops.normalizeSnapshot(e) === e);
+});
+
+test('deleteFolder / dissolveFolder remove every top-level entry of a duplicated folder', () => {
+    const s = () => snap([folder('F', 'F'), app('c'), folder('F', 'F')], {F: [app('b')]});
+    assertEquals(ids(ops.deleteFolder(s(), 'F')), ['c.desktop']);
+    assertEquals(ids(ops.dissolveFolder(s(), 'F')), ['b.desktop', 'c.desktop']);
+});
+
+test('unpin removes every copy inside a folder', () => {
+    const r = ops.unpin(snap([folder('F', 'F')], {F: [app('b'), app('x'), app('b')]}), 'b.desktop');
+    assertEquals(r.folders.F.map(e => e.id), ['x.desktop']);
+    assert(!ops.isPinnedIn(r, 'b.desktop'));
+});
+
+test('removeFromFolder of an app that is also at the top level does not duplicate it', () => {
+    const r = ops.removeFromFolder(snap([app('a'), folder('F', 'F')], {F: [app('a'), app('b')]}), 'F', 'a.desktop');
+    assertEquals(ids(r), ['a.desktop', 'F']);
+    assertEquals(r.folders.F.map(e => e.id), ['b.desktop']);
+    const g = ops.removeFromFolder(snap([app('a'), folder('F', 'F')], {F: [app('a')]}), 'F', 'a.desktop');
+    assertEquals(ids(g), ['a.desktop']);
+    assert(!('F' in g.folders), 'the emptied folder is gone');
+});
+
+test('removeFromFolder with a duplicated folder uuid adjusts the index for both removed entries', () => {
+    const s = () => snap([folder('F', 'F'), app('c'), folder('F', 'F'), app('d')], {F: [app('x')]});
+    assertEquals(ids(ops.removeFromFolder(s(), 'F', 'x.desktop', 4)), ['c.desktop', 'd.desktop', 'x.desktop']);
+    assertEquals(ids(ops.removeFromFolder(s(), 'F', 'x.desktop')), ['x.desktop', 'c.desktop', 'd.desktop']);
+});
+
 run();

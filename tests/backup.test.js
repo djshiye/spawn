@@ -87,6 +87,25 @@ test('unknown and excluded keys are ignored and reported, known ones still apply
     assertEquals(r.plan.ignored.sort(), ['dev-mode', 'known-apps', 'no-such-key']);
 });
 
+test('restore repairs a damaged pinned structure (duplicates, nested folders) like the ArcMenu import', () => {
+    const e = id => `{'id': '${id}'}`;
+    const f = (id, name) => `{'id': '${id}', 'name': '${name}', 'isFolder': 'true'}`;
+    const r = parsed(doc(
+        {'pinned-apps': `[${e('a.desktop')}, ${f('games', 'Games')}, ${e('c.desktop')}, ${f('games', 'Games')}, ${f('tools', 'Tools')}]`},
+        {
+            games: {name: 'Games', 'pinned-apps': `[${e('a.desktop')}, ${e('b.desktop')}, ${e('b.desktop')}, ${f('tools', 'Tools')}]`},
+            tools: {name: 'Tools', 'pinned-apps': `[${e('t.desktop')}]`},
+        },
+    ));
+    assert(r.ok, r.error);
+    assertEquals(r.plan.ignored, []);
+    const dst = fresh();
+    B.applyBackup(dst, r.plan);
+    assertEquals(dst.get('pinned-apps'), [{id: 'a.desktop'}, {id: 'games', name: 'Games', isFolder: 'true'}, {id: 'c.desktop'}, {id: 'tools', name: 'Tools', isFolder: 'true'}]);
+    assertEquals(dst.folder('games').pinnedApps, [{id: 'b.desktop'}]);
+    assertEquals(dst.folder('tools').pinnedApps, [{id: 't.desktop'}]);
+});
+
 test('rejected: not JSON, wrong format, missing / newer version, damaged structure', () => {
     for (const text of ['not json', '[]', '{}', JSON.stringify({format: 'other', version: 1, settings: {}}),
         doc({}, {}, {version: 0}), doc({}, {}, {version: '1'}), doc({}, {}, {version: 2}),
