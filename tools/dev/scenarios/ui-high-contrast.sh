@@ -33,9 +33,18 @@ for scheme in dark light; do
         park; focus_class "$ITEM" 1; screenshot hc-$scheme-$lay-focus; move_class "$ITEM" 3 0.8; screenshot hc-$scheme-$lay-focus-hover; park
         ui_call Search "fi" >/dev/null; sleep 1.3; screenshot hc-$scheme-$lay-search
         ui_call Search "" >/dev/null; sleep 0.5
+        gsettings set $A high-contrast false; sleep 1
+        expect "$scheme $lay: switching high contrast off with the menu open drops spawn-hc at once" "$(count spawn-hc)" 0
+        gsettings set $A high-contrast true; sleep 1
+        check "$scheme $lay: switching it on with the menu open adds spawn-hc at once" "$([ "$(count spawn-hc)" -ge 1 ] && echo 0 || echo 1)"
         close_menu
     done
     gsettings set $A high-contrast false; sleep 1
 done
 dconf reset $K/layout-style
 dconf reset $K/pinned-apps-display
+# desktop-wide keys reset_seed does not restore: leave them as the next scenario of the sweep expects
+gsettings reset org.gnome.desktop.interface color-scheme
+gsettings reset $A high-contrast
+gsettings reset org.gnome.desktop.notifications show-banners
+sleep 1

@@ -161,6 +161,16 @@ export class PinnedView {
                     if (this.showing())
                         this.syncIfNeeded();
                 });
+                // the dimmed "not installed" tiles take their opacity from High Contrast (see _tileSignature)
+                try {
+                    this._scope.connect(St.Settings.get(), 'notify::high-contrast', () => {
+                        this.dirty = true;
+                        if (this.showing())
+                            this.syncIfNeeded();
+                    });
+                } catch (e) {
+                    error('pinned high contrast watch failed', e);
+                }
             }
         }
         return this.scroll;
@@ -274,7 +284,8 @@ export class PinnedView {
         // (otherwise old and new sizes mix in one grid).
         // List rows are always one line (multi-lined-labels is a grid setting).
         const size = this._metrics.itemSize();
-        const signature = list ? `list${rowIconSize}|${generic}|${size}` : `grid${this._metrics.tileIconSize}|${multiLine}|${generic}|${size}`;
+        const contrast = St.Settings.get().high_contrast;
+        const signature = list ? `list${rowIconSize}|${generic}|${size}|${contrast}` : `grid${this._metrics.tileIconSize}|${multiLine}|${generic}|${size}|${contrast}`;
         if (signature !== this._tileSignature) {
             this._tileSignature = signature;
             for (const [key, entry] of [...this.entries]) {

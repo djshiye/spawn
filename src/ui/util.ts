@@ -189,7 +189,7 @@ export function applyTone(actor: St.Widget, probe: St.Widget = actor): void {
 
 /**
  * GNOME's High Contrast switch (St.Settings, the one the shell loads its own high-contrast stylesheet by): tag `actor`
- * with "spawn-hc" so stylesheet.css draws outlines instead of soft tints. Read at every open, like the tone.
+ * with "spawn-hc" so stylesheet.css draws outlines instead of soft tints. Read at every open, like the tone; SpawnPopup also re-applies it when the switch flips.
  */
 function applyContrast(actor: St.Widget): void {
     let high: boolean;

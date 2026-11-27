@@ -152,7 +152,7 @@ spoken. A pass with Orca is still to do.
 - **High contrast.** GNOME's High Contrast switch (`St.Settings.high_contrast`): `applyTone()` adds `spawn-hc` to the menu,
   context menus and runner, and the last block of `stylesheet.css` draws inset outlines (hover 60 %, selected 85 %, keyboard
   focus solid and thicker) around items, 1 px outlines around the cards, entry and menus, full-strength separators and
-  dimmed texts at 90 %; no size changes. Read on every open, so a change shows from the next open
+  dimmed texts at 90 %; no size changes. Read on every open and followed live (`notify::high-contrast` re-applies the tone on an open menu and rebuilds the pinned tiles, whose dimmed "not installed" ones change opacity)
   (`tools/dev/scenarios/ui-high-contrast.sh`).
 - **Preferences.** Icon-only buttons have a tooltip and an accessible label (`label()` in `prefs/widgets.ts`), as do the
   search entries, the icon grid, the colour buttons, the scale and the ambiguous "Set / Add / Disable / Rescan" buttons;
