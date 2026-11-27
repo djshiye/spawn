@@ -156,6 +156,32 @@ test('undo of a drop pin: captureState / restoreFolder puts the list back', () =
     scope.dispose();
 });
 
+test('undo of a drop onto an app that made a folder also removes the folder\'s settings', () => {
+    const {store, settings, scope} = fixture([app('a'), app('b')]);
+    const undo = store.captureState('Pinned');
+    performDrop(store, {kind: 'app', id: 'b.desktop'}, fromList('x'), 'onto', name);
+    store.markDissolved(undo);
+    const uuid = settings.get('pinned-apps').find(e => e.isFolder).id;
+    assert(store.restoreFolder(undo));
+    assertEquals(ids(store), ['a', 'b']);
+    assertEquals(settings.folder(uuid).raw.get_user_value('name'), null);
+    assertEquals(settings.folder(uuid).raw.get_user_value('pinned-apps'), null);
+    scope.dispose();
+});
+
+test('a change to the folder a drop created ends the undo window', () => {
+    const {store, settings, scope} = fixture([app('a'), app('b')]);
+    const undo = store.captureState('Pinned');
+    performDrop(store, {kind: 'app', id: 'b.desktop'}, fromList('x'), 'onto', name);
+    store.markDissolved(undo);
+    const uuid = settings.get('pinned-apps').find(e => e.isFolder).id;
+    store.addToFolder(uuid, 'z.desktop');
+    assert(!store.isUnchangedSince(undo));
+    assert(!store.restoreFolder(undo));
+    assertEquals(store.folderApps(uuid).map(e => e.id), ['b.desktop', 'x.desktop', 'z.desktop']);
+    scope.dispose();
+});
+
 test('canDrop rules for a list app match a pinned app (commands excepted)', () => {
     const p = fromList('x');
     assert(canDrop(p, {kind: 'app', id: 'a.desktop'}, 'onto'));

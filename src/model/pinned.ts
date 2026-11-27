@@ -242,11 +242,19 @@ export class PinnedStore {
     restoreFolder(undo: FolderUndo): boolean {
         if (!this.isUnchangedSince(undo))
             return false;
+        // A drop that made a folder wrote its keys; the snapshot predates it, so restore alone would orphan them.
+        const before = ops.folderUuids(this._snapshot().top).filter(isValidFolderId);
         this._writing++;
         try {
             this._settings.restore(undo.snapshot);
             this._cache = null;
-            this._watchFolders(this._snapshot().top);
+            const kept = new Set(ops.folderUuids(this._snapshot().top)); // also re-watches the remaining folders
+            for (const uuid of before) {
+                if (kept.has(uuid) || undo.snapshot.folders.has(uuid))
+                    continue;
+                this._unwatch(uuid);
+                this._settings.deleteFolder(uuid);
+            }
         } finally {
             this._writing--;
         }
@@ -285,9 +293,12 @@ export class PinnedStore {
 
     /** The pinned list plus the lists of the folders the undo remembers (a folder app removed behind its back counts). */
     private _stateKey(undo: FolderUndo): string {
-        // A folder the undo remembers may no longer be in the pinned list, so its lists are read directly.
-        const folders = [...undo.snapshot.folders.keys()].map(id => (this._folders.get(id)?.folder ?? this._settings.folder(id)).pinnedApps);
-        return JSON.stringify([this._snapshot().top, folders]);
+        // A folder the undo remembers may no longer be in the pinned list, so its lists are read directly; a folder
+        // the change created is in the list now and counts too (a later addition to it must end the undo window).
+        const top = this._snapshot().top;
+        const ids = new Set([...undo.snapshot.folders.keys(), ...ops.folderUuids(top).filter(isValidFolderId)]);
+        const folders = [...ids].map(id => [id, (this._folders.get(id)?.folder ?? this._settings.folder(id)).pinnedApps]);
+        return JSON.stringify([top, folders]);
     }
 
     /** Full-list indices of the entries items(true) shows (all but folder entries with an unusable id). */
