@@ -7,6 +7,7 @@
 //                                               results are shown best-last: Up)
 //   pageTarget(items, index, dir, page): number  Page Up / Down: the item about one `page` (px) away, same column
 //   nearestIndex(items, at): number             the item nearest to `at`, vertically first (moving between panes)
+//   enterBelow(from, to): 'first' | 'nearest' | number   Down out of a group: where to land in the next one
 //   Pos: {x, y}                                 centre of an item (any common coordinate space)
 
 export interface Pos {
@@ -77,4 +78,21 @@ export function nearestIndex(items: Pos[], at: Pos): number {
         }
     }
     return best;
+}
+
+/**
+ * Down out of a group into the next one: where to land.
+ * 'first' for a one-column list (its top row), 'nearest' (on screen) when the current index is not a column
+ * (a group that steps itself) or the next group is a row of buttons, else the same column clamped to the next group.
+ */
+export function enterBelow(from: {cols: number; index: number; steps: boolean},
+    to: {cols: number; count: number; row: boolean; steps: boolean}): 'first' | 'nearest' | number {
+    if (to.count <= 0)
+        return 'first';
+    if (to.cols <= 1 && !to.steps)
+        return 'first';
+    const cols = Math.max(1, from.cols);
+    if (from.steps || (to.row && cols > 1))
+        return 'nearest';
+    return Math.min(from.index % cols, to.count - 1);
 }

@@ -1,6 +1,6 @@
 // Keyboard navigation arithmetic (build/model/listNav.js): search highlight steps, Page Up / Down, moving
 // between panes at the same height.
-import {nearestIndex, pageTarget, searchStep, stepIndex} from '../build/model/listNav.js';
+import {enterBelow, nearestIndex, pageTarget, searchStep, stepIndex} from '../build/model/listNav.js';
 import {assertEquals, run, test} from './harness.js';
 
 test('stepIndex wraps both ways; nothing picked starts at an end', () => {
@@ -51,6 +51,20 @@ test('nearestIndex: same height first, then nearest column', () => {
     const grid = [{x: 50, y: 50}, {x: 150, y: 50}, {x: 250, y: 50}, {x: 50, y: 150}];
     assertEquals(nearestIndex(grid, {x: 600, y: 60}), 2);
     assertEquals(nearestIndex([], {x: 0, y: 0}), -1);
+});
+
+test('enterBelow: where Down out of a group lands', () => {
+    const g = (cols, count, row = false, steps = false) => ({cols, count, row, steps});
+    const f = (cols, index, steps = false) => ({cols, index, steps});
+    assertEquals(enterBelow(f(4, 2), g(1, 4)), 'first');
+    assertEquals(enterBelow(f(4, 7), g(1, 2)), 'first');
+    assertEquals(enterBelow(f(6, 10, true), g(5, 5, true)), 'nearest');
+    assertEquals(enterBelow(f(6, 3), g(5, 5, true)), 'nearest');
+    assertEquals(enterBelow(f(2, 1), g(4, 7)), 1);
+    assertEquals(enterBelow(f(1, 0), g(4, 6)), 0);
+    assertEquals(enterBelow(f(1, 3), g(2, 2, true)), 0);
+    assertEquals(enterBelow(f(2, 1), g(6, 30, false, true)), 1);
+    assertEquals(enterBelow(f(4, 3), g(1, 0)), 'first');
 });
 
 run();

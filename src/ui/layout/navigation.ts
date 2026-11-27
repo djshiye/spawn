@@ -23,7 +23,7 @@
 import Clutter from 'gi://Clutter';
 import type St from 'gi://St';
 
-import {nearestIndex} from '../../model/listNav.js';
+import {enterBelow, nearestIndex} from '../../model/listNav.js';
 import {centreOf, inView, pageTo} from './geometry.js';
 import type {Dir, Group, LayoutState} from './types.js';
 
@@ -205,9 +205,15 @@ export class Navigator {
                 return (this._state.searchTop && search ? this.focusItem(search, 'first') : false) || true;
             }
             const next = col[groupIdx + delta];
-            if (next)
-                return this.focusItem(next, delta > 0 ? Math.min(index % Math.max(cols, 1), next.items.length - 1) : 'last');
-            return true;
+            if (!next)
+                return true;
+            if (delta < 0)
+                return this.focusItem(next, 'last');
+            const to = enterBelow({cols, index, steps: Boolean(group.move)},
+                {cols: next.cols, count: next.items.length, row: ROW_GROUPS.has(next.id), steps: Boolean(next.move)});
+            if (to === 'nearest')
+                return this._focusNearest([next], focus as Clutter.Actor) || this.focusItem(next, 'first');
+            return this.focusItem(next, to);
         };
 
         const horizontal = (delta: number): boolean => {
