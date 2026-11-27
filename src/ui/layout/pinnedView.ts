@@ -299,7 +299,8 @@ export class PinnedView {
                 ? new ActionRow(name, 'application-x-executable', open, undefined, {...tileOpts, context: open})
                 : new ActionTile(name, 'application-x-executable', open, undefined, {...tileOpts, context: open});
             tile.actor.add_style_class_name('spawn-tile-missing');
-            tile.actor.opacity = 130;
+            // dimmed, but stay readable with GNOME's High Contrast on
+            tile.actor.opacity = St.Settings.get().high_contrast ? 225 : 130;
             // Not part of the store's visible index: refuse drops instead of letting them fall through
             // to the list's append-at-end target.
             rejectDrops(scope, tile.actor);

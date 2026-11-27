@@ -15,7 +15,8 @@
 //   isTruncated(label)                        is the label's text cut off with an ellipsis
 //   clear(actor)                              destroy every child of a container
 //   applyTone(actor, probe?)                  add/remove "spawn-light" on `actor` when the shell theme's
-//                                             foreground at `probe` is dark (light shell theme)
+//                                             foreground at `probe` is dark (light shell theme); also "spawn-hc" while GNOME's
+//                                             High Contrast switch is on
 //   warmStyles(root)                          resolve the styles (and start the icon loads) of root and its visible descendants now
 
 import Clutter from 'gi://Clutter';
@@ -183,6 +184,24 @@ export function applyTone(actor: St.Widget, probe: St.Widget = actor): void {
         actor.add_style_class_name('spawn-light');
     else
         actor.remove_style_class_name('spawn-light');
+    applyContrast(actor);
+}
+
+/**
+ * GNOME's High Contrast switch (St.Settings, the one the shell loads its own high-contrast stylesheet by): tag `actor`
+ * with "spawn-hc" so stylesheet.css draws outlines instead of soft tints. Read at every open, like the tone.
+ */
+function applyContrast(actor: St.Widget): void {
+    let high: boolean;
+    try {
+        high = St.Settings.get().high_contrast;
+    } catch {
+        high = false;
+    }
+    if (high)
+        actor.add_style_class_name('spawn-hc');
+    else
+        actor.remove_style_class_name('spawn-hc');
 }
 
 /**
