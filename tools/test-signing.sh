@@ -154,6 +154,10 @@ variant spawn-test-link "ln -s hello %{buildroot}/usr/share/spawn-test-dummy/lin
 expect_fail "symlink in the payload is refused" signing_check_payload "$tmp/rpmbuild/RPMS/noarch/spawn-test-link-1-1.noarch.rpm" "$tmp/ok.manifest"
 variant spawn-test-suid "chmod 4755 %{buildroot}/usr/share/spawn-test-dummy/hello" "" ""
 expect_fail "setuid file is refused" signing_check_payload "$tmp/rpmbuild/RPMS/noarch/spawn-test-suid-1-1.noarch.rpm" "$tmp/ok.manifest"
+# a header query that fails must refuse the package, not pass the check
+mkdir "$tmp/badrpm"
+printf '#!/bin/sh\nexit 1\n' >"$tmp/badrpm/rpm"; chmod +x "$tmp/badrpm/rpm"
+expect_fail "unreadable package header is refused" env PATH="$tmp/badrpm:$PATH" bash -c '. "$1"; signing_check_payload "$2" "$3"' _ "$root/tools/lib/signing.sh" "$rpm_file" "$tmp/ok.manifest"
 printf '%s  ./dummy.spec\n' "$(sha256sum <"$tmp/rpmbuild/SPECS/dummy.spec" | cut -d' ' -f1)" >"$tmp/src.manifest"
 signing_check_payload "$srpm_file" "$tmp/src.manifest" && ok "src.rpm payload (the spec) matches its manifest"
 

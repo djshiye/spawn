@@ -128,7 +128,7 @@ signing_sign_rpms() {
 # no setuid/setgid bits, and the package must carry no scriptlets or triggers (spawn.spec has none). Run before
 # signing, so nothing the build container added or changed is ever signed.
 signing_check_payload() {
-    local rpm=$1 manifest=$2 dir got odd
+    local rpm=$1 manifest=$2 dir got odd scripts modes
     dir=$(mktemp -d)
     if ! rpm2archive - <"$rpm" | tar -xzf - -C "$dir" --no-same-owner --no-same-permissions; then
         rm -rf "$dir"; signing_die "could not unpack the payload of $rpm"
@@ -144,10 +144,13 @@ signing_check_payload() {
         diff <(printf '%s\n' "$got") "$manifest" >&2 || true
         signing_die "$rpm does not hold exactly the host-built files (< in the package, > expected)"
     fi
-    [ -z "$(LC_ALL=C rpm -qp --scripts --triggers --filetriggers "$rpm" 2>/dev/null)" ] \
-        || signing_die "$rpm carries scriptlets or triggers; spawn.spec has none"
-    ! LC_ALL=C rpm -qp --qf '[%{FILEMODES:perms}\n]' "$rpm" | grep -q '[sS]' \
-        || signing_die "$rpm has a setuid or setgid file"
+    # capture first: a failing rpm must refuse the package, not look like "no scriptlets" / "no setuid files"
+    scripts=$(LC_ALL=C rpm -qp --scripts --triggers --filetriggers "$rpm") \
+        || signing_die "could not read the scriptlets of $rpm"
+    [ -z "$scripts" ] || signing_die "$rpm carries scriptlets or triggers; spawn.spec has none"
+    modes=$(LC_ALL=C rpm -qp --qf '[%{FILEMODES:perms}\n]' "$rpm") \
+        || signing_die "could not read the file modes of $rpm"
+    ! printf '%s\n' "$modes" | grep -q '[sS]' || signing_die "$rpm has a setuid or setgid file"
 }
 
 # signing_verify_rpms <public-key-file> <rpm>...: every package must carry a valid signature that checks
