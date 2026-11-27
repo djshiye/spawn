@@ -127,9 +127,9 @@ key Tab 0.4
 check "Tab from a pointer-opened folder: the first app (focus: $(focus_cls))" "$(focus_cls | grep -q spawn-tile && echo 0 || echo 1)"
 expect_state "...the first one" layout.focusIndex 0
 key Tab 0.4
-check "Tab again: the header (focus: $(focus_cls))" "$(focus_cls | grep -q spawn-tile && echo 1 || echo 0)"
+check "Tab again: the header (focus: $(focus_cls))" "$(focus_cls | grep -q spawn-folder-name && echo 0 || echo 1)"
 close_menu; open_menu 1.5
 click_class spawn-folder-tile 1
 sleep 0.6
 key ISO_Left_Tab 0.4
-check "Shift+Tab from a pointer-opened folder: the header (focus: $(focus_cls))" "$(focus_cls | grep -q spawn-tile && echo 1 || echo 0)"
+check "Shift+Tab from a pointer-opened folder: the header (focus: $(focus_cls))" "$(focus_cls | grep -q spawn-folder-name && echo 0 || echo 1)"
