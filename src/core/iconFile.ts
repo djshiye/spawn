@@ -7,6 +7,9 @@
 //   check.last(path): IconVerdict | undefined   the verdict of the latest finished check of `path` (this session)
 //   Disposing the scope cancels everything; later checks answer 'timeout'.
 //
+// Concurrent checks of one path share one check, and a path whose sniff overran stays "timeout" until the sniff
+// calls back, so a share that answers stat but hangs on reads parks at most one worker thread per file.
+//
 // One instance is SHARED by every panel button: its FileProbe remembers a hung mount, so after one overrun further
 // checks below that mount answer 'timeout' at once instead of parking another worker thread in it.
 
@@ -45,6 +48,8 @@ export class IconFileCheck {
     private readonly _cancellable = new Gio.Cancellable();
     private readonly _last = new Map<string, IconVerdict>();
     private readonly _pending = new Set<(v: IconVerdict) => void>();
+    private readonly _inFlight = new Map<string, Promise<IconVerdict>>();
+    private readonly _sniffing = new Set<string>(); // sniffs started and not yet called back
     private _disposed = false;
 
     constructor(scope: Scope, options: IconFileCheckOptions = {}) {
@@ -67,12 +72,13 @@ export class IconFileCheck {
     async check(path: string): Promise<IconVerdict> {
         if (this._disposed)
             return 'timeout';
-        let verdict: IconVerdict;
-        try {
-            verdict = await this._verdict(path);
-        } catch {
-            verdict = 'bad';
+        let running = this._inFlight.get(path);
+        if (!running) {
+            running = this._verdict(path).catch((): IconVerdict => 'bad');
+            this._inFlight.set(path, running);
+            void running.finally(() => this._inFlight.delete(path));
         }
+        const verdict = await running;
         if (!this._disposed)
             this._last.set(path, verdict);
         return verdict;
@@ -87,6 +93,8 @@ export class IconFileCheck {
             return 'bad';
         if (this._disposed)
             return 'timeout';
+        if (this._sniffing.has(path))
+            return 'timeout'; // an earlier sniff of this file is still stuck in the mount
         return this._sniffWithDeadline(path);
     }
 
@@ -100,10 +108,15 @@ export class IconFileCheck {
                 resolve(v);
             };
             this._pending.add(finish);
+            this._sniffing.add(path);
             cancelTimer = this._scope.timeout(this._timeoutMs, () => finish('timeout'));
             try {
-                this._sniff(path, this._cancellable, isImage => finish(isImage ? 'ok' : 'bad'));
+                this._sniff(path, this._cancellable, isImage => {
+                    this._sniffing.delete(path);
+                    finish(isImage ? 'ok' : 'bad');
+                });
             } catch {
+                this._sniffing.delete(path);
                 finish('bad');
             }
         });

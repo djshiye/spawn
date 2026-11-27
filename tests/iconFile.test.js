@@ -85,6 +85,30 @@ test('a sniff that never answers gives up with timeout', () => {
     scope.dispose();
 });
 
+test('a sniff that overran is not started again while it is still stuck', () => {
+    const {scope, fs, check} = make({timeoutMs: 50});
+    let sniffs = 0;
+    const inner = fs.sniff;
+    const counted = new IconFileCheck(scope, {query: fs.query, timeoutMs: 50, sniff: (p, c, d) => { sniffs++; inner(p, c, d); }});
+    assertEquals(verdictOf(counted, '/home/u/slowsniff.svg', 200), 'timeout');
+    assertEquals(verdictOf(counted, '/home/u/slowsniff.svg', 100), 'timeout');
+    assertEquals(sniffs, 1);
+    scope.dispose();
+});
+
+test('concurrent checks of one path share one check', () => {
+    const {scope, fs} = make({timeoutMs: 50});
+    let sniffs = 0;
+    const check = new IconFileCheck(scope, {query: fs.query, timeoutMs: 50, sniff: (p, c, d) => { sniffs++; fs.sniff(p, c, d); }});
+    const out = [];
+    check.check('/home/u/logo.svg').then(v => out.push(v));
+    check.check('/home/u/logo.svg').then(v => out.push(v));
+    sleep(100);
+    assertEquals(out.join(','), 'ok,ok');
+    assertEquals(sniffs, 1);
+    scope.dispose();
+});
+
 test('disposing the scope while a check is pending resolves timeout; later checks too', () => {
     const {scope, check} = make({timeoutMs: 5000});
     let out;
