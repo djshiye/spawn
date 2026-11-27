@@ -2,7 +2,7 @@
 //
 // Responsibility: make tiles draggable (DND.makeDraggable, 200 ms press-and-move like the shell's
 // app grid), accept drops on the grid or list (reorder / append), on an app tile or row (drop in
-// the middle creates a folder from the two apps, near the left/right edge - top/bottom edge in a
+// the middle creates a folder from the two apps, near the left/right edge (in RTL the left edge is after) - top/bottom edge in a
 // vertical list - reorders; the bands are fractions of the entry's visible face, with a little
 // hysteresis so the pointer resting on a band edge does not flicker), on a folder tile / row (middle adds, edges reorder) and on a "remove
 // from folder" zone. All mutations go through PinnedStore. Drop feedback uses the classes
@@ -54,6 +54,7 @@ import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 import {error} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {PinnedStore} from '../model/pinned.js';
+import {mirrorZone} from '../model/direction.js';
 import {canDrop, performDrop, uniqueName, type DragPayload, type DropTarget, type Zone} from '../model/pinnedDrop.js';
 import {surfaceOf} from './widgets/interact.js';
 
@@ -283,13 +284,18 @@ export function acceptDrops(scope: Scope, target: St.Widget, store: PinnedStore,
         return Boolean(p) && (opts.enabled?.() ?? true) && canDrop(p as DragPayload, drop, zone);
     };
 
+    // The zone handed to canDrop / performDrop is logical (before = earlier in the list); zoneOf measures
+    // from the left, so in a right-to-left grid the two are mirrored.
+    const isRtl = (): boolean => !vertical && target.get_text_direction() === Clutter.TextDirection.RTL;
     let last: {zone: Zone; at: number} | null = null;
     const toZone = (x: number, y: number, remember: boolean): Zone => {
         if (drop.kind === 'grid' || drop.kind === 'unfolder' || drop.kind === 'back')
             return 'onto';
+        const rtl = isRtl();
         const now = GLib.get_monotonic_time() / 1000;
-        const prev = last && now - last.at <= ZONE_MEMORY_MS ? last.zone : null;
-        const zone = zoneOf(target, x, y, vertical, prev);
+        // `last.zone` is stored logical: back to physical for the hysteresis band.
+        const prev = last && now - last.at <= ZONE_MEMORY_MS ? mirrorZone(last.zone, rtl) : null;
+        const zone = mirrorZone(zoneOf(target, x, y, vertical, prev), rtl);
         last = remember ? {zone, at: now} : null;
         return zone;
     };
@@ -304,8 +310,8 @@ export function acceptDrops(scope: Scope, target: St.Widget, store: PinnedStore,
         const face = surfaceOf(target);
         if (drop.kind === 'unfolder' || drop.kind === 'back' || zone === 'onto')
             face.add_style_class_name('spawn-drop-target');
-        else
-            face.add_style_class_name(zone === 'before' ? 'spawn-drop-before' : 'spawn-drop-after');
+        else // the insertion mark is drawn on a physical edge
+            face.add_style_class_name(mirrorZone(zone, isRtl()) === 'before' ? 'spawn-drop-before' : 'spawn-drop-after');
         return DND.DragMotionResult.MOVE_DROP;
     };
 
