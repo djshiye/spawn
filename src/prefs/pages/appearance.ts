@@ -46,15 +46,24 @@ function gridRows(ctx: PrefsContext): Adw.SpinRow[] {
             adjustment: spinAdjustment(read(), -1, 256),
         });
         showSpecialValues(row, [{value: -1, label: 'Default'}]);
+        let syncing = false; // the clamp of set_value() below must not be written back over an external value
         row.connect('notify::value', () => {
+            if (syncing)
+                return;
             const value = Math.round(row.value);
             if (value === read())
                 return;
             ctx.settings.set('icon-size-grid', {...ctx.settings.get('icon-size-grid'), [part]: value});
         });
         watch(ctx, row, ['icon-size-grid'], () => {
-            if (Math.round(row.value) !== read())
+            if (Math.round(row.value) === read())
+                return;
+            syncing = true;
+            try {
                 row.set_value(read());
+            } finally {
+                syncing = false;
+            }
         });
         return row;
     });
@@ -67,11 +76,11 @@ function iconGroups(ctx: PrefsContext): Adw.PreferencesGroup[] {
     const styleKeys: SettingKey[] = ['icon-style-categories', 'icon-style-shortcuts', 'icon-style-buttons'];
     return [
         group(ctx, 'Icon sizes', [
-            spinRow(ctx, 'icon-size-apps', 'App list icons', -1, 64, hint),
-            spinRow(ctx, 'icon-size-shortcuts', 'Shortcut icons', -1, 64, hintHide),
-            spinRow(ctx, 'icon-size-categories', 'Category icons', -1, 64, hintHide),
-            spinRow(ctx, 'icon-size-buttons', 'Power button icons', -1, 64, hint),
-            spinRow(ctx, 'icon-size-misc', 'Search and Back / All Apps icons', -1, 64, hint),
+            spinRow(ctx, 'icon-size-apps', 'App list icons', -1, 128, hint),
+            spinRow(ctx, 'icon-size-shortcuts', 'Shortcut icons', -1, 128, hintHide),
+            spinRow(ctx, 'icon-size-categories', 'Category icons', -1, 128, hintHide),
+            spinRow(ctx, 'icon-size-buttons', 'Power button icons', -1, 128, hint),
+            spinRow(ctx, 'icon-size-misc', 'Search and Back / All Apps icons', -1, 128, hint),
         ], {reset: iconKeys}),
         group(ctx, 'Pinned tiles', gridRows(ctx), {reset: ['icon-size-grid'], description: 'Used when pinned apps are shown as a grid.'}),
         group(ctx, 'Icon style', [

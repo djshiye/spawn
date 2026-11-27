@@ -9,6 +9,7 @@ import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk?version=4.0';
 
+import {BUTTON_ICON_SIZE, BUTTON_PADDING} from '../../core/limits.js';
 import type {SettingKey} from '../../core/settings.js';
 import type {PrefsContext} from '../context.js';
 import {createIconRow} from '../iconPicker.js';
@@ -49,7 +50,7 @@ function alignmentRow(ctx: PrefsContext): Adw.ActionRow {
 
 /** The sub-page with the button settings most people never change. */
 function moreButtonGroups(ctx: PrefsContext): Adw.PreferencesGroup[] {
-    const iconSize = spinRow(ctx, 'menu-button-icon-size', 'Icon size', 14, 64, {subtitle: 'In pixels'});
+    const iconSize = spinRow(ctx, 'menu-button-icon-size', 'Icon size', BUTTON_ICON_SIZE.min, BUTTON_ICON_SIZE.max, {subtitle: 'In pixels'});
     const refresh = (): void => {
         const mode = ctx.settings.get('menu-button-appearance');
         iconSize.set_visible(mode === 'Icon' || mode === 'Icon_Text' || mode === 'Text_Icon');
@@ -62,7 +63,7 @@ function moreButtonGroups(ctx: PrefsContext): Adw.PreferencesGroup[] {
     return [
         group(ctx, 'Size and spacing', [
             iconSize,
-            spinRow(ctx, 'menu-button-padding', 'Horizontal padding', -1, 25, {subtitle: 'In pixels', special: [{value: -1, label: 'Default'}]}),
+            spinRow(ctx, 'menu-button-padding', 'Horizontal padding', BUTTON_PADDING.min, BUTTON_PADDING.max, {subtitle: 'In pixels', special: [{value: -1, label: 'Default'}]}),
             spinRow(ctx, 'menu-button-position-offset', 'Position offset', 0, 20, {
                 subtitle: 'Number of panel items to skip from the chosen edge',
             }),

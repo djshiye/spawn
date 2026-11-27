@@ -5,6 +5,7 @@
 //                                      window closes (or the widget is destroyed)
 //   onWindowClose(ctx, fn)             run fn once when the prefs window closes
 //   label(widget, text)                sets the accessible label of a widget
+//   spinBounds(raw, key, min, max)     [min, max] of a spin row: the schema's <range> when the key has one
 //   switchRow / spinRow / enumRow / entryRow / colorRow
 //   optionalColorRow / optionalSpinRow  expander rows with an enable switch for the (bs) / (bi) override keys
 //   group(title, rows, {description?, reset?})   PreferencesGroup with an optional revert icon button
@@ -23,6 +24,7 @@
 import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk?version=4.0';
 import Gio from 'gi://Gio';
+import type GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk?version=4.0';
 
 import type {SettingKey} from '../core/settings.js';
@@ -219,6 +221,20 @@ export function spinAdjustment(value: number, min: number, max: number, step = 1
     return new Gtk.Adjustment({lower: min, upper: max, step_increment: step, page_increment: step * 5, value});
 }
 
+/** [min, max] for a spin row on `key`: the schema's <range> when the key has one, else the caller's bounds. */
+export function spinBounds(raw: Gio.Settings, key: string, min: number, max: number): [number, number] {
+    try {
+        const [kind, range] = raw.settings_schema.get_key(key).get_range().deepUnpack() as [string, GLib.Variant];
+        if (kind === 'range') {
+            const [lo, hi] = range.deepUnpack() as [number, number];
+            return [lo, hi];
+        }
+    } catch {
+        // no such key / no range: use the caller's bounds
+    }
+    return [min, max];
+}
+
 /** A spin value that displays as a word (e.g. -1 as "Default"); the stored number is unchanged. */
 export interface SpecialValue {value: number; label: string}
 
@@ -244,9 +260,11 @@ export function spinRow(
     max: number,
     opts: {step?: number; subtitle?: string; special?: readonly SpecialValue[]} = {},
 ): Adw.SpinRow {
+    // The schema is the truth for ranged keys: a valid stored value must never show clamped (a click would write it).
+    const [lo, hi] = spinBounds(ctx.settings.raw, key, min, max);
     const row = new Adw.SpinRow({
         title,
-        adjustment: spinAdjustment(ctx.settings.get(key) as number, min, max, opts.step ?? 1),
+        adjustment: spinAdjustment(ctx.settings.get(key) as number, lo, hi, opts.step ?? 1),
     });
     if (opts.subtitle)
         row.set_subtitle(opts.subtitle);
@@ -380,7 +398,11 @@ export function optionalSpinRow(ctx: PrefsContext, key: SettingKey, title: strin
             ctx.settings.set(key, [row.enable_expansion, value] as never);
         subtitle();
     });
+    // set_value() from the watcher clamps to the spin's bounds; that must not be written back over an external value.
+    let syncing = false;
     spin.connect('notify::value', () => {
+        if (syncing)
+            return;
         const [on, value] = read();
         const v = Math.round(spin.value);
         if (value !== v)
@@ -390,8 +412,14 @@ export function optionalSpinRow(ctx: PrefsContext, key: SettingKey, title: strin
         const [on, value] = read();
         if (row.enable_expansion !== on)
             row.set_enable_expansion(on);
-        if (Math.round(spin.value) !== value)
-            spin.set_value(value);
+        if (Math.round(spin.value) !== value) {
+            syncing = true;
+            try {
+                spin.set_value(value);
+            } finally {
+                syncing = false;
+            }
+        }
         subtitle();
     });
     return row;

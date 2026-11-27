@@ -6,6 +6,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Gdk from 'gi://Gdk?version=4.0';
 import Gtk from 'gi://Gtk?version=4.0';
+import Adw from 'gi://Adw';
 
 import {assert, assertEquals, run, test} from './harness.js';
 
@@ -23,7 +24,7 @@ GLib.spawn_command_line_sync(`rm -rf ${tmp}`); // the compiled schema is already
 
 const {SpawnSettings, SCHEMA_ID, FOLDER_SCHEMA_ID, FolderSettings} = await import('../build/core/settings.js');
 const {applyMigration} = await import('../build/migrate/arcmenu.js');
-const {resetKeys, resetWithUndo, isModified} = await import('../build/prefs/widgets.js');
+const {resetKeys, resetWithUndo, isModified, spinBounds, spinRow, optionalSpinRow} = await import('../build/prefs/widgets.js');
 const {friendlyIconName} = await import('../build/prefs/iconName.js');
 
 const {keyAction} = await import('../build/prefs/shortcutDialog.js');
@@ -209,6 +210,37 @@ test('shortcut dialog: keyboard can confirm and navigate', () => {
         if (accel !== undefined)
             assertEquals(r.accel, accel, `accel for key ${keyval} mask ${mask}`);
     }
+});
+
+test('spinBounds uses the schema range for ranged keys and the caller\'s bounds otherwise', () => {
+    const {prefs} = fixture();
+    assertEquals(spinBounds(prefs.raw, 'max-search-results', 1, 20), [1, 50]);
+    assertEquals(spinBounds(prefs.raw, 'menu-button-icon-size', 14, 64), [8, 64]);
+    assertEquals(spinBounds(prefs.raw, 'menu-button-padding', -1, 25), [-1, 64]);
+    assertEquals(spinBounds(prefs.raw, 'icon-size-apps', -1, 64), [-1, 128]);
+    assertEquals(spinBounds(prefs.raw, 'menu-button-position-offset', 0, 20), [0, 20]);
+    assertEquals(spinBounds(prefs.raw, 'menu-arrow-rise', 0, 50), [0, 50]);
+    assertEquals(spinBounds(prefs.raw, 'no-such-key', 3, 7), [3, 7]);
+});
+
+test('spin rows show a valid stored value above the call site\'s bounds and never overwrite an external write', () => {
+    if (!Gtk.init_check()) {
+        print('  skipped: no display (run under xvfb-run)');
+        return;
+    }
+    Adw.init();
+    const {prefs, shell} = fixture();
+    const ctx = {settings: prefs, window: new Adw.PreferencesWindow()};
+    prefs.raw.set_int('max-search-results', 30);
+    const row = spinRow(ctx, 'max-search-results', 'R', 1, 20);
+    assertEquals(row.value, 30);
+    row.get_adjustment().set_value(29);
+    assertEquals(shell.get_int('max-search-results'), 29);
+
+    prefs.set('menu-button-border-radius', [true, 10]);
+    optionalSpinRow(ctx, 'menu-button-border-radius', 'R', 0, 25);
+    shell.set_value('menu-button-border-radius', new GLib.Variant('(bi)', [true, 40]));
+    assertEquals(prefs.get('menu-button-border-radius'), [true, 40]);
 });
 
 run();

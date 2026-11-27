@@ -84,7 +84,7 @@ function searchSourceGroups(ctx: PrefsContext): Adw.PreferencesGroup[] {
         switchRow(ctx, 'search-settings-panels', 'Settings panels', 'Find Wi-Fi, Bluetooth, Display and other panels of GNOME Settings'),
         switchRow(ctx, 'search-app-actions', 'App actions', 'For example “firefox private” for New Private Window'),
         switchRow(ctx, 'search-power-actions', 'Power actions', 'Lock, log out, restart and power off from the search'),
-        spinRow(ctx, 'max-search-results', 'Results per source', 1, 20),
+        spinRow(ctx, 'max-search-results', 'Results per source', 1, 50),
     ], {reset: providerKeys, description: 'Apps are always searched. Choose what else shows up.'})];
 }
 
