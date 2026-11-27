@@ -7,7 +7,8 @@
 //   * attach() runs synchronously in start(); later changes arrive through the debounced
 //     'changed' of PanelTargets, plus a backoff retry timer (100 ms doubling to 2 s) while
 //     a panel extension is active but has no valid panel yet. After GIVE_UP_MS (10 s) it falls
-//     back to Main.panel.
+//     back to Main.panel, warns once, and from then on retries only every FALLBACK_RETRY_MS (30 s)
+//     besides the 'changed' triggers.
 //   * Every removal is guarded (`?.`, try/catch); one failing removal never blocks the rest.
 //   * Hiding the Activities button (panel/activities.ts) remembers the PREVIOUS visibility and restores
 //     exactly that (on setting off, on dispose, and for panels that went away); it re-hides the button
@@ -48,9 +49,9 @@ import {
     isActorAlive,
     type PanelLike,
     type PanelTarget,
-    nextBackoffMs,
     type PanelSide,
     panelSlot,
+    retryDelayMs,
     samePanel,
     targetKey,
     validatePanel,
@@ -105,6 +106,8 @@ export class ButtonAttacher {
     private _started = false;
     private _disposed = false;
     private _pendingSince: number | null = null;
+    /** True while the current problem episode is served by the Main.panel fallback (warn once, retry slowly). */
+    private _fellBack = false;
     private _attempt = 0;
     private _cancelRetry: (() => void) | null = null;
     private _reconciling = false;
@@ -206,7 +209,8 @@ export class ButtonAttacher {
             if (waited >= GIVE_UP_MS) {
                 const main = Main.panel as unknown as PanelLike;
                 if (validatePanel(main).ok) {
-                    warn(`no valid panel target for ${waited} ms (${resolution.reason}); falling back to the main panel`);
+                    if (!this._fellBack)
+                        warn(`no valid panel target for ${waited} ms (${resolution.reason}); falling back to the main panel`);
                     desired = [{key: targetKey('main', 0), kind: 'main', panel: main, monitorIndex: Main.layoutManager.primaryIndex, isPrimary: true}];
                     fallback = true;
                 }
@@ -265,6 +269,8 @@ export class ButtonAttacher {
         // Fallback attachments keep retrying the real targets in the background.
         if (desired.length > 0 && !fallback && desired.every(t => this._attachments.has(t.key)))
             this._clearProblem();
+        else if (this._pendingSince !== null)
+            this._fellBack = fallback;
 
         // 3. Activities button (all current panels plus the shell's own).
         this._applyActivities(desired.map(t => t.panel));
@@ -409,6 +415,9 @@ export class ButtonAttacher {
     }
 
     private _clearProblem(): void {
+        if (this._fellBack)
+            log('valid panel targets again; leaving the main-panel fallback');
+        this._fellBack = false;
         this._pendingSince = null;
         this._attempt = 0;
         this._cancelRetry?.();
@@ -418,7 +427,7 @@ export class ButtonAttacher {
     private _scheduleRetry(): void {
         if (this._cancelRetry || this._disposed)
             return;
-        const delay = nextBackoffMs(this._attempt++);
+        const delay = retryDelayMs(this._attempt++, this._fellBack);
         this._cancelRetry = this._scope.timeout(delay, () => {
             this._cancelRetry = null;
             this.reconcile();

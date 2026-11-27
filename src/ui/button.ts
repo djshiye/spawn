@@ -15,12 +15,14 @@
 //   button.arrowSide: St.Side          matching BoxPointer arrow side for the popup (panel at the
 //                                      top -> St.Side.TOP, i.e. the popup opens below it)
 //   button.contextMenu: ButtonMenu     the right-click menu (open / close / isOpen)
-//   MenuButtonDeps: {settings, iconDir, popup: SpawnPopup-like, openPreferences()}
+//   MenuButtonDeps: {settings, iconDir, iconCheck, popup: SpawnPopup-like, openPreferences()}
 //
 // Keyboard: Return / Enter / Space (press arms, release fires) activate the left-click action, so the button works after Ctrl+Alt+Tab to the top bar.
 // Menu key / Shift+F10 open the context menu (when any click action is ContextMenu), focus returns here on Escape.
 // Icon: a configured icon that is missing, unreadable or not a decodable image, or a themed name the
-// icon theme does not have, falls back to 'start-here-symbolic' (never an empty / broken button).
+// icon theme does not have, falls back to 'start-here-symbolic' (never an empty / broken button). A file
+// outside Spawn's icon folder (maybe on a network share) is never touched on the main thread: it is shown at once
+// and checked in the background (core/iconFile.ts); a check that fails or gives up after 2 s shows the fallback.
 //
 // Click mapping uses menu-button-{left,middle,right}-click-action ('Menu' | 'ContextMenu' | 'None'); the mouse
 // button is read from the gesture so middle click works like any other. A hover tooltip (the
@@ -40,6 +42,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 
 import {resolveButtonIcon} from '../core/icons.js';
+import type {IconFileCheck} from '../core/iconFile.js';
 import {buttonIconSize, buttonPadding} from '../core/limits.js';
 import {error} from '../core/log.js';
 import {Scope} from '../core/scope.js';
@@ -51,6 +54,8 @@ import {animationDuration} from './widgets/a11y.js';
 export interface MenuButtonDeps {
     settings: SpawnSettings;
     iconDir: string;
+    /** One checker shared by every button (it remembers a hung network share). */
+    iconCheck: Pick<IconFileCheck, 'check' | 'last'>;
     popup: PopupControl & {
         toggle(anchor: St.Widget): void;
         onOpenStateChanged?(scope: Scope, cb: (open: boolean, anchor: St.Widget | null) => void): void;
@@ -69,8 +74,9 @@ const BUTTON_ACTION_KEY = {
 
 /**
  * True when `path` is a regular file whose header gdk-pixbuf recognises as an image (svg included).
- * Spawn's own icons (directly in `iconDir`) are known to be images and skip the header check: the
- * first gdk-pixbuf call of a session loads its image loaders, ~10 ms of every shell start-up.
+ * Only for Spawn's own icons (directly in `iconDir`: the extension's own directory, so no hung share):
+ * the .svg ones are known to be images and skip the header check, because the first gdk-pixbuf call of a
+ * session loads its image loaders, ~10 ms of every shell start-up. Other files go through IconFileCheck.
  */
 function isLoadableImage(path: string, iconDir: string): boolean {
     try {
@@ -104,6 +110,8 @@ export class MenuButton extends PanelMenu.Button {
     private _icon: St.Icon;
     private _label: St.Label;
     private _scope = new Scope('MenuButton');
+    /** Bumped by every refresh and on destroy: a background icon check that answers later is then ignored. */
+    private _iconGen = 0;
     private _tooltip: St.Label | null = null;
     private _cancelTooltip: (() => void) | null = null;
     private _activationArmed = false;
@@ -148,6 +156,7 @@ export class MenuButton extends PanelMenu.Button {
         });
         this._scope.connect(this, 'notify::hover', () => (this.hover ? this._scheduleTooltip() : this._hideTooltip()));
         this._scope.connect(this, 'destroy', () => {
+            this._iconGen++;
             this._hideTooltip();
             this._scope.dispose();
         });
@@ -237,6 +246,39 @@ export class MenuButton extends PanelMenu.Button {
         return this;
     }
 
+    private _showFile(path: string): void {
+        this._icon.icon_name = null;
+        this._icon.gicon = new Gio.FileIcon({file: Gio.File.new_for_path(path)});
+    }
+
+    private _showName(name: string): void {
+        this._icon.gicon = null;
+        this._icon.icon_name = name;
+    }
+
+    /** A file elsewhere (maybe on a network share): never touch it on the main thread. */
+    private _refreshOutsideFile(path: string, gen: number): void {
+        const check = this._deps.iconCheck;
+        const before = check.last(path);
+        // Shown at once (St loads it in a worker thread); one that failed last time shows the fallback meanwhile.
+        if (before === undefined || before === 'ok')
+            this._showFile(path);
+        else
+            this._showName(FALLBACK_ICON);
+        check.check(path).then(verdict => {
+            if (gen !== this._iconGen)
+                return; // a newer refresh, or the button is gone
+            try {
+                if (verdict === 'ok')
+                    this._showFile(path);
+                else
+                    this._showName(FALLBACK_ICON);
+            } catch (e) {
+                error('MenuButton icon update failed', e);
+            }
+        }).catch(e => error('MenuButton icon check failed', e));
+    }
+
     refresh(): void {
         try {
             const s = this._deps.settings;
@@ -245,12 +287,16 @@ export class MenuButton extends PanelMenu.Button {
             const padding = buttonPadding(s.get('menu-button-padding'));
 
             const resolved = resolveButtonIcon(s.get('menu-button-icon'), this._deps.iconDir);
-            if (resolved.kind === 'file' && isLoadableImage(resolved.path, this._deps.iconDir)) {
-                this._icon.icon_name = null;
-                this._icon.gicon = new Gio.FileIcon({file: Gio.File.new_for_path(resolved.path)});
+            const gen = ++this._iconGen;
+            if (resolved.kind === 'file' && GLib.path_get_dirname(resolved.path) === this._deps.iconDir) {
+                if (isLoadableImage(resolved.path, this._deps.iconDir))
+                    this._showFile(resolved.path);
+                else
+                    this._showName(FALLBACK_ICON);
+            } else if (resolved.kind === 'file') {
+                this._refreshOutsideFile(resolved.path, gen);
             } else {
-                this._icon.gicon = null;
-                this._icon.icon_name = resolved.kind === 'name' && resolved.name.trim() !== '' ? resolved.name : FALLBACK_ICON;
+                this._showName(resolved.name.trim() !== '' ? resolved.name : FALLBACK_ICON);
             }
             this._icon.icon_size = iconSize;
             this._label.text = s.get('menu-button-text');

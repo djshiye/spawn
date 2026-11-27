@@ -102,7 +102,7 @@ your area before writing code.
   opens (and the other way round).
 - Dash to Panel intellihide: while the menu is open on a panel with intellihide enabled, the panel is held
   revealed (Dash to Panel's temporary hold). It is released when the menu closes, once the pointer is off the
-  panel, immediately on a fullscreen monitor, and on disable or panel rebuild (src/panel/intellihide.ts).
+  panel (re-checked on pointer motion and fullscreen changes, with a 1 s safety poll), immediately on a fullscreen monitor, and on disable or panel rebuild (src/panel/intellihide.ts).
 - Option to hide the Activities button (restore its *previous* visibility).
 - Preferences (Adw): General, Button, Menu (views, sizes), Pinned & Shortcuts,
   Appearance, Import from ArcMenu, About.
@@ -199,8 +199,9 @@ src/
                           reconnects to the new emitter whenever DtP restarts.
   panel/attacher.ts       ButtonAttacher: keeps one MenuButton per valid target,
                           retries invalid targets with backoff (100 ms → 2 s, give
-                          up after 10 s and fall back to Main.panel), guarded
-                          removal, Activities-button handling.
+                          up after 10 s and fall back to Main.panel, warn once
+                          and retry every 30 s until valid targets return),
+                          guarded removal, Activities-button handling.
   ui/button.ts            MenuButton (PanelMenu.Button subclass): icon/label/style
   ui/menu.ts              SpawnPopup: single popup shared by all buttons,
                           re-anchored to the clicked button; lazily builds layout

@@ -13,13 +13,17 @@
 // rebuilt its panels reaches the old (destroyed, disabled: a no-op) controller and never a new one.
 //
 // Public API:
-//   new IntellihideHold(scope, deps)   deps: {panels: () => unknown, pointer: () => [number, number]};
+//   new IntellihideHold(scope, deps)   deps: {panels: () => unknown, pointer: () => [number, number],
+//                                      watch?: (scope, onChange) => void (signals that re-check a pending release)};
 //                                      the hold is released when `scope` is disposed (the shell-bound
 //                                      wiring is createIntellihideHold() in panel/targets.ts)
 //   hold.hold(anchor): void            anchor = the panel button the menu opens on; reveals its panel
 //                                      immediately and keeps it revealed; no-op without intellihide
 //   hold.release(): void               menu closed: give the hold back (deferred while the pointer is on
-//                                      the panel, immediately when the monitor is fullscreen)
+//                                      the panel: re-checked on pointer motion and fullscreen changes (deps.watch)
+//                                      with a 1 s safety poll, or every 100 ms without deps.watch; immediately
+//                                      when the monitor is fullscreen)
+//   hold.debugWatch                    {pending, checks}: a deferred release is waiting / looks it has made (dev)
 //   hold.held: boolean                 a hold is taken (also while its release is deferred)
 //   wrapperOfPanel(panels, panel)      the DtP wrapper (of `panels`) whose `.panel` is `panel` (dev status)
 //   intellihideStatus(wrapper)         {enabled, hold, visible, translation} snapshot (dev status)
@@ -30,7 +34,8 @@ import {warn} from '../core/log.js';
 
 /** DtP's `Hold.TEMPORARY` (intellihide.js); ArcMenu takes the same bit. */
 export const HOLD_TEMPORARY = 1;
-const POLL_MS = 100;
+const POLL_MS = 100; // re-check rate when there is no event source
+const FALLBACK_MS = 1000; // safety net next to the events
 
 interface IntellihideLike {
     enabled?: boolean;
@@ -62,6 +67,8 @@ export interface IntellihideHoldDeps {
     /** `global.dashToPanel.panels`, re-read on every call. */
     panels: () => unknown;
     pointer: () => [number, number];
+    /** Connect (into `scope`) the signals after which the pointer / fullscreen state may have changed; optional. */
+    watch?: (scope: Scope, onChange: () => void) => void;
 }
 
 interface Held {
@@ -105,16 +112,24 @@ export class IntellihideHold {
     private readonly _pointer: () => [number, number];
     private _held: Held | null = null;
     private _cancelWatch: (() => void) | null = null;
+    private readonly _watch: ((scope: Scope, onChange: () => void) => void) | null;
+    private _checks = 0;
 
     constructor(scope: Scope, deps: IntellihideHoldDeps) {
         this._scope = scope;
         this._panels = deps.panels;
         this._pointer = deps.pointer;
+        this._watch = deps.watch ?? null;
         scope.add(() => this._giveBack(), 'IntellihideHold');
     }
 
     get held(): boolean {
         return this._held !== null;
+    }
+
+    /** Dev status: is a deferred release waiting, and how many times it looked at the pointer. */
+    get debugWatch(): {pending: boolean; checks: number} {
+        return {pending: this._cancelWatch !== null, checks: this._checks};
     }
 
     hold(anchor: unknown): void {
@@ -144,17 +159,32 @@ export class IntellihideHold {
                 return;
             }
             // Pointer still on the (revealed) panel: let it go once the pointer has left.
-            this._cancelWatch = this._scope.interval(POLL_MS, () => {
-                if (this._held !== held) {
-                    this._cancelWatch = null;
+            const watch = this._scope.child('intellihide-release');
+            this._cancelWatch = () => watch.dispose();
+            this._checks = 0;
+            // true: keep waiting
+            const check = (): boolean => {
+                if (this._held !== held || this._cancelWatch === null)
                     return false;
-                }
+                this._checks++;
                 if (this._pointerOn(held) && !this._fullscreen(held))
                     return true;
-                this._cancelWatch = null;
-                this._giveBack();
+                this._giveBack(); // disposes `watch` (signals and interval)
                 return false;
-            });
+            };
+            let evented = false;
+            if (this._watch) {
+                try {
+                    this._watch(watch, () => {
+                        check();
+                    });
+                    evented = true;
+                } catch (e) {
+                    warn('intellihide release watch failed', e);
+                }
+            }
+            // Event-driven: a slow safety net only. Without events: the 100 ms poll.
+            watch.interval(evented ? FALLBACK_MS : POLL_MS, check);
         } catch (e) {
             warn('intellihide release failed', e);
             this._giveBack();
