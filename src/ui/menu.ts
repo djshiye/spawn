@@ -177,6 +177,7 @@ export class SpawnPopup {
             anchor: this._anchor ? this._anchor.constructor.name : null,
             side: this._side,
             layout: this._layout?.debugState() ?? null,
+            intellihideWatch: this._intellihide.debugWatch,
         };
     }
 

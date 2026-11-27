@@ -102,7 +102,7 @@ your area before writing code.
   opens (and the other way round).
 - Dash to Panel intellihide: while the menu is open on a panel with intellihide enabled, the panel is held
   revealed (Dash to Panel's temporary hold). It is released when the menu closes, once the pointer is off the
-  panel, immediately on a fullscreen monitor, and on disable or panel rebuild (src/panel/intellihide.ts).
+  panel (re-checked on pointer motion and fullscreen changes, with a 1 s safety poll), immediately on a fullscreen monitor, and on disable or panel rebuild (src/panel/intellihide.ts).
 - Option to hide the Activities button (restore its *previous* visibility).
 - Preferences (Adw): General, Button, Menu (views, sizes), Pinned & Shortcuts,
   Appearance, Import from ArcMenu, About.

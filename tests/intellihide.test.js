@@ -24,12 +24,17 @@ function fakeWrapper(over = {}) {
     };
 }
 
-function fixture(wrappers, pointer = [800, 400]) {
+function fixture(wrappers, pointer = [800, 400], watch = undefined) {
     const scope = new Scope('t');
-    const state = {pointer, panels: wrappers};
-    const hold = new IntellihideHold(scope, {panels: () => state.panels, pointer: () => state.pointer});
+    const state = {pointer, panels: wrappers, reads: 0, onChange: null, watchScope: null};
+    const hold = new IntellihideHold(scope, {
+        panels: () => state.panels,
+        pointer: () => { state.reads++; return state.pointer; },
+        ...(watch ? {watch} : {}),
+    });
     return {scope, state, hold};
 }
+
 
 test('hold reveals immediately, release gives the same bit back when the pointer is away', () => {
     const w = fakeWrapper();
@@ -136,6 +141,89 @@ test('wrapperOfPanel / intellihideStatus', () => {
     assertEquals(intellihideStatus(w), {enabled: true, hold: 0, visible: true, translation: [0, 0]});
     assert(intellihideStatus(fakeWrapper({intellihide: undefined})) === null);
     assert(intellihideStatus(null) === null);
+});
+
+// With a `watch` dep the pending release is event-driven; the interval is only a slow safety net.
+function watched(pointer = [800, 880], over = {}) {
+    const w = fakeWrapper(over);
+    const holder = {};
+    const f = fixture([w], pointer, (s, cb) => { holder.onChange = cb; holder.watchScope = s; });
+    f.hold.hold(w.button);
+    f.hold.release();
+    return {w, ...f, holder};
+}
+
+test('with a watch, a resting pointer is checked about once a second, not every 100 ms', () => {
+    const {w, hold, scope, state} = watched();
+    sleep(1500);
+    assert(hold.held);
+    assertEquals(w.calls.length, 1);
+    assert(hold.debugWatch.checks >= 1 && hold.debugWatch.checks <= 2, `checks ${hold.debugWatch.checks}`);
+    assert(state.reads <= 3, `reads ${state.reads}`);
+    scope.dispose();
+});
+
+test('a pointer motion off the panel releases at once', () => {
+    const {w, hold, scope, state, holder} = watched();
+    state.pointer = [800, 300];
+    holder.onChange();
+    assertEquals(w.calls, [['hold', HOLD_TEMPORARY, true], ['release', HOLD_TEMPORARY]]);
+    assert(!hold.held);
+    assertEquals(holder.watchScope.size, 0);
+    scope.dispose();
+});
+
+test('a fullscreen change releases at once with the pointer still on the panel', () => {
+    const {w, hold, scope, holder} = watched();
+    w.monitor.inFullscreen = true;
+    holder.onChange();
+    assertEquals(w.calls, [['hold', HOLD_TEMPORARY, true], ['release', HOLD_TEMPORARY]]);
+    assert(!hold.held);
+    scope.dispose();
+});
+
+test('motion that stays on the panel keeps the hold', () => {
+    const {w, hold, scope, state, holder} = watched();
+    state.pointer = [810, 885];
+    holder.onChange();
+    assert(hold.held);
+    assertEquals(w.calls.length, 1);
+    scope.dispose();
+});
+
+test('the fallback poll releases when no event came', () => {
+    const w = fakeWrapper();
+    const {hold, scope, state} = fixture([w], [800, 880], () => {});
+    hold.hold(w.button);
+    hold.release();
+    state.pointer = [800, 300];
+    sleep(1300);
+    assert(!hold.held);
+    assertEquals(w.calls.length, 2);
+    scope.dispose();
+});
+
+test('reopening cancels the watch', () => {
+    const {w, hold, scope, state, holder} = watched();
+    hold.hold(w.button);
+    assertEquals(holder.watchScope.size, 0);
+    assertEquals(hold.debugWatch.pending, false);
+    state.pointer = [800, 300];
+    holder.onChange();
+    assert(hold.held);
+    assertEquals(w.calls.length, 1);
+    scope.dispose();
+});
+
+test('a throwing watch falls back to the 100 ms poll', () => {
+    const w = fakeWrapper();
+    const {hold, scope, state} = fixture([w], [800, 880], () => { throw new Error('x'); });
+    hold.hold(w.button);
+    hold.release();
+    state.pointer = [800, 300];
+    sleep(350);
+    assert(!hold.held);
+    scope.dispose();
 });
 
 run();

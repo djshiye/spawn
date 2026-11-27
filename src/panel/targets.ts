@@ -88,6 +88,12 @@ export function createIntellihideHold(scope: Scope): IntellihideHold {
     return new IntellihideHold(scope, {
         panels: dtpPanels,
         pointer,
+        watch: (s, onChange) => {
+            // Pointer motion (the signal Dash to Panel 51 and the magnifier use) and fullscreen changes (the layout
+            // manager is connected first, so monitor.inFullscreen is already updated when this runs).
+            s.connect(global.backend.get_cursor_tracker() as unknown as Parameters<Scope['connect']>[0], 'position-invalidated', onChange);
+            s.connect(global.display as unknown as Parameters<Scope['connect']>[0], 'in-fullscreen-changed', onChange);
+        },
     });
 }
 
