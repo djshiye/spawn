@@ -50,6 +50,15 @@ test('absolute and ~ paths must be executable files; relative paths are not offe
     assertEquals(argv('~other/x'), null);
 });
 
+test('~ and ~/ are expanded in every word, like a shell', () => {
+    assertEquals(argv('ls ~'), ['ls', '/home/me']);
+    assertEquals(argv('ls -la ~/Documents'), ['ls', '-la', '/home/me/Documents']);
+    assertEquals(argv('ls ~/a ~ ~/'), ['ls', '/home/me/a', '/home/me', '/home/me/']);
+    assertEquals(argv('~/bin/run-me ~/x'), ['/home/me/bin/run-me', '/home/me/x']);
+    assertEquals(argv('ls ~other/x a~/b --dir=~/x'), ['ls', '~other/x', 'a~/b', '--dir=~/x']);
+    assertEquals(detectCommand('ls ~/x', env).line, 'ls ~/x');
+});
+
 test('no shell: operators and variables are plain argument text', () => {
     assertEquals(argv('ls $HOME | wc; rm *'), ['ls', '$HOME', '|', 'wc;', 'rm', '*']);
     assertEquals(argv('$HOME/x'), null);
