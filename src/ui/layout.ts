@@ -623,11 +623,12 @@ export class SpawnLayout implements ShortcutHost {
         this._folders.show(uuid);
     }
 
-    /** Dev hook (Ui.SetPlaces): show fake devices / network locations / bookmarks, null = the real ones. */
+    /** Dev hook (Ui.CompleteRows): build every row of the Classic All Apps / category list. */
     completeAppRows(): void {
         this._views.categories?.completeRows();
     }
 
+    /** Dev hook (Ui.SetPlaces): show fake devices / network locations / bookmarks, null = the real ones. */
     setFakePlaces(specs: FakePlace[] | null): void {
         this._rightPane.setFakePlaces(specs);
     }
