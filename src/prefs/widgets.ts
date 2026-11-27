@@ -3,6 +3,8 @@
 // Public API:
 //   watch(ctx, widget, keys, cb)       call cb when any of `keys` changes; disconnected when the prefs
 //                                      window closes (or the widget is destroyed)
+//   trackSubpageDisposer(dispose)      hand a handler's disposer to the sub-page being built, so it is released when
+//                                      that page is opened again (no-op outside subpageRow)
 //   onWindowClose(ctx, fn)             run fn once when the prefs window closes
 //   label(widget, text)                sets the accessible label of a widget
 //   spinBounds(raw, key, min, max)     [min, max] of a spin row: the schema's <range> when the key has one
@@ -117,6 +119,11 @@ export function connectDisposable(raw: Gio.Settings, signals: ReadonlyArray<read
 /** While a sub-page is being built, the disposers of every watch() made for it (see subpageRow). */
 let collecting: Array<() => void> | null = null;
 
+/** Lets a widget that connects its own settings handler have it released with its sub-page, like watch() does. */
+export function trackSubpageDisposer(dispose: () => void): void {
+    collecting?.push(dispose);
+}
+
 export function watch(ctx: PrefsContext, widget: Gtk.Widget, keys: readonly SettingKey[], cb: () => void): void {
     const disconnect = connectDisposable(ctx.settings.raw, keys.map(key => [`changed::${key}`, cb] as const));
     const unregister = onWindowClose(ctx, disconnect);
@@ -124,7 +131,7 @@ export function watch(ctx: PrefsContext, widget: Gtk.Widget, keys: readonly Sett
         disconnect();
         unregister();
     };
-    collecting?.push(dispose);
+    trackSubpageDisposer(dispose);
     widget.connect('destroy', dispose);
 }
 

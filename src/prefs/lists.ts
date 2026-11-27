@@ -27,7 +27,7 @@ import {isValidFolderId} from '../core/folderId.js';
 import {resolveButtonIcon} from '../core/icons.js';
 import type {Entry, FolderSettings, SettingKey} from '../core/settings.js';
 import type {PrefsContext} from './context.js';
-import {connectDisposable, label, listIcon, onWindowClose, resetButton, resetWithUndo, toast} from './widgets.js';
+import {connectDisposable, label, listIcon, onWindowClose, resetButton, resetWithUndo, toast, trackSubpageDisposer} from './widgets.js';
 
 export type ListKind = 'pinned' | 'folder' | 'directory' | 'application' | 'context';
 
@@ -523,6 +523,7 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
         disposeSignals();
         unregister();
     };
+    trackSubpageDisposer(dispose); // a list in a sub-page: released when that page is opened again
     group.connect('destroy', dispose);
     opts.lifetime?.connect('closed', dispose);
 

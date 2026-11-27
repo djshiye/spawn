@@ -4,6 +4,7 @@
 //
 // Public API:
 //   createAppearancePage(ctx: PrefsContext): Adw.PreferencesPage
+//   gridRows(ctx): Adw.SpinRow[]   the icon-size-grid rows (exported for the tests)
 //   PrefsContext (prefs/context.ts): {settings, extensionDir, window, metadata}
 
 import Adw from 'gi://Adw';
@@ -37,7 +38,7 @@ const GRID_PARTS = [
 ] as const;
 
 /** `icon-size-grid` is an a{si} dictionary: one SpinRow per entry, written back as a whole. */
-function gridRows(ctx: PrefsContext): Adw.SpinRow[] {
+export function gridRows(ctx: PrefsContext): Adw.SpinRow[] {
     return GRID_PARTS.map(([part, title]) => {
         const read = (): number => ctx.settings.get('icon-size-grid')[part] ?? -1;
         const row = new Adw.SpinRow({

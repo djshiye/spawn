@@ -25,6 +25,8 @@ GLib.spawn_command_line_sync(`rm -rf ${tmp}`); // the compiled schema is already
 const {SpawnSettings, SCHEMA_ID, FOLDER_SCHEMA_ID, FolderSettings} = await import('../build/core/settings.js');
 const {applyMigration} = await import('../build/migrate/arcmenu.js');
 const {resetKeys, resetWithUndo, isModified, spinBounds, spinRow, optionalSpinRow, subpageRow, watch} = await import('../build/prefs/widgets.js');
+const {createEntryList} = await import('../build/prefs/lists.js');
+const {gridRows} = await import('../build/prefs/pages/appearance.js');
 const {friendlyIconName} = await import('../build/prefs/iconName.js');
 
 const {keyAction} = await import('../build/prefs/shortcutDialog.js');
@@ -264,6 +266,49 @@ test('visiting a sub-page twice leaves only the latest visit\'s watchers connect
     row.emit('activated');
     prefs.set('menu-height', 777);
     assertEquals(count, 1);
+});
+
+test('an entry list inside a sub-page is released when the page is opened again', () => {
+    if (!HAVE_DISPLAY) {
+        print('  skipped: no display (run under xvfb-run)');
+        return;
+    }
+    Adw.init();
+    const {prefs} = fixture();
+    const ctx = {settings: prefs, window: Object.assign(new Adw.PreferencesWindow(), {push_subpage() {}})};
+    let builds = 0;
+    const row = subpageRow(ctx, {title: 'T', build: () => {
+        const g = createEntryList(ctx, {
+            title: 'L', kind: 'context',
+            source: {get: () => { builds++; return prefs.get('context-menu-items'); }, set: v => prefs.set('context-menu-items', v), keys: ['context-menu-items']},
+        });
+        return [g];
+    }});
+    row.emit('activated');
+    row.emit('activated');
+    builds = 0;
+    prefs.set('context-menu-items', [{id: 'Spawn_Settings'}]);
+    // Only the latest visit's list still rebuilds (once per change; a leaked first list would double it).
+    const afterOne = builds;
+    row.emit('activated');
+    row.emit('activated');
+    builds = 0;
+    prefs.set('context-menu-items', []);
+    assertEquals(builds, afterOne, 'a popped sub-page\'s list is still listening');
+});
+
+test('the icon-size-grid rows keep an external value outside their range', () => {
+    if (!HAVE_DISPLAY) {
+        print('  skipped: no display (run under xvfb-run)');
+        return;
+    }
+    Adw.init();
+    const {prefs, shell} = fixture();
+    const ctx = {settings: prefs, window: new Adw.PreferencesWindow()};
+    const rows = gridRows(ctx);
+    shell.set_value('icon-size-grid', new GLib.Variant('a{si}', {width: 300}));
+    assertEquals(prefs.get('icon-size-grid').width, 300);
+    assertEquals(rows[1].value, 256);
 });
 
 run();
