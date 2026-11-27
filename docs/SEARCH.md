@@ -41,7 +41,7 @@ Type `<amount> <unit> in <unit>` (also `to`, `as`, `=`, `->`): `5 km in miles`, 
 | Pressure | Pa, hPa, kPa, MPa, bar, mbar, psi, atm, torr, mmHg, inHg |
 | Energy | J, kJ, MJ, cal, kcal, Wh, kWh, MWh, BTU, eV, ft·lbf |
 | Power | W, kW, MW, GW, hp, PS, BTU/h |
-| Force and torque | N, kN, lbf, kgf, dyn; N·m (`newton metres`), lbf·ft (`lb ft`), kgf·m |
+| Force and torque | N, kN (case matters: `kn` is the knot), lbf, kgf, dyn; N·m (`newton metres`), lbf·ft (`lb ft`), kgf·m |
 | Angle | degree, radian, grad, turn, arcmin, arcsec |
 | Frequency | Hz, kHz, MHz, GHz, THz, rpm |
 | Fuel economy | mpg (US), mpg uk, km/l, l/100km |
