@@ -48,6 +48,23 @@ set_key menu-button-icon "''"; sleep 1
 expect "empty value -> fallback themed icon" "$(icon_field iconName)" start-here-symbolic
 set_key menu-button-icon "'distro-fedora-symbolic.svg'"; sleep 1
 
+echo "-- icon files outside Spawn's icon folder are checked in the background"
+good="$XDG_RUNTIME_DIR/outside-good.svg"
+cp "$root/data/icons/icon-apps-symbolic.svg" "$good"
+set_key menu-button-icon "'$good'"; sleep 1
+expect "outside file that is an image is shown" "$(icon_field file)" "$good"
+set_key menu-button-icon "'$XDG_RUNTIME_DIR/outside-missing.svg'"; sleep 1
+expect "outside missing file -> fallback themed icon" "$(icon_field iconName)" start-here-symbolic
+set_key menu-button-text "'Outside'"; sleep 1
+expect "an unrelated refresh keeps the fallback" "$(icon_field iconName)" start-here-symbolic
+set_key menu-button-icon "'$bad'"; set_key menu-button-icon "'$good'"; sleep 1
+expect "a stale failed check never replaces a newer good icon" "$(icon_field file)" "$good"
+set_key menu-button-icon "'$good'"; set_key menu-button-icon "'/nonexistent/dir/icon.svg'"; sleep 1
+expect "a missing file after a good one -> fallback" "$(icon_field iconName)" start-here-symbolic
+dconf reset /org/gnome/shell/extensions/spawn/menu-button-text; sleep 0.5
+rm -f "$good"
+set_key menu-button-icon "'distro-fedora-symbolic.svg'"; sleep 1
+
 echo "-- Dev Screenshot path policy"
 ok="$shots/core-allowed.png"
 rm -f "$ok"

@@ -15,6 +15,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {DesktopMemory} from './core/desktopToggle.js';
+import {IconFileCheck} from './core/iconFile.js';
 import {error, log} from './core/log.js';
 import {openExtensionPrefs} from './core/openPrefs.js';
 import {Scope} from './core/scope.js';
@@ -155,12 +156,14 @@ export default class SpawnExtension extends Extension {
         const attacher = this._start(root, 'panel', scope => {
             const targets = new PanelTargets(scope, {isMultiMonitor: () => settings.get('multi-monitor')});
             panelTargets = targets;
+            const iconCheck = new IconFileCheck(scope.child('button icon check'));
             const attacher = new ButtonAttacher(scope, {
                 settings,
                 targets,
                 createButton: () => new MenuButton({
                     settings,
                     iconDir: info.iconDir,
+                    iconCheck,
                     popup: popup ?? {isOpen: false, toggle: () => {}, open: () => {}, close: () => {}},
                     openPreferences: () => openExtensionPrefs(this.uuid),
                 }),
