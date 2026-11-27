@@ -69,8 +69,12 @@ export interface RestorePlan {
     /** Validated values of the keys the file sets; every other restorable key is reset to its default. */
     values: Map<string, GLib.Variant>;
     folders: Map<string, PlannedFolder>;
-    /** Things in the file that were not used (unknown or excluded keys, folders nothing points at). */
+    /** Keys in the file that this version does not know. */
     ignored: string[];
+    /** Known things in the file that are not restored on purpose: keys this computer keeps (BACKUP_EXCLUDED_KEYS) and `folder <id>` that no pinned entry points at. */
+    skipped: string[];
+    /** Folder ids the file's pinned list points at but the file does not hold; their entries are dropped from the plan. */
+    missingFolders: string[];
     extensionVersion: string | null;
 }
 
@@ -164,11 +168,17 @@ export function parseBackup(text: string, settings: SpawnSettings): ParseResult 
         return {ok: false, error: 'The backup is damaged (settings or folders missing).'};
 
     const ignored: string[] = [];
+    const skipped: string[] = [];
+    const missingFolders: string[] = [];
     const values = new Map<string, GLib.Variant>();
     const known = new Set(schema.list_keys());
     for (const [key, text] of Object.entries(rawSettings)) {
-        if (!known.has(key) || excluded(key)) {
+        if (!known.has(key)) {
             ignored.push(key);
+            continue;
+        }
+        if (excluded(key)) {
+            skipped.push(key);
             continue;
         }
         try {
@@ -182,7 +192,7 @@ export function parseBackup(text: string, settings: SpawnSettings): ParseResult 
     }
 
     // Folders: only those the restored pinned list points at, so a file cannot create stray dconf paths.
-    const pinned = values.has('pinned-apps') ? sanitizeEntries<{id: string; isFolder?: string}>(values.get('pinned-apps')?.recursiveUnpack()) : [];
+    let pinned = values.has('pinned-apps') ? sanitizeEntries<{id: string; isFolder?: string}>(values.get('pinned-apps')?.recursiveUnpack()) : [];
     const wanted = new Set(folderIds(pinned));
     const entries = Object.entries(rawFolders);
     if (entries.length > MAX_FOLDERS)
@@ -193,7 +203,7 @@ export function parseBackup(text: string, settings: SpawnSettings): ParseResult 
             return {ok: false, error: 'The backup holds a folder with an invalid id.'};
         }
         if (!wanted.has(id)) {
-            ignored.push(`folder ${id}`);
+            skipped.push(`folder ${id}`);
             continue;
         }
         try {
@@ -209,6 +219,16 @@ export function parseBackup(text: string, settings: SpawnSettings): ParseResult 
             return {ok: false, error: `The folder '${id}' in the backup is not valid: ${(e as Error).message}.`};
         }
     }
+    // A folder entry whose folder the file does not hold would restore as an empty, nameless folder (and delete a
+    // local one): leave the entry out instead.
+    for (const id of wanted) {
+        if (!folders.has(id))
+            missingFolders.push(id);
+    }
+    if (missingFolders.length > 0) {
+        pinned = pinned.filter(e => !(e.isFolder === 'true' && missingFolders.includes(e.id)));
+        values.set('pinned-apps', new GLib.Variant('aa{ss}', pinned as never));
+    }
     // Repair a damaged pinned structure the way the ArcMenu import does (an app once, a folder once, no nested
     // folders): the menu's operations rely on it. Silent: what goes are exact duplicates the menu never shows.
     if (values.has('pinned-apps')) {
@@ -223,12 +243,8 @@ export function parseBackup(text: string, settings: SpawnSettings): ParseResult 
                 f.pinnedApps = new GLib.Variant('aa{ss}', (fixed.folders[id] ?? []) as never);
         }
     }
-    for (const id of wanted) {
-        if (!folders.has(id))
-            ignored.push(`folder ${id} is missing from the backup`);
-    }
     const ext = doc['extensionVersion'];
-    return {ok: true, plan: {values, folders, ignored, extensionVersion: typeof ext === 'string' ? ext.slice(0, 40) : null}};
+    return {ok: true, plan: {values, folders, ignored, skipped, missingFolders, extensionVersion: typeof ext === 'string' ? ext.slice(0, 40) : null}};
 }
 
 export function describePlan(plan: RestorePlan): string {

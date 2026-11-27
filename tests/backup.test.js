@@ -92,7 +92,23 @@ test('unknown and excluded keys are ignored and reported, known ones still apply
     const r = parsed(doc({'menu-height': '700', 'no-such-key': '1', 'dev-mode': 'true', 'known-apps': "['x']"}));
     assert(r.ok);
     assertEquals([...r.plan.values.keys()], ['menu-height']);
-    assertEquals(r.plan.ignored.sort(), ['dev-mode', 'known-apps', 'no-such-key']);
+    assertEquals(r.plan.ignored, ['no-such-key']);
+    assertEquals(r.plan.skipped.sort(), ['dev-mode', 'known-apps']);
+});
+
+test('a folder the pinned list points at but the file does not hold is left out of the plan, and reported', () => {
+    const r = parsed(doc({'pinned-apps': "[{'id': 'a.desktop'}, {'id': 'f1', 'name': 'Games', 'isFolder': 'true'}, {'id': 'b.desktop'}]"}));
+    assert(r.ok, r.error);
+    assertEquals(r.plan.missingFolders, ['f1']);
+    assertEquals(r.plan.values.get('pinned-apps').recursiveUnpack(), [{id: 'a.desktop'}, {id: 'b.desktop'}]);
+    assertEquals(r.plan.ignored, []);
+    // a local folder of that name is replaced with everything else, never left behind empty and nameless
+    const dst = fresh();
+    dst.set('pinned-apps', [{id: 'f1', name: 'Mine', isFolder: 'true'}]);
+    dst.folder('f1').name = 'Mine';
+    dst.folder('f1').pinnedApps = [{id: 'x.desktop'}];
+    B.applyBackup(dst, r.plan);
+    assertEquals(dst.get('pinned-apps'), [{id: 'a.desktop'}, {id: 'b.desktop'}]);
 });
 
 test('restore repairs a damaged pinned structure (duplicates, nested folders) like the ArcMenu import', () => {
@@ -143,7 +159,8 @@ test('folders: only those the restored pinned list points at; bad ids and bodies
     const r = parsed(doc({'pinned-apps': pinned}, {f1: good, stray: good}));
     assert(r.ok);
     assertEquals([...r.plan.folders.keys()], ['f1']);
-    assert(r.plan.ignored.includes('folder stray'));
+    assert(r.plan.skipped.includes('folder stray'));
+    assertEquals(r.plan.ignored, []);
     assertEquals(parsed(doc({'pinned-apps': pinned}, {'../evil': good})).ok, false);
     assertEquals(parsed(doc({'pinned-apps': pinned}, {'a/b': good})).ok, false);
     assertEquals(parsed(doc({'pinned-apps': pinned}, {f1: {name: 5, 'pinned-apps': '[]'}})).ok, false);
