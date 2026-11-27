@@ -20,9 +20,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Bare addresses in search:** typing an address such as `224.0.0.0` or `240.0.0.0` now describes the address
   instead of treating it as a subnet mask. Type `mask 240.0.0.0` for the mask answer.
-- **Dates in search:** typing a date such as `2026-12-25` or `25/12/2026` now shows the date first, instead of a
-  meaningless sum that Return would copy.
-- **Percentages:** `200 + 10% + 5` now gives 225 and `10% * 50` gives 5. Before, you got 200 or no answer.
+- **`%` in front of a minus sign:** `10 % -3` is now read as a percentage and gives -2.9, in line with `200 + 10% + 5`
+  below. Type `10 mod -3` for the remainder.
 - **Settings backups:** a restore now tells you more clearly what it left out. It names the folders (for example
   "Games") instead of showing internal ids, and a damaged backup no longer leaves an empty folder behind.
 - **Install command:** the one in the README no longer answers dnf's questions for you, so you can check the signing
@@ -41,6 +40,10 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Search answers:**
   - Large whole numbers are exact: `2^40` gives 1 099 511 627 776 and `1 GiB in B` gives 1 073 741 824 B, instead of
     a rounded number ending in made-up zeros.
+  - Percentages work in the middle of a sum: `200 + 10% + 5` gives 225 and `10% * 50` gives 5. Before, you got 200 or
+    no answer.
+  - A date such as `2026-12-25` or `25/12/2026` shows the date first, instead of a meaningless sum that Return would
+    copy.
   - A function written without brackets takes the whole of a value like `2pi`, so `sin 2pi` gives 0.
   - `kN` now means the kilonewton in unit conversions (`5 kN in lbf`). Lower-case `kn` still means knots.
   - `days since 31 jan` near a month end now includes the days, for example "1 month 2 days" instead of "1 month".
@@ -65,27 +68,29 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - The category column grows to fit its longest name.
   - Screen readers say "contains new apps" for a category with a new app, as they already did in the Grid layout's
     category menu.
-- **Pinned apps and commands** show a new name or icon straight away after an app update or an edit in Settings.
-  Before, they kept the old one until the next login. Pinning the same command twice no longer breaks its tile.
+- **Pinned apps and folders:**
+  - Pinned apps and commands show a new name or icon straight away after an app update or an edit in Settings.
+    Before, they kept the old one until the next login. Pinning the same command twice no longer breaks its tile.
+  - Undoing a drop that made a new folder no longer leaves that folder's settings behind, and an app added to the
+    new folder while Undo is still offered is now kept.
+  - Restoring a backup whose pinned apps list an app or a folder more than once no longer leaves duplicates behind,
+    so moving an app out of a folder, unpinning it or deleting the folder works as expected.
+  - The runner lists a pinned app as soon as it is installed. Before, the app could stay missing until the menu had
+    been opened.
 - **Look of the menu:**
   - Long app names wrap onto two lines at normal screen scale.
   - The Grid footer's power buttons resize straight away when you turn buttons on or off or change the style.
-  - The default user picture is a full circle in the Grid footer and the user card.
+  - The stand-in user picture, shown when you have not chosen one, is no longer tiny in the Grid footer.
   - The "Jump to letter" tip in the Grid layout no longer covers the first app under the letter.
   - "More Recent Files" uses the proper ellipsis character.
+  - The button beside a removable drive now says what a click does: "Eject" when the drive will be ejected, "Unmount"
+    otherwise. Before, it could say "Unmount" and then eject the drive.
 - **Settings:**
   - In the Set Shortcut dialog, the keyboard can now confirm a shortcut.
   - Undo in lists puts back only the item you removed.
   - The number boxes for results per source, panel button icon size and padding, and icon sizes allow the full range
     the menu supports, so a value brought over from ArcMenu or a backup is shown correctly. Restoring a backup while
     Settings is open no longer cuts corner radius, border width or tile sizes down to the box's limit.
-  - Device buttons are named by what they do, such as Eject when the drive can be ejected.
-  - Undoing a drop that made a new folder no longer leaves that folder's settings behind, and an app added to the
-    new folder while Undo is still offered is now kept.
-  - Restoring a backup whose pinned apps list an app or a folder more than once no longer leaves duplicates behind,
-    so moving an app out of a folder, unpinning it or deleting the folder works as expected.
-  - The runner's pinned apps list shows a pinned app as soon as it is installed, even if the pinned view has not
-    been opened since you logged in.
 - **Update notice:** if Spawn is updated while the screen is locked (or while Spawn is switched off), the "log out
   and back in" notice now appears when you unlock, instead of not at all.
 - **Panel button:**
