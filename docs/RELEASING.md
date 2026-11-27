@@ -21,7 +21,7 @@ The RPM `Release` is `1.<commit count>.<dist>`, appended by `publish.sh`, so eve
    `ci.yml`). It does not run the whole harness or the `--with-dtp` variants, so also run `tools/dev-shell.sh all` locally.
    `tools/release.sh` refuses to release when CI is not green.
    Move the `CHANGELOG.md` "Unreleased" entries under the new version.
-2. `tools/bump-version.sh 1.1.0 "what changed"` (updates package.json, package-lock.json, metadata.json, the spec and its changelog), review and commit.
+2. `tools/bump-version.sh 1.1.0 "what changed"` (updates package.json, package-lock.json, metadata.json, the spec and its changelog), review and commit, then get the commit onto GitHub's main (through a pull request) and wait for CI to pass; `tools/release.sh` only publishes what is on GitHub's main and refuses a red or running CI.
 3. If the supported shells changed: edit `shell-version` in `metadata.json` and `%global min_shell` in `build-aux/spawn.spec`
    (the RPM must not be installable on a shell the extension refuses to load on).
 4. On the release machine: `tools/release.sh`. That is the whole publish (see "One-command releases" below).

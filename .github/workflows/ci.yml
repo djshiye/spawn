@@ -6,6 +6,8 @@ name: CI
 # Branch protection note: a workflow skipped by `paths-ignore` reports no checks, so a docs-only pull request would
 # wait for a required check forever. If you make "check" required, either drop `paths-ignore` below or add a
 # trivial always-green workflow with the same job name that runs on the ignored paths.
+# Keep the paths-ignore lists in step with require_ci_green in tools/release.sh, which treats these paths as
+# untested-but-safe.
 on:
   pull_request:
     paths-ignore:
