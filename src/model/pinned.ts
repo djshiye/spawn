@@ -30,7 +30,7 @@
 //   store.dissolveFolder(uuid): void                folder removed, its apps move to the top level
 //                                                   at the folder's slot (menu "Delete Folder")
 //   store.invalidate(): void                        forget cached "desktop file exists" answers
-//                                                   (call on Shell.AppSystem 'installed-changed')
+//                                                   (Services calls it on Shell.AppSystem 'installed-changed')
 //   store.addToFolder(uuid, id, index?): void       moves from top level / other folder
 //   store.removeFromFolder(uuid, id, toIndex?): void  moves the app back to the top level
 //   store.onChanged(scope, cb)                      cb() when pinned-apps or any folder changes
