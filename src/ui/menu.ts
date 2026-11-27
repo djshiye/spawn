@@ -105,6 +105,8 @@ export class SpawnPopup {
     private readonly _scope: Scope;
     private readonly _services: Services;
     private readonly _listeners = new Set<OpenListener>();
+    /** Spawn buttons that emitted 'destroy': never touched again (a call on a disposed wrapper logs a Gjs-CRITICAL). */
+    private readonly _goneAnchors = new WeakSet<object>();
 
     private _anchorOwned: {scope: Scope; release(): void} | null = null;
     private _anchor: St.Widget | null = null;
@@ -348,7 +350,10 @@ export class SpawnPopup {
 
         anchorScope.connect(menu, 'open-state-changed', (_menu: unknown, open: boolean) => this._onOpenState(open));
         // A destroyed anchor (panel extension restart) takes the popup shell with it.
-        anchorScope.connect(anchor, 'destroy', () => this._release());
+        anchorScope.connect(anchor, 'destroy', () => {
+            this._goneAnchors.add(anchor);
+            this._release();
+        });
         anchorScope.add(() => {
             // Rescue the layout before the shell around it is destroyed.
             if (layout.actor.get_parent())
@@ -392,6 +397,10 @@ export class SpawnPopup {
         }
     }
 
+    private _anchorGone(anchor: unknown): boolean {
+        return typeof anchor === 'object' && anchor !== null && this._goneAnchors.has(anchor);
+    }
+
     private _release(): void {
         const wasOpen = this._open;
         const anchor = this._anchor;
@@ -425,9 +434,11 @@ export class SpawnPopup {
         }
         if (!open) {
             this._clearHover();
-            // Resolve a closing click on a panel launcher BEFORE a fullscreen panel hides again.
-            const passedTo = this._passClickOn(anchor);
-            if (!passedTo)
+            const gone = this._anchorGone(anchor);
+            // Resolve a closing click on a panel launcher BEFORE a fullscreen panel hides again (not when the button
+            // itself was destroyed: that close is no click, and nothing may touch the button after this dispatch).
+            const passedTo = gone ? null : this._passClickOn(anchor);
+            if (!passedTo && !gone)
                 this._restoreHover(anchor);
             this._intellihide.release();
             // A tray icon / indicator clicked over a fullscreen game opens its menu on that panel: keep the panel
@@ -533,7 +544,7 @@ export class SpawnPopup {
     private _restoreHover(anchor: St.Widget | null): void {
         this._scope.idle(() => {
             try {
-                if (this._open)
+                if (this._open || this._anchorGone(anchor))
                     return;
                 const [x, y] = global.get_pointer();
                 const target = panelClickTarget({x, y, button: PRIMARY}, anchor, panelClickDeps());
@@ -608,7 +619,7 @@ export class SpawnPopup {
             return null;
         this._passedButton = click.button;
         this._scope.idle(() => {
-            if (isActorAlive(button))
+            if (!this._anchorGone(button) && isActorAlive(button))
                 button.handlePassedClick?.(click.button);
         });
         return button;
