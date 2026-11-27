@@ -62,6 +62,10 @@ export function isCommandEntry(entry: RawEntry, inPinned: boolean): boolean {
         return false;
     if (id.startsWith('Spawn_') || id.startsWith('ArcMenu_'))
         return false; // built-ins, or nothing (unknown ones resolve to null)
+    // Decided before the path / URI check, in launch order: in a shortcut list a '.desktop' id only goes to the app
+    // lookup and never runs; in pinned-apps one that is not a plain desktop id falls through to the shell.
+    if (id.endsWith('.desktop'))
+        return inPinned && !DESKTOP_ID.test(id);
     if (id.startsWith('/') || id.includes('://'))
         return false; // opened as a path / URI, never run
     return !DESKTOP_ID.test(id);

