@@ -235,7 +235,7 @@ export class SpawnLayout implements ShortcutHost {
             pin: (id, name) => this._undo.changePinned(_('Pinned \u201c%s\u201d').format(name), () => this._services.pinned.pin(id)),
             unpin: (id, name) => this._undo.changePinned(_('Unpinned \u201c%s\u201d').format(name), () => this._services.pinned.unpin(id), id),
             removeFromFolder: (uuid, id, name) => this._undo.changePinned(_('Removed \u201c%s\u201d from folder').format(name),
-                () => this._services.pinned.removeFromFolder(uuid, id), id),
+                () => this._services.pinned.removeFromFolder(uuid, id), id, uuid),
             removeShortcut: (entry, name) => this._undo.removeShortcut(entry, name),
             openSettings: shortcuts => {
                 host.close();

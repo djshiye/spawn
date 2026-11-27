@@ -9,7 +9,7 @@
 //   new UndoController(scope, services, state, host)
 //   undo.banner: UndoBanner             the widget (`banner.actor`, `banner.button`, `banner.visible`)
 //   undo.deleteFolder(uuid)             "Delete Folder" (apps move to the top level) + banner
-//   undo.changePinned(message, change, focusId?)   pin / unpin / remove-from-folder with the banner
+//   undo.changePinned(message, change, focusId?, folderUuid?)   pin / unpin / remove-from-folder with the banner
 //   undo.removeShortcut(entry, name)    "Remove from Menu" on a right-pane shortcut + banner
 //   undo.hideApp(app)                   "Hide from Menu" + banner
 //   undo.hasUndo(): boolean             something can be undone now (Ctrl+Z)
@@ -39,7 +39,7 @@ export interface UndoHost {
     focusMain(): void;
     /** Bring the pinned grid up to date with the store now. */
     syncPinned(): void;
-    /** The cached pinned tile for `key` (`f:<uuid>`, `a:<id>`), if it exists. */
+    /** The cached pinned tile for `key` (`f:<uuid>`, `a:<id>`, `a:<id>*` (New badge), `m:<id>` (not installed), `c:<id>` (command)), if it exists. */
     pinnedTile(key: string): St.Widget | null;
 }
 
@@ -55,7 +55,7 @@ export class UndoController {
     /** Right-pane shortcut lists as they were before "Remove from Menu" (its banner offers Undo). */
     private _undoShortcuts: SettingsSnapshot | null = null;
     /** Tile to put the keyboard on after an Undo (key of the pinned tile cache), when the restored thing is a pinned tile. */
-    private _undoFocusKey: string | null = null;
+    private _undoFocusKeys: string[] = [];
     private _cancelUndoTimer: (() => void) | null = null;
 
     constructor(scope: Scope, services: Services, state: LayoutState, host: UndoHost) {
@@ -82,7 +82,7 @@ export class UndoController {
         store.markDissolved(undo);
         this.dismiss();
         this._undo = undo;
-        this._undoFocusKey = `f:${undo.uuid}`;
+        this._undoFocusKeys = [`f:${undo.uuid}`];
         this.banner.show(_('Folder \u201c%s\u201d deleted').format(undo.name));
         this._cancelUndoTimer = this._scope.timeout(UNDO_MS, () => this.dismiss());
     }
@@ -92,7 +92,7 @@ export class UndoController {
      * every app back in its exact slot (and folder, even one that went away with its last app). `focusId`: the app
      * to put the keyboard on after Undo (an unpin leaves nothing to focus; a pin undone leaves nothing either).
      */
-    changePinned(message: string, change: () => void, focusId?: string): void {
+    changePinned(message: string, change: () => void, focusId?: string, folderUuid?: string): void {
         if (this._state.destroyed)
             return;
         const store = this._services.pinned;
@@ -101,7 +101,11 @@ export class UndoController {
         store.markDissolved(undo);
         this.dismiss();
         this._undo = undo;
-        this._undoFocusKey = focusId ? `a:${focusId}` : null;
+        // The restored entry's tile, whatever kind it is (see PinnedView: a:<id>[*], m:<id>, c:<id>); after
+        // "Remove from Folder" the app is back inside its folder, so the folder's tile.
+        this._undoFocusKeys = focusId
+            ? [`a:${focusId}`, `a:${focusId}*`, `m:${focusId}`, `c:${focusId}`, ...(folderUuid ? [`f:${folderUuid}`] : [])]
+            : [];
         this.banner.show(message);
         this._cancelUndoTimer = this._scope.timeout(UNDO_MS, () => this.dismiss());
     }
@@ -151,7 +155,7 @@ export class UndoController {
         this._undo = null;
         this._undoHide = null;
         this._undoShortcuts = null;
-        this._undoFocusKey = null;
+        this._undoFocusKeys = [];
         this.banner.hide();
     }
 
@@ -196,7 +200,7 @@ export class UndoController {
 
     private _undoDelete(): void {
         const undo = this._undo;
-        const focusKey = this._undoFocusKey;
+        const focusKeys = this._undoFocusKeys;
         this.dismiss();
         if (!undo || this._state.destroyed)
             return;
@@ -210,7 +214,7 @@ export class UndoController {
         // The banner (and its focus) is gone: put the keyboard on the folder that came back.
         if (this._state.isOpen && this._state.view === 'pinned') {
             this._host.syncPinned();
-            const widget = focusKey ? this._host.pinnedTile(focusKey) : null;
+            const widget = focusKeys.map(k => this._host.pinnedTile(k)).find(w => w) ?? null;
             if (widget)
                 widget.grab_key_focus();
             else

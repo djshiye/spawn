@@ -63,6 +63,32 @@ for display in List Grid; do
     check "settings identical after Remove from Folder + Undo" "$(diff -q "$tmp/seed" "$tmp/after" >/dev/null && echo 0 || echo 1)"
     diff "$tmp/seed" "$tmp/after"
 
+    echo "-- U7 Undo of an Unpin puts the keyboard back on the restored entry (command, missing app)"
+    focus_name() { ui_call FocusInfo | unwrap | json_get name; }
+    reset_seed; [ "$PINNED_DISPLAY" = Grid ] && set_display Grid
+    dconf write "${K}pinned-apps" "[{'id': 'steam.desktop'}, {'id': 'echo hi', 'name': 'Echo', 'icon': 'utilities-terminal'}, {'id': 'spawn-u7-missing.desktop'}]"
+    sleep 1; open_menu 1.5
+    focus_class "$ITEM" 1
+    key Delete 0.6
+    expect "banner after Delete on a command" "$(count spawn-undo-banner)" 1
+    key Ctrl+z 0.8
+    check "Undo focuses the restored command ($(focus_name))" "$(focus_name | grep -q '^Echo' && echo 0 || echo 1)"
+    focus_class "$ITEM" 2
+    key Delete 0.6
+    key Ctrl+z 0.8
+    check "Undo focuses the restored missing app ($(focus_name))" "$(focus_name | grep -q 'spawn-u7-missing' && echo 0 || echo 1)"
+    close_menu
+
+    echo "-- U7 Undo of Remove from Folder focuses the folder"
+    fresh
+    base="$(count spawn-tile)"
+    click_class "$FOLDER" 0 1; sleep 0.8
+    click_class spawn-tile $((base + 1)) 3
+    click_text "Remove from Folder"; sleep 0.8
+    key Ctrl+z 0.8
+    check "Undo of Remove from Folder focuses the folder ($(ui_call FocusInfo | unwrap | json_get cls))" \
+        "$(ui_call FocusInfo | unwrap | json_get cls | grep -q "$FOLDER" && echo 0 || echo 1)"
+
     echo "-- U13c last app out of a folder keeps the folder slot"
     fresh
     dconf write "${K}folders/$F_INTERNET/pinned-apps" "[{'id': 'slack.desktop'}]"; sleep 1
