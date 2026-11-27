@@ -80,6 +80,19 @@ test('days since', () => {
     assertEquals(one('weeks since 1 nov 2026').title, '2 weeks 6 days');
 });
 
+test('since: breakdown counts days past a clamped month end', () => {
+    const desc = (q, y, m, dd) => one(q, at(y, m, dd)).description;
+    assertEquals(desc('days since 31 jan 2025', 2025, 3, 1), 'since Friday 31 January 2025 · 1 month 1 day');
+    assertEquals(desc('days since 31 jan 2025', 2025, 3, 2), 'since Friday 31 January 2025 · 1 month 2 days');
+    assertEquals(desc('days since 31 jan 2025', 2025, 3, 3), 'since Friday 31 January 2025 · 1 month 3 days');
+    assertEquals(desc('days since 31 jan 2025', 2025, 2, 28), 'since Friday 31 January 2025 · 28 days');
+    assertEquals(desc('days since 31 mar 2025', 2025, 5, 1), 'since Monday 31 March 2025 · 1 month 1 day');
+    assertEquals(desc('days since 31 dec 2024', 2025, 3, 1), 'since Tuesday 31 December 2024 · 2 months 1 day');
+    assertEquals(desc('days since 30 jan 2024', 2024, 3, 1), 'since Tuesday 30 January 2024 · 1 month 1 day');
+    assertEquals(desc('days since 29 feb 2024', 2025, 2, 28), 'since Thursday 29 February 2024 · 11 months 30 days');
+    assertEquals(desc('days since 29 feb 2024', 2025, 3, 1), 'since Thursday 29 February 2024 · 1 year 1 day');
+});
+
 test('since: a yearless date is the most recent occurrence, today counts', () => {
     assertEquals(one('days since 1 jan').title, '324 days');
     assertEquals(one('days since 21 nov').title, 'Today');
