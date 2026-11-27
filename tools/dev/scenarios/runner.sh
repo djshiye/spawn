@@ -146,6 +146,9 @@ dconf reset $K/runner-position; dconf reset $K/runner-menu-width; dconf reset $K
 sleep 0.5
 
 echo "-- disable / enable while open leaves no leaks"
+# The menu prebuilds at enable and a pinned default view would subscribe the pinned list to installed-changed there,
+# which hides the missing-subscription bug the late-install step below guards: use a view that does not.
+dconf write $K/default-menu-view "'Categories_List'"
 toggle_runner 1.2
 type_text zz 1
 expect "open before disabling" "$(rs open)" true
@@ -162,6 +165,22 @@ type_text zzqx 1.2
 screenshot runner-reenabled
 key Escape 0.8
 expect "closed again" "$(rs open)" false
+
+echo "-- an app installed after the runner saw it missing appears in Pinned_Apps (menu never opened)"
+rm -f "$apps/spawn-runner-late.desktop"
+dconf write $K/runner-default-view "'Pinned_Apps'"
+dconf write $K/pinned-apps "[{'id': 'spawn-runner-late.desktop'}, {'id': 'spawn-runner-probe.desktop'}]"
+sleep 1
+toggle_runner 1.5
+expect "the uninstalled pinned app is left out" "$(rs defaultRows)" 1
+key Escape 0.8
+mkdesktop spawn-runner-late.desktop "Zzqx Runner Late" /usr/bin/true
+sleep 12   # the app tree reloads some seconds after the file changes (slow in the sandbox), then installed-changed
+toggle_runner 1.5
+expect "after installing it, the runner lists it" "$(rs defaultRows)" 2
+key Escape 0.8
+dconf reset $K/runner-default-view
+dconf reset $K/default-menu-view
 
 echo "-- the main menu still works"
 open_menu 1.5

@@ -704,8 +704,7 @@ export class SpawnLayout implements ShortcutHost {
         if (this._state.destroyed)
             return;
         // An app may have appeared (a ghost tile becomes real) or vanished (a tile becomes a ghost).
-        if (this._pinned.subscribed)
-            this._services.pinned.invalidate();
+        this._services.pinned.invalidate();
         this._pinned.dirty = true;
         if (this._pinned.showing())
             this._pinned.syncIfNeeded();

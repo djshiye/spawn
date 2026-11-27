@@ -8,11 +8,14 @@
 //
 // Public API:
 //   DEV_BUILD                  true in a dev build, false in a release build
+//   DEV_ONLY_KEYS              setting keys that exist only in a dev build (empty in a release, whose schema lacks them)
 //   isDevMode(settings)        DEV_BUILD and the `dev-mode` setting is on (the only way the hooks are switched on)
 
 import type {SpawnSettings} from './settings.js';
 
 export const DEV_BUILD = true;
+
+export const DEV_ONLY_KEYS: readonly string[] = ['dev-mode'];
 
 export function isDevMode(settings: SpawnSettings): boolean {
     return DEV_BUILD && settings.get('dev-mode');

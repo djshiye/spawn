@@ -1,5 +1,5 @@
 // Damaged entries are skipped, absurd numbers are clamped (build/core/entries.js, build/core/limits.js).
-import {ENTRY_LIST_KEYS, sanitizeEntries} from '../build/core/entries.js';
+import {ENTRY_LIST_KEYS, reinsertAt, sanitizeEntries} from '../build/core/entries.js';
 import {buttonIconSize, buttonPadding, clampInt, gridIconSize, iconSize} from '../build/core/limits.js';
 import {assert, assertEquals, run, test} from './harness.js';
 
@@ -44,6 +44,22 @@ test('the pinned grid icon size is the default or 16..128', () => {
 
 test('clampInt rounds and handles non-numbers', () => {
     assertEquals([clampInt(2.6, 0, 10, 5), clampInt(Infinity, 0, 10, 5), clampInt(null, 0, 10, 5)], [3, 5, 5]);
+});
+
+test('reinsertAt puts one item back, clamping the index', () => {
+    assertEquals(reinsertAt(['b', 'c'], 'a', 0), ['a', 'b', 'c']);
+    assertEquals(reinsertAt(['a', 'c'], 'b', 1), ['a', 'b', 'c']);
+    assertEquals(reinsertAt(['c'], 'a', 5), ['c', 'a']);
+    assertEquals(reinsertAt([], 'a', 3), ['a']);
+    assertEquals(reinsertAt(['b'], 'a', -1), ['a', 'b']);
+    const src = ['x'];
+    reinsertAt(src, 'y', 0);
+    assertEquals(src, ['x']); // input not mutated
+});
+
+test('two removals undone in either order restore both (prefs list Undo)', () => {
+    assertEquals(reinsertAt(reinsertAt(['c'], 'a', 0), 'b', 0), ['b', 'a', 'c']);
+    assertEquals(reinsertAt(reinsertAt(['c'], 'b', 0), 'a', 0), ['a', 'b', 'c']);
 });
 
 run();

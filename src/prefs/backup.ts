@@ -7,7 +7,7 @@
 //     "folders":  {"<uuid>": {"name": "Games", "pinned-apps": "<GVariant text>"}, ...}
 //   }
 // Everything Spawn keeps lives in GSettings (the main schema and the folders' relocatable schema); there are no
-// other state files. Left out on purpose: every key whose schema summary says "(internal)" (the bookkeeping
+// other state files. Left out on purpose: the keys in BACKUP_EXCLUDED_KEYS, all marked "(internal)" in the schema (the bookkeeping
 // `known-apps` and `new-apps` describe the apps installed on THIS machine, restoring them elsewhere would hide or
 // flood the "New" badges; the dev-only switch of dev builds never travels), plus `migration-done` and
 // `prefs-visible-page`.
@@ -23,6 +23,7 @@
 //   createBackup(settings, extensionVersion): string          the JSON text
 //   parseBackup(text, settings): ParseResult                  {ok: true, plan} | {ok: false, error}
 //   describePlan(plan): string                                one line for the confirmation dialog
+//   describeCommands(plan): string                            the commands the restore adds to the menu ('' when none)
 //   applyBackup(settings, plan): RestoreResult                replaces the current settings; {undo} for settings.restore();
 //                                                             throws (after rolling back) when anything is rejected
 //   readBackupFile(file): string                              size / type checked read (throws Error)
@@ -36,7 +37,10 @@ import Gio from 'gi://Gio';
 import type GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
 
-import {sanitizeEntries} from '../core/entries.js';
+import {DEV_ONLY_KEYS} from '../core/flavour.js';
+import {isCommandEntry, type RawEntry, sanitizeEntries} from '../core/entries.js';
+import type {Entry} from '../core/settings.js';
+import * as ops from '../model/pinnedOps.js';
 import {isValidFolderId} from '../core/folderId.js';
 import type {SettingKey, SettingsSnapshot, SpawnSettings} from '../core/settings.js';
 
@@ -47,12 +51,15 @@ export const DEFAULT_BACKUP_NAME = 'spawn-settings.json';
 const MAX_FOLDERS = 500;
 const MAX_NAME_LENGTH = 256;
 
-/** Keys that are never written to or read from a backup besides those marked "(internal)" in their schema summary. */
-export const BACKUP_EXCLUDED_KEYS: readonly string[] = ['migration-done', 'prefs-visible-page'];
+/**
+ * Keys that are never written to or read from a backup: bookkeeping of this machine (known-apps, new-apps), the
+ * dev-only switch (named in core/flavour.ts, so a release build never mentions it) and the two state keys. Listed by name on purpose: schema summaries are translatable text, so
+ * they cannot decide what travels (tests/backup.test.js checks that every "(internal)" key is listed).
+ */
+export const BACKUP_EXCLUDED_KEYS: readonly string[] = ['migration-done', 'prefs-visible-page', 'known-apps', 'new-apps', ...DEV_ONLY_KEYS];
 
-/** Excluded: the listed keys and every key whose schema summary says "(internal)" (known-apps, new-apps, the dev-only switch). */
-function excluded(schema: Gio.SettingsSchema, key: string): boolean {
-    return BACKUP_EXCLUDED_KEYS.includes(key) || schema.get_key(key).get_summary()?.includes('(internal)') === true;
+function excluded(key: string): boolean {
+    return BACKUP_EXCLUDED_KEYS.includes(key);
 }
 
 interface PlannedFolder {
@@ -64,8 +71,16 @@ export interface RestorePlan {
     /** Validated values of the keys the file sets; every other restorable key is reset to its default. */
     values: Map<string, GLib.Variant>;
     folders: Map<string, PlannedFolder>;
-    /** Things in the file that were not used (unknown or excluded keys, folders nothing points at). */
+    /** Keys in the file that this version does not know. */
     ignored: string[];
+    /** Known things in the file that are not restored on purpose: keys this computer keeps (BACKUP_EXCLUDED_KEYS) and `folder <id>` that no pinned entry points at. */
+    skipped: string[];
+    /** Folder ids the file's pinned list points at but the file does not hold; their entries are dropped from the plan. */
+    missingFolders: string[];
+    /** The same folders by the name their pinned entry carries (the id when it has none), quoted, for the confirmation. */
+    missingFolderNames: string[];
+    /** Display lines of the commands the restore adds to the menu (entries that run their id as a command line when clicked). */
+    commands: string[];
     extensionVersion: string | null;
 }
 
@@ -91,7 +106,7 @@ function restorableKeys(settings: SpawnSettings): SettingKey[] {
     const schema = settings.raw.settings_schema;
     if (!schema)
         throw new Error('settings have no schema');
-    return schema.list_keys().filter(k => !excluded(schema, k)) as SettingKey[];
+    return schema.list_keys().filter(k => !excluded(k)) as SettingKey[];
 }
 
 export function createBackup(settings: SpawnSettings, extensionVersion: string): string {
@@ -135,6 +150,38 @@ function checkEntries(variant: GLib.Variant): void {
         throw new Error('an entry has no id');
 }
 
+const COMMAND_KEYS = ['pinned-apps', 'directory-shortcuts', 'application-shortcuts', 'context-menu-items'] as const;
+
+function shorten(text: string, max: number): string {
+    return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/**
+ * The entries the restore would add that run a command line when clicked, as display lines. Entries already in the
+ * menu today are left out (restoring your own backup shows nothing new). Folder contents never run (they show as
+ * ghost tiles), so they are not looked at.
+ */
+function commandsAdded(values: ReadonlyMap<string, GLib.Variant>, settings: SpawnSettings): string[] {
+    const current = new Set<string>();
+    for (const key of COMMAND_KEYS)
+        for (const e of settings.get(key) as RawEntry[])
+            current.add(e.id);
+    const out: string[] = [];
+    for (const key of COMMAND_KEYS) {
+        const v = values.get(key);
+        if (!v)
+            continue;
+        for (const e of sanitizeEntries(v.recursiveUnpack())) {
+            if (!isCommandEntry(e, key === 'pinned-apps') || current.has(e.id))
+                continue;
+            const line = e.name && e.name !== e.id ? `"${shorten(e.name, 60)}" runs ${shorten(e.id, 120)}` : shorten(e.id, 120);
+            if (!out.includes(line))
+                out.push(line);
+        }
+    }
+    return out;
+}
+
 export function parseBackup(text: string, settings: SpawnSettings): ParseResult {
     const schema = settings.raw.settings_schema;
     if (!schema)
@@ -159,11 +206,17 @@ export function parseBackup(text: string, settings: SpawnSettings): ParseResult 
         return {ok: false, error: 'The backup is damaged (settings or folders missing).'};
 
     const ignored: string[] = [];
+    const skipped: string[] = [];
+    const missingFolders: string[] = [];
     const values = new Map<string, GLib.Variant>();
     const known = new Set(schema.list_keys());
     for (const [key, text] of Object.entries(rawSettings)) {
-        if (!known.has(key) || excluded(schema, key)) {
+        if (!known.has(key)) {
             ignored.push(key);
+            continue;
+        }
+        if (excluded(key)) {
+            skipped.push(key);
             continue;
         }
         try {
@@ -177,7 +230,7 @@ export function parseBackup(text: string, settings: SpawnSettings): ParseResult 
     }
 
     // Folders: only those the restored pinned list points at, so a file cannot create stray dconf paths.
-    const pinned = values.has('pinned-apps') ? sanitizeEntries<{id: string; isFolder?: string}>(values.get('pinned-apps')?.recursiveUnpack()) : [];
+    let pinned = values.has('pinned-apps') ? sanitizeEntries<{id: string; isFolder?: string}>(values.get('pinned-apps')?.recursiveUnpack()) : [];
     const wanted = new Set(folderIds(pinned));
     const entries = Object.entries(rawFolders);
     if (entries.length > MAX_FOLDERS)
@@ -188,7 +241,7 @@ export function parseBackup(text: string, settings: SpawnSettings): ParseResult 
             return {ok: false, error: 'The backup holds a folder with an invalid id.'};
         }
         if (!wanted.has(id)) {
-            ignored.push(`folder ${id}`);
+            skipped.push(`folder ${id}`);
             continue;
         }
         try {
@@ -204,12 +257,44 @@ export function parseBackup(text: string, settings: SpawnSettings): ParseResult 
             return {ok: false, error: `The folder '${id}' in the backup is not valid: ${(e as Error).message}.`};
         }
     }
+    // A folder entry whose folder the file does not hold would restore as an empty, nameless folder (and delete a
+    // local one): leave the entry out instead.
     for (const id of wanted) {
         if (!folders.has(id))
-            ignored.push(`folder ${id} is missing from the backup`);
+            missingFolders.push(id);
+    }
+    const missingFolderNames = missingFolders.map(id => {
+        const entry = (pinned as RawEntry[]).find(e => e.isFolder === 'true' && e.id === id);
+        return `"${entry?.name || id}"`;
+    });
+    if (missingFolders.length > 0) {
+        pinned = pinned.filter(e => !(e.isFolder === 'true' && missingFolders.includes(e.id)));
+        values.set('pinned-apps', new GLib.Variant('aa{ss}', pinned as never));
+    }
+    // Repair a damaged pinned structure the way the ArcMenu import does (an app once, a folder once, no nested
+    // folders): the menu's operations rely on it. Silent: what goes are exact duplicates the menu never shows.
+    if (values.has('pinned-apps')) {
+        const original = {
+            top: pinned as Entry[],
+            folders: Object.fromEntries([...folders].map(([id, f]) => [id, sanitizeEntries<Entry>(f.pinnedApps.recursiveUnpack())])),
+        };
+        const fixed = ops.normalizeSnapshot(original);
+        if (fixed !== original) {
+            values.set('pinned-apps', new GLib.Variant('aa{ss}', fixed.top as never));
+            for (const [id, f] of folders)
+                f.pinnedApps = new GLib.Variant('aa{ss}', (fixed.folders[id] ?? []) as never);
+        }
     }
     const ext = doc['extensionVersion'];
-    return {ok: true, plan: {values, folders, ignored, extensionVersion: typeof ext === 'string' ? ext.slice(0, 40) : null}};
+    return {ok: true, plan: {values, folders, ignored, skipped, missingFolders, missingFolderNames, commands: commandsAdded(values, settings), extensionVersion: typeof ext === 'string' ? ext.slice(0, 40) : null}};
+}
+
+/** One sentence naming the commands the restore adds (at most 8), or '' when there are none. */
+export function describeCommands(plan: RestorePlan): string {
+    if (plan.commands.length === 0)
+        return '';
+    const more = plan.commands.length - 8;
+    return `Commands it adds to the menu, run when clicked: ${plan.commands.slice(0, 8).join(', ')}${more > 0 ? `, and ${more} more` : ''}.`;
 }
 
 export function describePlan(plan: RestorePlan): string {

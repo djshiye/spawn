@@ -19,6 +19,8 @@
 // the index is adjusted so the entry lands where the caller saw the slot. `move` is plain
 // array move: remove at `from`, insert at `to` in the shortened array, so afterwards the
 // entry sits at index `to`.
+//
+// normalizeSnapshot() repairs a snapshot from an untrusted place (a restored backup, a hand edit).
 
 import type {Entry} from '../core/settings.js';
 
@@ -88,13 +90,19 @@ function topIndexOfFolder(top: readonly Entry[], uuid: string): number {
     return top.findIndex(e => isFolderEntry(e) && e.id === uuid);
 }
 
-/** Remove a folder's top entry and list. Returns the removed top index, or -1. */
-function dropFolder(m: Mutable, uuid: string): number {
-    const i = topIndexOfFolder(m.top, uuid);
-    if (i >= 0)
-        m.top.splice(i, 1);
+/** Remove every top entry of the folder (a hand-edited list may list it twice) and its list. Returns the removed top indices, ascending. */
+function dropFolder(m: Mutable, uuid: string): number[] {
+    const removed: number[] = [];
+    const kept: Entry[] = [];
+    m.top.forEach((e, i) => {
+        if (isFolderEntry(e) && e.id === uuid)
+            removed.push(i);
+        else
+            kept.push(e);
+    });
+    m.top = kept;
     delete m.folders[uuid];
-    return i;
+    return removed;
 }
 
 /**
@@ -116,12 +124,17 @@ function extract(m: Mutable, ids: readonly string[], keepFolder?: string): Entry
             found ??= e;
         }
         for (const [uuid, list] of Object.entries(m.folders)) {
-            const fi = list.findIndex(e => e.id === id);
-            if (fi < 0)
-                continue;
-            const [e] = list.splice(fi, 1);
-            found ??= e;
-            if (list.length === 0 && uuid !== keepFolder)
+            let hit = false;
+            for (let fi = 0; fi < list.length;) {
+                if (list[fi].id !== id) {
+                    fi++;
+                    continue;
+                }
+                const [e] = list.splice(fi, 1);
+                found ??= e;
+                hit = true;
+            }
+            if (hit && list.length === 0 && uuid !== keepFolder)
                 dropFolder(m, uuid);
         }
         out.push(found ?? {id});
@@ -228,9 +241,10 @@ export function dissolveFolder(s: PinnedSnapshot, uuid: string): PinnedSnapshot 
         return s;
     const m = mutable(s);
     const contents = m.folders[uuid] ?? [];
-    const at = dropFolder(m, uuid);
+    const removed = dropFolder(m, uuid);
+    const at = removed.length ? removed[0] : m.top.length;
     const fresh = contents.filter(e => !m.top.some(t => t.id === e.id));
-    m.top.splice(at >= 0 ? at : m.top.length, 0, ...fresh);
+    m.top.splice(at, 0, ...fresh);
     return m;
 }
 
@@ -279,16 +293,55 @@ export function removeFromFolder(s: PinnedSnapshot, uuid: string, id: string, to
     if (!list || !list.some(e => e.id === id) || topIndexOfFolder(s.top, id) >= 0)
         return s;
     const m = mutable(s);
-    const fl = m.folders[uuid];
-    const [e] = fl.splice(fl.findIndex(x => x.id === id), 1);
+    const taken = m.folders[uuid].find(x => x.id === id) as Entry;
+    m.folders[uuid] = m.folders[uuid].filter(x => x.id !== id);
+    // Damaged state: the app is pinned elsewhere too. Only take it out of this folder, never pin it twice.
+    const elsewhere = m.top.some(e => !isFolderEntry(e) && e.id === id)
+        || Object.entries(m.folders).some(([u, l]) => u !== uuid && l.some(e => e.id === id));
     let wanted = toIndex;
-    if (fl.length === 0) {
-        const f = dropFolder(m, uuid);
+    if (m.folders[uuid].length === 0) {
+        const removed = dropFolder(m, uuid);
         if (wanted === undefined)
-            wanted = f >= 0 ? f : undefined;
-        else if (f >= 0 && f < wanted)
-            wanted -= 1;
+            wanted = removed.length ? removed[0] : undefined;
+        else
+            wanted = adjust(wanted, removed);
     }
-    m.top.splice(clamp(wanted ?? m.top.length, m.top.length), 0, e);
+    if (!elsewhere)
+        m.top.splice(clamp(wanted ?? m.top.length, m.top.length), 0, taken);
     return m;
+}
+
+/**
+ * Restores the invariants on a snapshot read from an untrusted place (a backup, a hand edit): every folder uuid
+ * once at the top level (first kept), every app id once in the whole snapshot (top level first, then the folders in
+ * top-level order, first occurrence kept), no folder entries inside a folder. Folders not referenced from `top` are
+ * dropped from `folders`. Returns `s` itself when nothing had to change.
+ */
+export function normalizeSnapshot(s: PinnedSnapshot): PinnedSnapshot {
+    const seenApps = new Set<string>();
+    const seenFolders = new Set<string>();
+    let changed = false;
+    const top = s.top.filter(e => {
+        const set = isFolderEntry(e) ? seenFolders : seenApps;
+        if (set.has(e.id)) {
+            changed = true;
+            return false;
+        }
+        set.add(e.id);
+        return true;
+    });
+    const folders: Record<string, Entry[]> = {};
+    for (const uuid of folderUuids(top)) {
+        folders[uuid] = (s.folders[uuid] ?? []).filter(e => {
+            if (isFolderEntry(e) || seenApps.has(e.id)) {
+                changed = true;
+                return false;
+            }
+            seenApps.add(e.id);
+            return true;
+        });
+    }
+    if (Object.keys(s.folders).some(uuid => !(uuid in folders)))
+        changed = true;
+    return changed ? {top, folders} : s;
 }

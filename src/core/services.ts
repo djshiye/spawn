@@ -101,7 +101,18 @@ export class Services {
     }
 
     get pinned(): PinnedStore {
-        this._pinned ??= new PinnedStore(this.scope.child('pinned'), this.settings);
+        if (!this._pinned) {
+            const scope = this.scope.child('pinned');
+            const store = new PinnedStore(scope, this.settings);
+            // The "desktop file exists" answers go stale when apps come and go; every reader (menu, folder
+            // view, runner) shares this one store, so it is cleared here and not by one consumer.
+            try {
+                scope.connect(Shell.AppSystem.get_default(), 'installed-changed', () => store.invalidate());
+            } catch (e) {
+                error('cannot watch installed apps', e);
+            }
+            this._pinned = store;
+        }
         return this._pinned;
     }
 

@@ -20,7 +20,7 @@ const schema = source.lookup('org.gnome.shell.extensions.spawn', true);
 
 const {
     colorsEqual, findPreset, moveItem, parsePreset, parsePresets, presetColors, presetFromColors, presetWrites, removeItem,
-    renameItem, serializePreset, serializePresets, uniqueName,
+    renameItem, restoreRemoved, serializePreset, serializePresets, uniqueName,
 } = await import('../build/theme/presets.js');
 const {SpawnSettings} = await import('../build/core/settings.js');
 
@@ -145,6 +145,17 @@ test('list edits: rename, delete, reorder (immutable)', () => {
     assertEquals(names(list).length, 4);
     assertEquals(uniqueName(list, 'dark blue'), 'dark blue 2');
     assertEquals(uniqueName(list, ''), 'Custom');
+});
+
+test('restoreRemoved puts back only the removed preset', () => {
+    const [p1, p2, p3] = parsePresets(defaults).presets;
+    const names = l => l.map(p => p.name);
+    assertEquals(names(restoreRemoved([p3], p1, 0)), [p1.name, p3.name]);
+    assertEquals(names(restoreRemoved([p3, p2], p1, 0)), [p1.name, p3.name, p2.name]);
+    assertEquals(names(restoreRemoved([p1, p3], p1, 0)), [p1.name, p3.name]);
+    const clash = {...p3, name: p1.name};
+    assertEquals(names(restoreRemoved([clash], p1, 0)), [`${p1.name} 2`, p1.name]);
+    assertEquals(names(restoreRemoved([p3], p1, 9)), [p3.name, p1.name]);
 });
 
 run();
