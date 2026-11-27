@@ -120,6 +120,9 @@ fi
     npm ci --prefer-offline --no-audit --no-fund --ignore-scripts >"$work/npm.log" 2>&1 \
         || { tail -n 30 "$work/npm.log" >&2; exit 1; }
     tools/build.sh --release >"$work/build.log" 2>&1 || { tail -n 30 "$work/build.log" >&2; exit 1; }
+    # no test hooks may be in what ships (absolute path: the script works relative to its own tree)
+    tools/check-release.sh "$PWD/build" >"$work/check-release.log" 2>&1 \
+        || { cat "$work/check-release.log" >&2; exit 1; }
     # the tarball is the git archive plus build/; not the tools' scratch output
     rm -rf node_modules dist build/.built
 )

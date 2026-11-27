@@ -36,9 +36,9 @@ tools/release.sh --no-wait  # push, but do not wait for GitHub Pages
 Run it on the release machine (Dino's Fedora PC, where the signing key lives) from a clean checkout. In order, it:
 
 1. checks the tools (git, gpg, rpm-sign, podman, npm, curl);
-2. switches to `main`, fast-forwards it from GitHub (never merges or rebases), re-runs itself if `release.sh` changed, and checks the versions agree;
+2. switches to `main`, fast-forwards it from GitHub (never merges or rebases), re-runs itself if `release.sh` changed, stops if local `main` has commits GitHub does not, and checks the versions agree;
 3. checks the signing key `D49A 3081 6825 7FDB F9D5 AE14 BD1A C1C6 F56A 7252` is present and able to sign, and that it is the key already published;
-4. checks this machine's git can push to GitHub (a `--dry-run` push, which changes nothing);
+4. checks this machine's git can push to GitHub (a `--dry-run` push, which changes nothing) and that CI passed for this code (`--skip-ci` skips that, by hand only);
 5. stops early, with only the live check, if this exact version and release are already on `gh-pages` (so running it twice never re-signs or republishes);
 6. unlocks the key once, up front: if gpg-agent needs the password it shows its own password box on screen, before the long build rather than in the middle of it;
 7. runs `SPAWN_SIGNING_KEY=<key> tools/publish.sh --push`, which builds in Fedora containers, signs on the host, verifies every
@@ -93,7 +93,7 @@ What it does, in order:
 
 1. Refuses a dirty tree (unless `--allow-dirty`), refuses `--push` off `main`, checks the versions agree.
 2. Exports the tree (`git archive HEAD`) to a temp dir, runs `npm ci` (from `package-lock.json`, `--prefer-offline`) and
-   `tools/build.sh --release` there, and packs the export plus its `build/` into `spawn-<version>.tar.gz`
+   `tools/build.sh --release` there, checks the compiled tree with `tools/check-release.sh` (no test hooks), and packs the export plus its `build/` into `spawn-<version>.tar.gz`
    (sorted, uid 0, mtime = commit time, `gzip -n`).
 3. Creates or updates the `.gh-pages/` git worktree (orphan `gh-pages` branch on first use). A local run fast-forwards from `origin/gh-pages`; a `--push` run starts from exactly `origin/gh-pages`, discarding (and listing) any local commits that were never pushed, so a test build can never be published.
 4. For each of Fedora 43, 44, 45:
@@ -265,4 +265,4 @@ machine or a YubiKey, both outside GitHub and not in an Actions secret, so that 
 1. (Closed in 1.2.0.) Releases are built with `tools/build.sh --release`: the developer test code (`ui/devHooks`, `dev/benchmark`, the `Dev`
    and `Ui` D-Bus interfaces) is replaced by empty stubs from `build-aux/release-stubs/` before compiling, and the `dev-mode` key is dropped from the
    packaged schema, so neither the zip nor the RPM contains the hooks and no setting can switch them on. `tools/check-release.sh` (run by
-   `npm test` and CI) fails when a release artefact contains them; run `tools/check-release.sh <zip|extension dir>` on a finished package to check it.
+   `npm test`, CI and `publish.sh` on the tree it packs) fails when a release artefact contains them; run `tools/check-release.sh <zip|extension dir>` on a finished package to check it.
