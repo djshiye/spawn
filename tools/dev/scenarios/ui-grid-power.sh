@@ -39,8 +39,12 @@ echo "-- Menu style in Grid"
 close_menu
 dconf write $K/power-display-style "'Menu'"
 sleep 1.5; open_menu 1.5
-expect "Menu style: 'Power Off' label at its natural width (not ellipsised)" \
-    "$(width "$(ui_call TextRect 'Power Off' 0 | unwrap)")" "$natural"
+bar="$(width "$(rect spawn-power-bar 0)")"
+label="$(width "$(ui_call TextRect 'Power Off' 0 | unwrap)")"
+echo "bar $bar px, label $label px (Classic natural $natural px)"
+# the bar must be wider than the old fixed 56 px and hold the whole label plus the 24 px surface padding
+check "Menu style: the bar is wider than 56 px ($bar px)" "$([ "$bar" -gt 56 ] && echo 0 || echo 1)"
+check "Menu style: the bar holds the 'Power Off' label ($label px) and the 24 px padding ($bar px)" "$([ "$bar" -ge $(( label + 24 )) ] && echo 0 || echo 1)"
 screenshot grid-power-menu
 
 close_menu

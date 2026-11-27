@@ -1,9 +1,11 @@
 # Tile names under multi-lined-labels: a long name wraps onto a second line at normal scale (the label is always two
 # lines tall, so short and long names give tiles of one height), in the Classic pinned grid, the Grid layout's pinned
-# grid and All apps, and a folder card. Wants the realistic app set (long.name.one, "Visual Studio Code", ...).
+# grid and All apps, and a folder card. The long name is a custom command, so any app set works; the checks on "Visual Studio Code" need the realistic set and
+# are skipped without it.
 # Screenshots: tile-labels-*.png.
 K=/org/gnome/shell/extensions/spawn
 LONG='International Business Communications Suite Professional Edition'
+CMD="{'id': 'echo hi', 'name': '$LONG', 'icon': 'utilities-terminal'}"
 F1=7d1c5a0e-2b4f-4a86-9c3d-0e5f6a7b8c91
 
 # lab <text> [nth]: "height lines" of the label with that text
@@ -29,9 +31,9 @@ labels_ok() {
 }
 
 leave_overview
-dconf write $K/pinned-apps "[{'id': 'long.name.one.desktop'}, {'id': 'Zoom.desktop'}, {'id': 'code.desktop'}, {'id': 'org.gnome.Loupe.desktop'}, {'id': 'org.libreoffice.Writer.desktop'}, {'id': 'org.mozilla.firefox.desktop'}, {'id': '$F1', 'name': 'Long folder name for the test', 'isFolder': 'true'}]"
+dconf write $K/pinned-apps "[$CMD, {'id': 'Zoom.desktop'}, {'id': 'code.desktop'}, {'id': 'org.gnome.Loupe.desktop'}, {'id': 'org.libreoffice.Writer.desktop'}, {'id': 'org.mozilla.firefox.desktop'}, {'id': '$F1', 'name': 'Long folder name for the test', 'isFolder': 'true'}]"
 dconf write $K/folders/$F1/name "'Long folder name for the test'"
-dconf write $K/folders/$F1/pinned-apps "[{'id': 'long.name.one.desktop'}, {'id': 'Zoom.desktop'}, {'id': 'code.desktop'}]"
+dconf write $K/folders/$F1/pinned-apps "[$CMD, {'id': 'Zoom.desktop'}, {'id': 'code.desktop'}]"
 dconf write $K/multi-lined-labels true
 
 echo "-- Classic, pinned apps as a grid"
@@ -41,7 +43,8 @@ sleep 1.5
 open_menu 1.5
 labels_ok "classic grid" "$LONG" Zoom
 read -r h l <<<"$(lab 'Visual Studio Code')"
-check "classic grid: Visual Studio Code is not cut to one line ($l lines)" "$([ "$l" = 2 ] && echo 0 || echo 1)"
+if [ "$h" = 0 ]; then echo "skip classic grid: Visual Studio Code (not in this app set)"
+else check "classic grid: Visual Studio Code is not cut to one line ($l lines)" "$([ "$l" = 2 ] && echo 0 || echo 1)"; fi
 read -r h l <<<"$(lab 'Long folder name for the test')"
 check "classic grid: a long folder name wraps too ($l lines)" "$([ "$l" = 2 ] && echo 0 || echo 1)"
 screenshot tile-labels-classic
