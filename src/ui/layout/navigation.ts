@@ -313,8 +313,13 @@ export class Navigator {
             const loc = this.locate(groups, global.stage.key_focus as Clutter.Actor | null);
             const current = loc ? groups.indexOf(loc.group) : -1;
             const n = groups.length;
-            if (n > 0)
+            // Focus outside the popup (it was opened with the pointer): Tab starts on the apps, Shift+Tab on the header.
+            if (n > 0 && !loc) {
+                const apps = groups.find(g => g.id === 'folder') ?? groups[0];
+                this.focusItem(delta > 0 ? apps : groups.find(g => g.id === 'header') ?? groups[n - 1], 'first');
+            } else if (n > 0) {
                 this.focusItem(groups[((current + delta) % n + n) % n], 'first');
+            }
             return;
         }
         const panes: Array<() => boolean> = [];

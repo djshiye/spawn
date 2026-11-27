@@ -117,3 +117,19 @@ key Escape 0.6
 expect_state "Escape closes it" layout.view pinned
 check "Escape gives the keyboard back to the folder (focus: $(focus_cls))" "$(focus_cls | grep -q spawn-folder-row && echo 0 || echo 1)"
 set_display Grid
+
+echo "-- Tab in a folder opened with the pointer starts on its first app, Shift+Tab on the header (U9)"
+close_menu; open_menu 1.5
+click_class spawn-folder-tile 1
+sleep 0.6
+expect_state "Games folder open for Tab" layout.view folder
+key Tab 0.4
+check "Tab from a pointer-opened folder: the first app (focus: $(focus_cls))" "$(focus_cls | grep -q spawn-tile && echo 0 || echo 1)"
+expect_state "...the first one" layout.focusIndex 0
+key Tab 0.4
+check "Tab again: the header (focus: $(focus_cls))" "$(focus_cls | grep -q spawn-tile && echo 1 || echo 0)"
+close_menu; open_menu 1.5
+click_class spawn-folder-tile 1
+sleep 0.6
+key ISO_Left_Tab 0.4
+check "Shift+Tab from a pointer-opened folder: the header (focus: $(focus_cls))" "$(focus_cls | grep -q spawn-tile && echo 1 || echo 0)"
