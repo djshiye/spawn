@@ -119,11 +119,16 @@ export class Navigator {
         return true;
     }
 
+    /** Index of the selected (:checked) category button, 0 when none is checked. */
+    private _checkedCategory(cats: Group): number {
+        return Math.max(0, cats.items.findIndex(c => (c as St.Widget).has_style_pseudo_class('checked')));
+    }
+
     focusMain(last = false): void {
         const cats = this._src.categoryGroup();
         if (cats && !last && cats.items.length > 0) {
             // All apps with a category column: start on the selected category.
-            this.focusItem(cats, Math.max(0, cats.items.findIndex(c => (c as St.Widget).has_style_pseudo_class('checked'))));
+            this.focusItem(cats, this._checkedCategory(cats));
             return;
         }
         const groups = this._src.mainGroups().filter(g => g.items.length > 0);
@@ -233,7 +238,7 @@ export class Navigator {
                 return true;
             }
             if (cats && group.id === 'apps')
-                return this.focusItem(cats, Math.max(0, cats.items.findIndex(c => (c as St.Widget).has_style_pseudo_class('checked'))));
+                return this.focusItem(cats, this._checkedCategory(cats));
             return true;
         };
 
@@ -316,7 +321,7 @@ export class Navigator {
         const right = this._src.rightGroups().filter(g => g.items.length > 0);
         const focus = global.stage.key_focus as Clutter.Actor | null;
 
-        const add = (g: Group | null | undefined, which: 'first' | 'last' = 'first') => {
+        const add = (g: Group | null | undefined, which: 'first' | 'last' | number = 'first') => {
             if (!g || !g.items.length)
                 return;
             // Into the search results: the highlighted one.
@@ -331,7 +336,8 @@ export class Navigator {
             add(nav);
         if (linksTop)
             add(links);
-        add(cats, 'first');
+        if (cats)
+            add(cats, this._checkedCategory(cats));
         for (const g of main)
             add(g);
         if (!linksTop)

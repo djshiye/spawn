@@ -45,3 +45,18 @@ key ISO_Left_Tab 0.3
 expect "Shift+Tab from the entry: the power buttons" "$(cls)" "spawn-power-button"
 close_menu
 dconf reset $K/search-entry-location
+
+echo "-- Tab / Shift+Tab into the category column keeps the selected category (U1)"
+reset_seed
+open_menu 1.2
+ui_call ShowView categories >/dev/null; sleep 0.8
+focus_class spawn-category-row 3
+picked="$(name)"
+key Right 0.4
+expect "Right from a category: its app list" "$(cls)" "spawn-list-row"
+key ISO_Left_Tab 0.4
+expect "Shift+Tab back into the column: the selected category" "$(name)" "$picked"
+key Tab 0.4
+key ISO_Left_Tab 0.4
+expect "Tab then Shift+Tab: still the selected category" "$(name)" "$picked"
+close_menu
