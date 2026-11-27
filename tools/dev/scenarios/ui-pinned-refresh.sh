@@ -26,6 +26,16 @@ check "the tile shows the second name" "$(has_text 'Second name')"
 check "the first name is gone" "$([ "$(has_text 'First name')" = 1 ] && echo 0 || echo 1)"
 close_menu
 
+echo "-- the same command pinned twice with different names"
+dconf write "${K}pinned-apps" "[{'id': 'echo hi', 'name': 'Twin A', 'icon': 'utilities-terminal'}, {'id': 'echo hi', 'name': 'Twin B', 'icon': 'utilities-terminal'}]"
+sleep 1; open_menu 1.5
+check "the duplicate command shows one tile" "$(has_text 'Twin A')"
+dconf write "${K}pinned-apps" "[{'id': 'echo hi', 'name': 'Twin C', 'icon': 'utilities-terminal'}, {'id': 'echo hi', 'name': 'Twin D', 'icon': 'utilities-terminal'}]"
+wait_text "Twin C" 5
+check "the duplicate command follows an edit" "$(has_text 'Twin C')"
+check "no disposed-object errors in the log" "$(grep -qi 'disposed' "$log" 2>/dev/null && echo 1 || echo 0)"
+close_menu
+
 echo "-- an app is updated while it is pinned"
 printf '[Desktop Entry]\nType=Application\nName=Zqxupd Before\nExec=/usr/bin/true\nIcon=application-x-executable\nCategories=Utility;\n' >"$apps/zqxupd.desktop"
 sleep 6  # the GMenu tree reloads 1-2.5 s after the file changes

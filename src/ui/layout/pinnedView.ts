@@ -331,7 +331,7 @@ export class PinnedView {
                 const name = app ? displayName(app, settings, generic) : '';
                 const sig = `${name}\n${app?.get_icon()?.to_string() ?? ''}`;
                 const existing = this.entries.get(key);
-                if (existing && (!app || stale(key, existing, sig)))
+                if (existing && (!app || keep.has(key) || stale(key, existing, sig)))
                     return {key, entry: existing};
                 if (!app)
                     return {key, entry: ghost(item.id, key)};
@@ -366,7 +366,9 @@ export class PinnedView {
                 const shownName = builtin?.name || item.entry.name || id;
                 const shownIcon = builtin?.icon || item.entry.icon || 'application-x-executable';
                 const sig = `${shownName}\n${shownIcon}`;
-                const existing = stale(key, this.entries.get(key), sig);
+                const cached = this.entries.get(key);
+                // A key already placed in this sync is reused as it is: rebuilding it would destroy the tile just handed to the grid.
+                const existing = keep.has(key) ? cached : stale(key, cached, sig);
                 if (existing)
                     return {key, entry: existing};
                 const {scope, release} = ownedScope(this._scope, key);
