@@ -86,7 +86,7 @@ test('a sniff that never answers gives up with timeout', () => {
 });
 
 test('a sniff that overran is not started again while it is still stuck', () => {
-    const {scope, fs, check} = make({timeoutMs: 50});
+    const {scope, fs} = make({timeoutMs: 50});
     let sniffs = 0;
     const inner = fs.sniff;
     const counted = new IconFileCheck(scope, {query: fs.query, timeoutMs: 50, sniff: (p, c, d) => { sniffs++; inner(p, c, d); }});
