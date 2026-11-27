@@ -827,10 +827,11 @@
     spacing: 0;
 }
 
-/* 8 (pane) + 134 (the column) + 6 (4 + the separator's 2 px margin, now the rows' own) */
+/* 8 (pane) + 134 (the column) + 6 (4 + the separator's 2 px margin, now the rows' own) at least; the column takes the
+ * width of its longest name up to 184 px (Adwaita Sans is wider than Cantarell: "Sound & Video" needs ~150 px). */
 .spawn-category-column {
     min-width: 148px;
-    max-width: 148px;
+    max-width: 184px;
 }
 
 .spawn-category-column-box {
