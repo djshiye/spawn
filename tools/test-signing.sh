@@ -135,9 +135,11 @@ rm "$tmp/repo/zz-unsigned.rpm"
 echo "== repo file"
 signing_write_repo_file "$tmp/spawn.repo" "https://example.invalid/spawn" 1
 grep -qx 'gpgcheck=1' "$tmp/spawn.repo" && grep -qx 'repo_gpgcheck=1' "$tmp/spawn.repo" \
-    && grep -qx 'gpgkey=https://example.invalid/spawn/RPM-GPG-KEY-spawn' "$tmp/spawn.repo" && ok "signed spawn.repo"
+    && grep -qx 'gpgkey=https://example.invalid/spawn/RPM-GPG-KEY-spawn' "$tmp/spawn.repo" \
+    && grep -qx 'skip_if_unavailable=True' "$tmp/spawn.repo" && ok "signed spawn.repo" || { echo "  FAIL signed spawn.repo" >&2; exit 1; }
 signing_write_repo_file "$tmp/spawn.repo" "https://example.invalid/spawn" 0
-grep -qx 'gpgcheck=0' "$tmp/spawn.repo" && ! grep -q repo_gpgcheck "$tmp/spawn.repo" && ok "unsigned spawn.repo"
+grep -qx 'gpgcheck=0' "$tmp/spawn.repo" && ! grep -q repo_gpgcheck "$tmp/spawn.repo" \
+    && grep -qx 'skip_if_unavailable=True' "$tmp/spawn.repo" && ok "unsigned spawn.repo" || { echo "  FAIL unsigned spawn.repo" >&2; exit 1; }
 
 echo
 echo "PASS: $pass checks"

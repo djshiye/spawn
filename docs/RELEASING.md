@@ -105,7 +105,7 @@ What it does, in order:
 
    The dnf cache is `~/.cache/spawn-publish/dnf-N`.
 5. With a key: verifies every package and every `repomd.xml.asc` once more against the exported public key file and fails if anything is unsigned.
-   Then writes `spawn.repo` (`gpgcheck=1`, `repo_gpgcheck=1`, `gpgkey=https://djshiye.github.io/spawn/RPM-GPG-KEY-spawn`; `gpgcheck=0` only while no key exists,
+   Then writes `spawn.repo` (`gpgcheck=1`, `repo_gpgcheck=1`, `gpgkey=https://djshiye.github.io/spawn/RPM-GPG-KEY-spawn`, `skip_if_unavailable=True`; `gpgcheck=0` only while no key exists,
    `baseurl=https://djshiye.github.io/spawn/fedora-$releasever/`), `RPM-GPG-KEY-spawn`, `index.html` (with the fingerprint), `icon.svg`, `.nojekyll`
    and commits them to `gh-pages` as Dino Klisura (`GIT_AUTHOR_*`/`GIT_COMMITTER_*` set explicitly, no trailers).
 6. With `--push`: `git push origin main`, then `git -C .gh-pages push origin gh-pages` (a plain, non-forced push; on the very first publish this creates the remote `gh-pages` branch).

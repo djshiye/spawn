@@ -204,6 +204,8 @@ gpgcheck=1
 repo_gpgcheck=1
 gpgkey=$url/RPM-GPG-KEY-spawn
 metadata_expire=1h
+# If this site is unreachable or has no packages for your Fedora release yet, dnf skips Spawn instead of stopping.
+skip_if_unavailable=True
 REPO
     else
         cat >"$file" <<REPO
@@ -214,6 +216,7 @@ enabled=1
 # The packages are built locally and are NOT signed yet.
 gpgcheck=0
 metadata_expire=1h
+skip_if_unavailable=True
 REPO
     fi
 }
