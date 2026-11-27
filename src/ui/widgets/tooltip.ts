@@ -15,6 +15,8 @@
 //                                            opts.delay: hover delay in ms (default 450; the
 //                                            icon-only power buttons use 200);
 //                                            opts.above: prefer above the widget (power bar)
+//                                            opts.beside: in the widget's own row, after its face (before it in
+//                                            right-to-left), centred on it (a heading with content right below it)
 //   tooltips.hide()
 
 import Clutter from 'gi://Clutter';
@@ -36,6 +38,8 @@ export interface TooltipOptions {
     delay?: number;
     /** Show above the widget instead of below (the power bar sits on the menu's bottom edge). */
     above?: boolean;
+    /** Show beside the widget, in its own row (right of its face; left in right-to-left), so what is below stays readable. */
+    beside?: boolean;
 }
 
 export class TooltipManager {
@@ -102,11 +106,11 @@ export class TooltipManager {
             if (!text && label && isTruncated(label))
                 text = label.text;
             if (text)
-                this._show(widget, text, !!opts.above, !extra && label && isTruncated(label) ? label : null);
+                this._show(widget, text, !!opts.above, !!opts.beside, !extra && label && isTruncated(label) ? label : null);
         });
     }
 
-    private _show(widget: St.Widget, text: string, above: boolean, truncated: St.Label | null): void {
+    private _show(widget: St.Widget, text: string, above: boolean, beside: boolean, truncated: St.Label | null): void {
         if (!this._label) {
             this._label = new St.Label({style_class: 'dash-label spawn-tooltip', visible: false});
             // the full text: wrapped, never cut off with an ellipsis of its own
@@ -139,14 +143,25 @@ export class TooltipManager {
             const below = Math.floor(y + h + 4);
             const over = Math.floor(y - natH - 4);
             let ty = above ? over : below;
-            if (monitor) {
+            let placed = false;
+            if (beside) {
+                const rtl = widget.get_text_direction() === Clutter.TextDirection.RTL;
+                const sx = Math.floor(rtl ? x - natW - 4 : x + w + 4);
+                // fits on the monitor: sit in the heading's row; otherwise the normal below / above rule
+                if (!monitor || (sx >= monitor.x + 4 && sx + natW <= monitor.x + monitor.width - 4)) {
+                    tip.set_position(sx, Math.floor(y + (h - natH) / 2));
+                    placed = true;
+                }
+            }
+            if (!placed && monitor) {
                 tx = Math.max(monitor.x + 4, Math.min(tx, monitor.x + monitor.width - natW - 4));
                 if (above && ty < monitor.y + 4)
                     ty = below;
                 else if (!above && ty + natH > monitor.y + monitor.height - 4)
                     ty = over;
             }
-            tip.set_position(tx, ty);
+            if (!placed)
+                tip.set_position(tx, ty);
         }
         tip.opacity = 0;
         tip.ease({opacity: 255, duration: animationDuration(120), mode: Clutter.AnimationMode.EASE_OUT_QUAD});

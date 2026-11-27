@@ -360,7 +360,7 @@ export class GridAllApps {
             const label = new St.Label({text: letter, style_class: 'spawn-grid-letter-label'});
             heading.set_child(makeFace('spawn-nav-surface spawn-grid-letter-face', label));
             nameItem(heading, _('%s, jump to letter').format(letterName(letter)));
-            this._deps.tooltips.attach(heading, null, () => _('Jump to letter'));
+            this._deps.tooltips.attach(heading, null, () => _('Jump to letter'), {beside: true});
             wireItem(heading, {activate: () => this._openPicker(group, heading)});
             group.heading = heading;
             box.add_child(heading);
