@@ -64,6 +64,7 @@ main() {
         git pull -q --ff-only origin main || fail "main could not be fast-forwarded from GitHub; reconcile it by hand"
         if [ "$(git hash-object "$0")" != "$before" ]; then
             ok "release.sh itself was updated; running the new version"
+            rm -rf "$work"   # exec skips the EXIT trap; the new run makes its own
             exec "$0" "$@" --already-pulled
         fi
     fi
