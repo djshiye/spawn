@@ -264,6 +264,19 @@ test('postfix: factorial, degrees, powers, roots', () => {
 });
 
 test('functions without brackets', () => {
+    assertEquals(calculate('sin 2pi').text, '0');
+    assertEquals(calculate('sin 2 pi').text, '0');
+    assertEquals(calculate('sin -2pi').text, '0');
+    assertEquals(calculate('cos 2pi').text, '1');
+    assertEquals(calculate('tan 2tau').text, '0');
+    assertEquals(calculate('sin 2π').text, '0');
+    assert(near(ev('sqrt 2pi'), Math.sqrt(2 * Math.PI)));
+    assert(near(ev('√2pi'), Math.sqrt(2 * Math.PI)));
+    assert(near(ev('log 2 pi'), Math.log10(2 * Math.PI)));
+    // what stays outside the bare operand
+    assert(near(ev('sqrt 2 sqrt 2'), 2));
+    assert(near(ev('sin 2(3)'), Math.sin(2) * 3));
+    assertEquals(ev('ln 2e'), null);
     assertEquals(ev('sqrt 16'), 4);
     assertEquals(ev('sqrt 16 + 9'), 13);
     assertEquals(ev('max 3'), null); // several-value functions need their brackets: "max 3" may be a name

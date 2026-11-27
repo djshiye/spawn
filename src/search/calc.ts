@@ -529,6 +529,13 @@ class Parser {
         return r;
     }
 
+    /** A constant (not e) written straight after a number: "2pi" is one value even as a bare function argument. */
+    private _constantJoins(): boolean {
+        const t = this._peek();
+        const prev = this._tokens[this._i - 1];
+        return t?.t === 'id' && t.v !== 'e' && Object.hasOwn(CONSTANTS, t.v) && prev?.t === 'num';
+    }
+
     private _percentFollows(at: number): boolean {
         const n = this._tokens[at];
         if (!n)
@@ -586,8 +593,15 @@ class Parser {
             if (fn.max === Infinity)
                 fail('function needs (');
             this._enter();
-            args.push(this._unary().v);
+            let v = this._unary().v;
+            // "sin 2pi" is sin(2π): a number written against a constant is one value, as on paper.
+            if (this._constantJoins()) {
+                this.operations++;
+                v *= this._unary().v;
+                check(v);
+            }
             this._leave();
+            args.push(v);
         }
         if (args.length < fn.min || args.length > fn.max)
             fail('wrong number of arguments');
