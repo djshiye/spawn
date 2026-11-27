@@ -17,9 +17,14 @@
 // for hibernate / hybrid sleep, so buttons the system cannot perform are hidden.
 //
 // Public API:
-//   new PowerBar(scope: Scope, settings: SpawnSettings, host: ShortcutHost)
+//   new PowerBar(scope: Scope, settings: SpawnSettings, host: ShortcutHost, onResize?: () => void)
+//                                    onResize: the owner sizes the bar (the Grid footer); called when the style or the number
+//                                    of buttons the bar wants to show changed (settings, session probe, system actions),
+//                                    never from the width-driven fit
 //   bar.actor: St.Widget
 //   bar.buttons(): St.Widget[]       visible, focusable buttons in order (for keyboard nav)
+//   bar.isMenuStyle(): boolean       the one "Power Off" button with a list?
+//   bar.wantedSlots(): number        buttons the row wants to show (available and enabled, before fitting; "More" not counted)
 //   bar.destroy()
 
 import Clutter from 'gi://Clutter';
@@ -70,9 +75,12 @@ export class PowerBar {
     private _avail: number[] = [];
     private _fit: PowerFit | null = null;
     private _sig = '';
+    private _sizeKey = '';
     private _laterId = 0;
+    private readonly _onResize?: () => void;
 
-    constructor(scope: Scope, settings: SpawnSettings, host: ShortcutHost) {
+    constructor(scope: Scope, settings: SpawnSettings, host: ShortcutHost, onResize?: () => void) {
+        this._onResize = onResize;
         this._scope = scope;
         this._settings = settings;
         this._host = host;
@@ -152,6 +160,7 @@ export class PowerBar {
         this._buttons.length = 0;
         this._fit = null;
         this._sig = '';
+        this._sizeKey = '';
         this._row.remove_style_class_name('spawn-power-compact');
         for (const c of this._row.get_children())
             c.destroy();
@@ -292,10 +301,25 @@ export class PowerBar {
         if (this._menuButton) {
             this._menuButton.visible = this._enabledTypes().some(available);
             this._markEnds();
-            return;
+        } else {
+            this._avail = this._enabledTypes().filter(t => POWER_INFO[t] && available(t));
+            this._layout();
         }
-        this._avail = this._enabledTypes().filter(t => POWER_INFO[t] && available(t));
-        this._layout();
+        const key = `${this._menuButton ? 'menu' : 'row'}|${this.wantedSlots()}`;
+        if (key !== this._sizeKey) {
+            this._sizeKey = key;
+            this._onResize?.();
+        }
+    }
+
+    /** Menu style (one "Power Off" button with a list)? */
+    isMenuStyle(): boolean {
+        return this._menuButton !== null;
+    }
+
+    /** Buttons the row wants to show (available and enabled, before fitting; "More" not counted). */
+    wantedSlots(): number {
+        return this._menuButton ? (this._menuButton.visible ? 1 : 0) : this._avail.length;
     }
 
     /** Coalesced, outside the allocation cycle: the row's width changed. */

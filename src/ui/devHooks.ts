@@ -26,6 +26,11 @@
 //   Pseudo(s cls, i nth) -> s  the style pseudo classes of that actor ("hover active ..."), '' when absent
 //   TextRect(s text, i nth) -> s   JSON [x, y, w, h] of the nth VISIBLE St.Label whose text is exactly `text`
 //                            (a context menu item such as "Hide from Menu"), or ""
+//   TextLines(s text, i nth) -> i  how many lines the nth visible St.Label with exactly `text` lays out (0: none found)
+//   IconSize(s cls, i nth) -> s  JSON [w, h]: the content box (allocation without padding) of the first St.Icon inside the nth
+//                            visible actor with `cls`, i.e. how big its picture is drawn (the user avatar's glyph), or ""
+//   Truncated(s cls, i nth) -> s  JSON: the texts of the visible St.Labels inside the nth visible actor with `cls` that are
+//                            cut off with an ellipsis (category names that do not fit their column)
 //   FocusActor(s cls, i nth) give the nth visible actor with `cls` the keyboard focus
 //   MenuItems(s cls) -> s    JSON: the items of the visible menu whose actor carries `cls` (e.g. spawn-button-menu):
 //                            [{kind: 'item'|'separator'|'submenu', label, visible, open?, items?}]
@@ -81,6 +86,7 @@ import type {SpawnSettings} from '../core/settings.js';
 import type {AppIndex} from '../model/appIndex.js';
 import type {FakePlace} from '../model/places.js';
 import type {SpawnPopup} from './menu.js';
+import {isTruncated} from './util.js';
 
 const PATH = '/io/github/djshiye/Spawn/Ui';
 const IFACE = `
@@ -102,6 +108,9 @@ const IFACE = `
     <method name="ClipboardText"><arg type="s" direction="out" name="text"/></method>
     <method name="Count"><arg type="s" direction="in" name="cls"/><arg type="i" direction="out" name="count"/></method>
     <method name="TextRect"><arg type="s" direction="in" name="text"/><arg type="i" direction="in" name="nth"/><arg type="s" direction="out" name="rect"/></method>
+    <method name="TextLines"><arg type="s" direction="in" name="text"/><arg type="i" direction="in" name="nth"/><arg type="i" direction="out" name="lines"/></method>
+    <method name="IconSize"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/><arg type="s" direction="out" name="size"/></method>
+    <method name="Truncated"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/><arg type="s" direction="out" name="json"/></method>
     <method name="FocusActor"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/></method>
     <method name="MenuItems"><arg type="s" direction="in" name="cls"/><arg type="s" direction="out" name="json"/></method>
     <method name="Windows"><arg type="s" direction="out" name="json"/></method>
@@ -563,6 +572,41 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
         TextRectAsync: ([text, nth]: [string, number], inv: Invocation) => reply(inv, () => {
             const a = findText(text)[nth];
             return new GLib.Variant('(s)', [a ? JSON.stringify(rectOf(a)) : '']);
+        }),
+        IconSizeAsync: ([cls, nth]: [string, number], inv: Invocation) => reply(inv, () => {
+            const find = (a: Clutter.Actor): St.Icon | null => {
+                if (a instanceof St.Icon)
+                    return a;
+                for (const c of a.get_children()) {
+                    const f = find(c);
+                    if (f)
+                        return f;
+                }
+                return null;
+            };
+            const a = findAll(cls)[nth];
+            const icon = a ? find(a) : null;
+            const box = icon?.get_theme_node().get_content_box(icon.get_allocation_box());
+            return new GLib.Variant('(s)', [box ? JSON.stringify([Math.round(box.get_width()), Math.round(box.get_height())]) : '']);
+        }),
+        TruncatedAsync: ([cls, nth]: [string, number], inv: Invocation) => reply(inv, () => {
+            const cut: string[] = [];
+            const walk = (a: Clutter.Actor) => {
+                if (!a.visible)
+                    return;
+                if (a instanceof St.Label && isTruncated(a))
+                    cut.push(a.text);
+                for (const c of a.get_children())
+                    walk(c);
+            };
+            const root = findAll(cls)[nth];
+            if (root)
+                walk(root);
+            return new GLib.Variant('(s)', [JSON.stringify(cut)]);
+        }),
+        TextLinesAsync: ([text, nth]: [string, number], inv: Invocation) => reply(inv, () => {
+            const a = findText(text)[nth] as St.Label | undefined;
+            return new GLib.Variant('(i)', [a ? a.clutter_text.get_layout().get_line_count() : 0]);
         }),
         PseudoAsync: ([cls, nth]: [string, number], inv: Invocation) => reply(inv, () => {
             const a = findAll(cls)[nth] as unknown as {get_style_pseudo_class?: () => string | null} | undefined;

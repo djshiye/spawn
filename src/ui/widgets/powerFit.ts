@@ -10,6 +10,7 @@
 // Public API:
 //   fitPowerRow(width, types): PowerFit   `types` already in rank order
 //   OVERFLOW_ORDER: readonly number[]     power types in the order they move into "More"
+//   gridPowerWidth(slots, menuStyle): number   width the Grid footer gives the bar (48n + 8), -1 = natural (Menu style)
 
 import {PowerType} from '../../core/constants.js';
 
@@ -67,4 +68,12 @@ export function fitPowerRow(width: number, types: number[]): PowerFit {
         mode: 'overflow', surface, gap: COMPACT_GAP,
         visible: types.filter(t => !hide.has(t)), overflow: types.filter(t => hide.has(t)), slots: k,
     };
+}
+
+/** Width the Grid footer gives the power bar: what `slots` buttons need at normal spacing (48n + 8, at least
+ *  one slot), or -1 (natural width) for the Menu style's single labelled button. */
+export function gridPowerWidth(slots: number, menuStyle: boolean): number {
+    if (menuStyle)
+        return -1;
+    return 48 * Math.max(1, slots) + 8;
 }

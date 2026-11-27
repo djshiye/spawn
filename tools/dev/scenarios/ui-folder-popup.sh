@@ -74,7 +74,8 @@ screenshot folder-popup/grid-dark-multiline
 key Escape 0.6
 ui_call OpenFolder 1 >/dev/null; sleep 0.9
 h="$(ui_call TextRect 'Heroic Games Launcher' 0 | unwrap | python3 -c 'import json,sys; print(round(json.loads(sys.stdin.read())[3]))')"
-check "a long name wraps onto a second line (label height $h px)" "$([ "${h:-0}" -ge 28 ] && echo 0 || echo 1)"
+lines="$(ui_call TextLines 'Heroic Games Launcher' 0 | tr -dc '0-9')"
+check "a long name wraps onto a second line (label height $h px, $lines lines)" "$([ "${h:-0}" -ge 28 ] && [ "$lines" = 2 ] && echo 0 || echo 1)"
 screenshot folder-popup/grid-dark-multiline-games
 key Escape 0.6
 dconf reset $K/multi-lined-labels

@@ -132,6 +132,15 @@ export class SpawnPopup {
         this._intellihide = createIntellihideHold(scope.child('intellihide'));
         this._fullscreen = createFullscreenReveal(scope.child('fullscreen reveal'));
         scope.add(() => this._teardown(), 'SpawnPopup');
+        // High Contrast flipped while the menu is open: swap the outlines now, not at the next open
+        try {
+            scope.connect(St.Settings.get(), 'notify::high-contrast', () => {
+                if (this._menu)
+                    applyTone(this._menu.actor, this._menu.box);
+            });
+        } catch (e) {
+            error('high contrast watch failed', e);
+        }
         try {
             installUiDevHooks(scope.child('ui dev hooks'), services.settings, this, services.appIndex);
         } catch (e) {

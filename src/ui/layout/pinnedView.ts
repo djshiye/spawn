@@ -161,6 +161,16 @@ export class PinnedView {
                     if (this.showing())
                         this.syncIfNeeded();
                 });
+                // the dimmed "not installed" tiles take their opacity from High Contrast (see _tileSignature)
+                try {
+                    this._scope.connect(St.Settings.get(), 'notify::high-contrast', () => {
+                        this.dirty = true;
+                        if (this.showing())
+                            this.syncIfNeeded();
+                    });
+                } catch (e) {
+                    error('pinned high contrast watch failed', e);
+                }
             }
         }
         return this.scroll;
@@ -274,7 +284,8 @@ export class PinnedView {
         // (otherwise old and new sizes mix in one grid).
         // List rows are always one line (multi-lined-labels is a grid setting).
         const size = this._metrics.itemSize();
-        const signature = list ? `list${rowIconSize}|${generic}|${size}` : `grid${this._metrics.tileIconSize}|${multiLine}|${generic}|${size}`;
+        const contrast = St.Settings.get().high_contrast;
+        const signature = list ? `list${rowIconSize}|${generic}|${size}|${contrast}` : `grid${this._metrics.tileIconSize}|${multiLine}|${generic}|${size}|${contrast}`;
         if (signature !== this._tileSignature) {
             this._tileSignature = signature;
             for (const [key, entry] of [...this.entries]) {
@@ -299,7 +310,8 @@ export class PinnedView {
                 ? new ActionRow(name, 'application-x-executable', open, undefined, {...tileOpts, context: open})
                 : new ActionTile(name, 'application-x-executable', open, undefined, {...tileOpts, context: open});
             tile.actor.add_style_class_name('spawn-tile-missing');
-            tile.actor.opacity = 130;
+            // dimmed, but stay readable with GNOME's High Contrast on
+            tile.actor.opacity = St.Settings.get().high_contrast ? 225 : 130;
             // Not part of the store's visible index: refuse drops instead of letting them fall through
             // to the list's append-at-end target.
             rejectDrops(scope, tile.actor);

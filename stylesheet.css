@@ -224,6 +224,17 @@
     box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
 }
 
+/* The shell theme pads the placeholder glyph (`.user-icon StIcon`, 12 px) for its own 64 px avatar, which leaves 16 px of
+ * glyph in 40 px and 8 px in the Grid footer's 32 px circle. A quarter of the circle on every side makes the glyph half
+ * the circle at both sizes, like GNOME's own menus. */
+.spawn-avatar-box .user-icon.spawn-avatar StIcon {
+    padding: 10px;
+}
+
+.spawn-grid-footer .spawn-avatar-box .user-icon.spawn-avatar StIcon {
+    padding: 8px;
+}
+
 /* the shell's placeholder avatar (no photo) is white on near-white in light themes: a visible disc */
 .spawn-light .spawn-avatar-box .user-icon.spawn-avatar {
     background-color: rgba(0, 0, 0, 0.16);
@@ -542,13 +553,8 @@
     padding: 0 2px;
 }
 
-/* multi-lined-labels: at most two lines, then an ellipsis. Clutter.Text measures a wrapped AND ellipsized
- * label as one line (Pango's default height), so the label gets two lines of room up front; it then wraps
- * and ellipsizes to that allocation. Every tile in a row keeps the same height that way. */
-.spawn-tile-label-multi {
-    min-height: 2.5em;
-    max-height: 2.5em;
-}
+/* multi-lined-labels: the label is a TwoLineLabel (ui/widgets/tileLabel.ts) that reports exactly two lines of
+ * height whatever the font and scale, so no fixed height is set here. */
 
 .spawn-folder-plate {
     border-radius: 12px;
@@ -821,10 +827,11 @@
     spacing: 0;
 }
 
-/* 8 (pane) + 134 (the column) + 6 (4 + the separator's 2 px margin, now the rows' own) */
+/* 8 (pane) + 134 (the column) + 6 (4 + the separator's 2 px margin, now the rows' own) at least; the column takes the
+ * width of its longest name up to 184 px (Adwaita Sans is wider than Cantarell: "Sound & Video" needs ~150 px). */
 .spawn-category-column {
     min-width: 148px;
-    max-width: 148px;
+    max-width: 184px;
 }
 
 .spawn-category-column-box {
@@ -1593,4 +1600,182 @@
 
 .spawn-light .spawn-grid-card .spawn-category-row:checked .spawn-row-surface {
     color: rgba(0, 0, 0, 0.87);
+}
+
+/* ---- High contrast (GNOME Settings > Accessibility > High Contrast) ----
+ * ui/util.ts applyTone() puts `spawn-hc` next to `spawn-light` on the menu, the context menus and the runner while the
+ * switch is on. Outlines are inset box-shadows, so nothing changes size. Hover is a 2 px outline at 60 %, a selected / checked item
+ * 2 px at 85 %, keyboard focus a solid 3 px one; every rule sits under `.spawn-hc`, which also beats the theme module's
+ * accent and custom colours. */
+.spawn-hc .spawn-pinned-row:hover .spawn-row-surface,
+.spawn-hc .spawn-list-row:hover .spawn-row-surface,
+.spawn-hc .spawn-category-row:hover .spawn-row-surface,
+.spawn-hc .spawn-result-row:hover .spawn-row-surface,
+.spawn-hc .spawn-shortcut-row:hover .spawn-row-surface,
+.spawn-hc .spawn-tile:hover .spawn-tile-surface,
+.spawn-hc .spawn-user-card:hover .spawn-card-surface,
+.spawn-hc .spawn-nav-button:hover .spawn-nav-surface,
+.spawn-hc .spawn-power-button:hover .spawn-power-surface,
+.spawn-hc .spawn-row:hover {
+    background-color: rgba(255, 255, 255, 0.14);
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.6);
+}
+
+.spawn-hc .spawn-pinned-row:selected .spawn-row-surface,
+.spawn-hc .spawn-list-row:selected .spawn-row-surface,
+.spawn-hc .spawn-category-row:selected .spawn-row-surface,
+.spawn-hc .spawn-result-row:selected .spawn-row-surface,
+.spawn-hc .spawn-shortcut-row:selected .spawn-row-surface,
+.spawn-hc .spawn-tile:selected .spawn-tile-surface,
+.spawn-hc .spawn-user-card:selected .spawn-card-surface,
+.spawn-hc .spawn-nav-button:selected .spawn-nav-surface,
+.spawn-hc .spawn-power-button:selected .spawn-power-surface,
+.spawn-hc .spawn-row:selected,
+.spawn-hc .spawn-pinned-row:checked .spawn-row-surface,
+.spawn-hc .spawn-list-row:checked .spawn-row-surface,
+.spawn-hc .spawn-category-row:checked .spawn-row-surface,
+.spawn-hc .spawn-result-row:checked .spawn-row-surface,
+.spawn-hc .spawn-shortcut-row:checked .spawn-row-surface,
+.spawn-hc .spawn-tile:checked .spawn-tile-surface,
+.spawn-hc .spawn-user-card:checked .spawn-card-surface,
+.spawn-hc .spawn-nav-button:checked .spawn-nav-surface,
+.spawn-hc .spawn-power-button:checked .spawn-power-surface,
+.spawn-hc .spawn-row:checked {
+    background-color: rgba(255, 255, 255, 0.22);
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85);
+}
+
+.spawn-hc .spawn-pinned-row:focus .spawn-row-surface,
+.spawn-hc .spawn-list-row:focus .spawn-row-surface,
+.spawn-hc .spawn-category-row:focus .spawn-row-surface,
+.spawn-hc .spawn-result-row:focus .spawn-row-surface,
+.spawn-hc .spawn-shortcut-row:focus .spawn-row-surface,
+.spawn-hc .spawn-tile:focus .spawn-tile-surface,
+.spawn-hc .spawn-user-card:focus .spawn-card-surface,
+.spawn-hc .spawn-nav-button:focus .spawn-nav-surface,
+.spawn-hc .spawn-power-button:focus .spawn-power-surface,
+.spawn-hc .spawn-row:focus {
+    background-color: rgba(255, 255, 255, 0.22);
+    box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 1);
+}
+
+/* light shell themes: black on white */
+.spawn-light.spawn-hc .spawn-pinned-row:hover .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-list-row:hover .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-category-row:hover .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-result-row:hover .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-shortcut-row:hover .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-tile:hover .spawn-tile-surface,
+.spawn-light.spawn-hc .spawn-user-card:hover .spawn-card-surface,
+.spawn-light.spawn-hc .spawn-nav-button:hover .spawn-nav-surface,
+.spawn-light.spawn-hc .spawn-power-button:hover .spawn-power-surface,
+.spawn-light.spawn-hc .spawn-row:hover {
+    background-color: rgba(0, 0, 0, 0.14);
+    box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.6);
+}
+
+.spawn-light.spawn-hc .spawn-pinned-row:selected .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-list-row:selected .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-category-row:selected .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-result-row:selected .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-shortcut-row:selected .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-tile:selected .spawn-tile-surface,
+.spawn-light.spawn-hc .spawn-user-card:selected .spawn-card-surface,
+.spawn-light.spawn-hc .spawn-nav-button:selected .spawn-nav-surface,
+.spawn-light.spawn-hc .spawn-power-button:selected .spawn-power-surface,
+.spawn-light.spawn-hc .spawn-row:selected,
+.spawn-light.spawn-hc .spawn-pinned-row:checked .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-list-row:checked .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-category-row:checked .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-result-row:checked .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-shortcut-row:checked .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-tile:checked .spawn-tile-surface,
+.spawn-light.spawn-hc .spawn-user-card:checked .spawn-card-surface,
+.spawn-light.spawn-hc .spawn-nav-button:checked .spawn-nav-surface,
+.spawn-light.spawn-hc .spawn-power-button:checked .spawn-power-surface,
+.spawn-light.spawn-hc .spawn-row:checked {
+    background-color: rgba(0, 0, 0, 0.22);
+    box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.85);
+}
+
+.spawn-light.spawn-hc .spawn-pinned-row:focus .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-list-row:focus .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-category-row:focus .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-result-row:focus .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-shortcut-row:focus .spawn-row-surface,
+.spawn-light.spawn-hc .spawn-tile:focus .spawn-tile-surface,
+.spawn-light.spawn-hc .spawn-user-card:focus .spawn-card-surface,
+.spawn-light.spawn-hc .spawn-nav-button:focus .spawn-nav-surface,
+.spawn-light.spawn-hc .spawn-power-button:focus .spawn-power-surface,
+.spawn-light.spawn-hc .spawn-row:focus {
+    background-color: rgba(0, 0, 0, 0.22);
+    box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 1);
+}
+
+/* the cards, the search entry and the context menus: a 1 px outline */
+.spawn-hc .popup-menu-content,
+.spawn-hc .spawn-folder-popup,
+.spawn-hc .spawn-grid-card,
+.spawn-hc .spawn-search-box {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 1);
+}
+
+.spawn-light.spawn-hc .popup-menu-content,
+.spawn-light.spawn-hc .spawn-folder-popup,
+.spawn-light.spawn-hc .spawn-grid-card,
+.spawn-light.spawn-hc .spawn-search-box {
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 1);
+}
+
+.spawn-hc .spawn-search-box:focus {
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 1);
+}
+
+.spawn-light.spawn-hc .spawn-search-box:focus {
+    box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 1);
+}
+
+/* separators at full strength, dimmed texts at 90 % or more */
+.spawn-hc .spawn-separator,
+.spawn-hc .spawn-vseparator,
+.spawn-hc .spawn-power-rule,
+.spawn-hc .spawn-grid-footer-rule {
+    background-color: rgba(255, 255, 255, 1);
+}
+
+.spawn-light.spawn-hc .spawn-separator,
+.spawn-light.spawn-hc .spawn-vseparator,
+.spawn-light.spawn-hc .spawn-power-rule,
+.spawn-light.spawn-hc .spawn-grid-footer-rule {
+    background-color: rgba(0, 0, 0, 1);
+}
+
+.spawn-hc .spawn-section-title,
+.spawn-hc .spawn-empty-label,
+.spawn-hc .spawn-empty-hint,
+.spawn-hc .spawn-empty-icon,
+.spawn-hc .spawn-row-description,
+.spawn-hc .spawn-folder-hint,
+.spawn-hc .spawn-folder-chevron,
+.spawn-hc .spawn-folder-edit-icon,
+.spawn-hc .spawn-search-box .hint-text,
+.spawn-hc .spawn-search-icon,
+.spawn-hc .spawn-grid-letter-label,
+.spawn-hc .spawn-grid-title-icon {
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.spawn-light.spawn-hc .spawn-section-title,
+.spawn-light.spawn-hc .spawn-empty-label,
+.spawn-light.spawn-hc .spawn-empty-hint,
+.spawn-light.spawn-hc .spawn-empty-icon,
+.spawn-light.spawn-hc .spawn-row-description,
+.spawn-light.spawn-hc .spawn-folder-hint,
+.spawn-light.spawn-hc .spawn-folder-chevron,
+.spawn-light.spawn-hc .spawn-folder-edit-icon,
+.spawn-light.spawn-hc .spawn-search-box .hint-text,
+.spawn-light.spawn-hc .spawn-search-icon,
+.spawn-light.spawn-hc .spawn-grid-letter-label,
+.spawn-light.spawn-hc .spawn-grid-title-icon {
+    color: rgba(0, 0, 0, 0.92);
 }

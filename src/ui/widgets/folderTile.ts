@@ -23,7 +23,8 @@ import St from 'gi://St';
 import {gettext as _, ngettext} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {DEFAULT_ROW_ICON_SIZE, PINNED_ROW_BOX, PINNED_ROW_CLASS} from './appRow.js';
-import {DEFAULT_TILE_ICON_SIZE, styleTileLabel} from './appTile.js';
+import {DEFAULT_TILE_ICON_SIZE} from './appTile.js';
+import {makeTileLabel} from './tileLabel.js';
 import {nameItem} from './a11y.js';
 import {makeItemButton, makeSurface, wireItem} from './interact.js';
 import type {TooltipManager} from './tooltip.js';
@@ -127,18 +128,14 @@ export class FolderTile {
 
         const box = new St.BoxLayout({
             orientation: Clutter.Orientation.VERTICAL,
-            x_align: Clutter.ActorAlign.CENTER,
+            // a centred box is measured at its natural one-line width (see buildTileContent): wrapped names need FILL
+            x_align: opts.multiLine ? Clutter.ActorAlign.FILL : Clutter.ActorAlign.CENTER,
+            x_expand: Boolean(opts.multiLine),
             y_align: opts.multiLine ? Clutter.ActorAlign.START : Clutter.ActorAlign.CENTER,
             style_class: 'spawn-tile-box',
         });
         this._plate = new FolderPlate(size, PLATE_PADDING, PLATE_SPACING);
-        this._label = new St.Label({
-            text: name,
-            style_class: 'spawn-tile-label',
-            x_align: Clutter.ActorAlign.CENTER,
-            x_expand: true,
-        });
-        styleTileLabel(this._label, Boolean(opts.multiLine));
+        this._label = makeTileLabel(name, Boolean(opts.multiLine));
         box.add_child(this._plate.actor);
         box.add_child(this._label);
         const surface = makeSurface('spawn-tile-surface');
