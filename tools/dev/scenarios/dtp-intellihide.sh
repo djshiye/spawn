@@ -93,11 +93,14 @@ PY
     expect_state "release watch pending while the pointer rests on the panel" intellihideWatch.pending true
     c0="$(state_get intellihideWatch.checks)"; sleep 3; c1="$(state_get intellihideWatch.checks)"
     echo "release checks in 3 s with the pointer resting: $((c1 - c0))"
-    [ "$((c1 - c0))" -le 8 ] 2>/dev/null
+    # both counters must be integers: a missing field must fail here, not count as 0
+    case "$c0$c1" in *[!0-9]*|'') false ;; *) [ "$((c1 - c0))" -le 8 ] ;; esac
     check "a resting pointer is not polled every 100 ms (<= 8 checks in 3 s)" $?
     expect "pointer on the panel: hold kept" "$(( $(ih hold) & 1 ))" 1
     expect "pointer on the panel: panel stays visible" "$(ih visible)" true
-    pointer $AWAY
+    # read within ~0.2 s so that only the event path can pass (the safety poll runs once a second)
+    ui_call Move $AWAY >/dev/null; sleep 0.1
+    ui_call Move $AWAY >/dev/null; sleep 0.1
     expect "pointer left: released promptly (event-driven)" "$(ih hold)" 0
     expect "pointer left: hold released" "$(wait_ih hold 0 5)" 0
     expect "pointer left: panel hides" "$(wait_ih visible false 10)" false
