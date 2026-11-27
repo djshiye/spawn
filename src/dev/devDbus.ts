@@ -16,6 +16,8 @@
 //   RunnerState() -> s            JSON: SpawnRunner.debugState() plus accelBound (the runner-hotkey binding)
 //   Benchmark(s sections) -> s    JSON timings measured inside the shell (src/dev/benchmark.ts);
 //                                 async, may take several seconds
+//   ForceNoPanels(b on)           make every panel resolution 'provider active, no valid panels' (fallback tests);
+//                                 false restores
 //   EmitOverlayKey()              emits 'overlay-key' on global.display, like pressing Super alone
 //                                 (bypasses mutter's keybinding filter: use Ui.Key Super_L for a real press)
 //   SendKeys(s spec)              virtual-keyboard events, e.g. "+Super_L +space -space -Super_L"
@@ -60,6 +62,7 @@ export const DEV_IFACE = `
     <method name="CloseRunner"/>
     <method name="RunnerState"><arg type="s" direction="out" name="json"/></method>
     <method name="EmitOverlayKey"/>
+    <method name="ForceNoPanels"><arg type="b" direction="in" name="on"/></method>
     <method name="FocusButton"/>
     <method name="RecheckFullscreen"/>
     <method name="ActivateWorkspace"><arg type="i" direction="in" name="index"/></method>
@@ -96,6 +99,9 @@ export function createDevImpl(host: DevHost): object {
         },
         EmitOverlayKeyAsync: (_params: unknown[], invocation: Invocation) => {
             host.call(invocation, () => host.controller.emitOverlayKey?.());
+        },
+        ForceNoPanelsAsync: ([on]: [boolean], invocation: Invocation) => {
+            host.call(invocation, () => host.controller.forceNoPanels?.(on));
         },
         FocusButtonAsync: (_params: unknown[], invocation: Invocation) => {
             host.call(invocation, () => host.controller.focusButton?.());

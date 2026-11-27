@@ -15,7 +15,7 @@
 //   service.start(): void
 //   MenuController: {toggle(source?), open(), close(), search(query), attachmentStatus(): string,
 //                    toggleRunner(), openRunner?(), closeRunner?(), runnerState?(): string,
-//                    hotkeyStatus?(): string, emitOverlayKey?(): void}
+//                    hotkeyStatus?(): string, emitOverlayKey?(): void, forceNoPanels?(on: boolean): void}
 
 import Gio from 'gi://Gio';
 import type GLib from 'gi://GLib';
@@ -41,6 +41,7 @@ export interface MenuController {
     attachmentStatus(): string;
     hotkeyStatus?(): string;
     emitOverlayKey?(): void;
+    forceNoPanels?(on: boolean): void;
     focusButton?(): void;
     activateWorkspace?(index: number): void;
     sendKeys?(spec: string): void;

@@ -36,7 +36,7 @@ check_tree() {
     # Strings that only the hooks contain, anywhere in the shipped JavaScript.
     local needle
     for needle in 'io.github.djshiye.Spawn.Dev' 'io.github.djshiye.Spawn.Ui' 'dev-mode' 'Dev D-Bus' 'notify_keyval' \
-                  'create_virtual_device' 'runBenchmark' 'EmitOverlayKey' 'Shell.Screenshot'; do
+                  'create_virtual_device' 'runBenchmark' 'EmitOverlayKey' 'Shell.Screenshot' 'ForceNoPanels'; do
         if grep -rIl --include='*.js' -e "$needle" "$dir" >"$tmp/hits" 2>/dev/null && [ -s "$tmp/hits" ]; then
             echo "FAIL $label: '$needle' found in: $(tr '\n' ' ' <"$tmp/hits")" >&2
             fail=1

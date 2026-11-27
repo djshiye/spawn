@@ -7,6 +7,7 @@ import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
 import type {Hotkeys} from '../input/hotkeys.js';
 import type {MenuController} from '../input/dbus.js';
+import type {PanelTargets} from '../panel/targets.js';
 import type {SpawnPopup} from '../ui/menu.js';
 import type {SpawnRunner} from '../ui/runner.js';
 
@@ -17,6 +18,7 @@ export interface DevControllerContext {
     runner: SpawnRunner | null;
     runnerAccelBound(): boolean;
     firstButton(): St.Widget | null;
+    panelTargets(): PanelTargets | null;
     enableMs(): number;
     startMs(): Record<string, number>;
 }

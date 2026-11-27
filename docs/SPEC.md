@@ -199,8 +199,9 @@ src/
                           reconnects to the new emitter whenever DtP restarts.
   panel/attacher.ts       ButtonAttacher: keeps one MenuButton per valid target,
                           retries invalid targets with backoff (100 ms → 2 s, give
-                          up after 10 s and fall back to Main.panel), guarded
-                          removal, Activities-button handling.
+                          up after 10 s and fall back to Main.panel, warn once
+                          and retry every 30 s until valid targets return),
+                          guarded removal, Activities-button handling.
   ui/button.ts            MenuButton (PanelMenu.Button subclass): icon/label/style
   ui/menu.ts              SpawnPopup: single popup shared by all buttons,
                           re-anchored to the clicked button; lazily builds layout

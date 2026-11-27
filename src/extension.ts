@@ -151,8 +151,10 @@ export default class SpawnExtension extends Extension {
             });
         }
 
+        let panelTargets: PanelTargets | null = null;
         const attacher = this._start(root, 'panel', scope => {
             const targets = new PanelTargets(scope, {isMultiMonitor: () => settings.get('multi-monitor')});
+            panelTargets = targets;
             const attacher = new ButtonAttacher(scope, {
                 settings,
                 targets,
@@ -217,6 +219,7 @@ export default class SpawnExtension extends Extension {
             runner,
             runnerAccelBound: () => (runnerAccel as Accelerator | null)?.bound ?? false,
             firstButton: () => attacher?.buttons()[0] ?? null,
+            panelTargets: () => panelTargets,
             enableMs: () => this._enableMs,
             startMs: () => this._startMs,
         });
