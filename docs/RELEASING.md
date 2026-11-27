@@ -100,10 +100,14 @@ What it does, in order:
 3. Creates or updates the `.gh-pages/` git worktree (orphan `gh-pages` branch on first use). A local run fast-forwards from `origin/gh-pages`; a `--push` run starts from exactly `origin/gh-pages`, discarding (and listing) any local commits that were never pushed, so a test build can never be published.
 4. For each of Fedora 43, 44, 45:
    1. `podman run registry.fedoraproject.org/fedora:N`: `dnf install rpm-build glib2`,
-      `rpmbuild -ba --define "release_suffix .<count>"`; the `noarch.rpm` and `src.rpm` come out in a temp directory.
-   2. With a signing key: on the host, `rpmsign --addsign` each package, then verify it (see "Signing").
-   3. Copy them into `.gh-pages/fedora-N/`, drop packages that do not verify against the key, keep the newest 3 of each.
-   4. A second container runs `createrepo_c --update` on that directory; with a key, `repodata/repomd.xml.asc` is then made on the host.
+      `rpmbuild -ba --define "release_suffix .<count>"`; the `noarch.rpm` and `src.rpm` come out in a temp directory. The container
+      sees only the source tarball and that output directory. The image digest it used is printed and recorded in the gh-pages commit message.
+   2. On the host, unpack each package and compare it file by file (sha256) with the host-built tree: the binary rpm must hold exactly
+      `build/` (minus `schemas/`), the schema, `spawn-enable`, `LICENSE` and `README.md`, with no scriptlets, symlinks or setuid files.
+      The src.rpm must hold exactly the tarball and the spec. Any difference stops the publish before anything is signed.
+   3. With a signing key: on the host, `rpmsign --addsign` each package, then verify it (see "Signing").
+   4. Copy them into `.gh-pages/fedora-N/`, drop packages that do not verify against the key, keep the newest 3 of each.
+   5. A second container runs `createrepo_c --update` on that directory; with a key, `repodata/repomd.xml.asc` is then made on the host.
 
    The dnf cache is `~/.cache/spawn-publish/dnf-N`.
 5. With a key: verifies every package and every `repomd.xml.asc` once more against the exported public key file and fails if anything is unsigned.
@@ -211,7 +215,7 @@ and every `repomd.xml.asc` is a good signature of its `repomd.xml` by that key (
 A directory that fails stops the publish; remove it if that release is no longer supported, and push the removal (`git -C .gh-pages rm -r fedora-N && git -C .gh-pages commit -m "Drop Fedora N" && git -C .gh-pages push origin gh-pages`), because a `--push` run starts from `origin/gh-pages`.
 In addition each Fedora container checks its own packages with that release's rpm (`rpmkeys --dbpath /tmp/k --import` of the key,
 then `-K`) before running `createrepo_c`. The gh-pages worktree is reset to its last commit (to `origin/gh-pages` with `--push`) and cleaned at the start of every run, and
-"already published" means what is committed at `HEAD` of `gh-pages`, not what happens to lie in the working copy. `tools/test-ghpages.sh` tests the worktree handling against throwaway git repositories (git only). `tools/test-signing.sh` runs the same functions against a throwaway key and a dummy package
+"already published" means what is committed at `HEAD` of `gh-pages`, not what happens to lie in the working copy. `tools/test-ghpages.sh` tests the worktree handling against throwaway git repositories (git only). `tools/test-signing.sh` runs the same functions (signing, verification and the payload check) against a throwaway key and dummy packages
 (needs `rpm`, `rpm-sign`, `createrepo_c` and `gnupg2`; no podman).
 
 Safety rules, enforced by `publish.sh`:

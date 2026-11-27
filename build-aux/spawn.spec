@@ -53,6 +53,7 @@ shell, so `gnome-extensions enable` fails until the next login) and log out and 
 # Nothing to do: build/ was compiled when the source tarball was made.
 
 %install
+# Files installed here must match the expected manifest in tools/publish.sh.
 install -d %{buildroot}%{extdir}
 cp -a build/. %{buildroot}%{extdir}/
 # The schema lives in the system schema directory (compiled by glib2's file trigger), not in the extension

@@ -48,6 +48,7 @@ signing_pretty_fpr() { printf '%s\n' "$1" | sed 's/.\{4\}/& /g; s/ $//'; }
 signing_require_tools() {
     command -v gpg >/dev/null 2>&1 || signing_die "gpg not found. Install it: sudo dnf install gnupg2"
     command -v rpmkeys >/dev/null 2>&1 || signing_die "rpmkeys not found. Install it: sudo dnf install rpm"
+    command -v rpm2archive >/dev/null 2>&1 || signing_die "rpm2archive not found. Install it: sudo dnf install rpm"
     if ! command -v rpmsign >/dev/null 2>&1; then
         signing_die "rpmsign not found; it is not part of the rpm package. Install it: sudo dnf install rpm-sign"
     fi
@@ -120,6 +121,33 @@ signing_sign_rpms() {
             --define "_openpgp_sign_id $fpr" --define "_gpg_name $fpr" "$f" >/dev/null \
             || signing_die "rpmsign failed for $f"
     done
+}
+
+# signing_check_payload <rpm> <manifest>: the package's payload must be exactly the files in the manifest
+# (lines "sha256  ./path", sorted by path, as sha256sum prints them), regular files only (no symlinks, devices),
+# no setuid/setgid bits, and the package must carry no scriptlets or triggers (spawn.spec has none). Run before
+# signing, so nothing the build container added or changed is ever signed.
+signing_check_payload() {
+    local rpm=$1 manifest=$2 dir got odd
+    dir=$(mktemp -d)
+    if ! rpm2archive - <"$rpm" | tar -xzf - -C "$dir" --no-same-owner --no-same-permissions; then
+        rm -rf "$dir"; signing_die "could not unpack the payload of $rpm"
+    fi
+    odd=$(cd "$dir" && find . ! -type f ! -type d)
+    [ -z "$odd" ] || { rm -rf "$dir"; signing_die "$rpm holds entries that are not regular files: $odd"; }
+    # %doc and %license land in .../spawn/ on Fedora and in .../spawn-<version>/ where the docdir macro is versioned
+    # (rpm's own default): treat both the same, so the check does not depend on the macro.
+    got=$(cd "$dir" && find . -type f -print0 | xargs -0 -r sha256sum \
+        | sed -E 's#  \./usr/share/(doc|licenses)/([^/]+)-[0-9][^/]*/#  ./usr/share/\1/\2/#' | LC_ALL=C sort -k2)
+    rm -rf "$dir"
+    if [ "$got" != "$(cat "$manifest")" ]; then
+        diff <(printf '%s\n' "$got") "$manifest" >&2 || true
+        signing_die "$rpm does not hold exactly the host-built files (< in the package, > expected)"
+    fi
+    [ -z "$(LC_ALL=C rpm -qp --scripts --triggers --filetriggers "$rpm" 2>/dev/null)" ] \
+        || signing_die "$rpm carries scriptlets or triggers; spawn.spec has none"
+    ! LC_ALL=C rpm -qp --qf '[%{FILEMODES:perms}\n]' "$rpm" | grep -q '[sS]' \
+        || signing_die "$rpm has a setuid or setgid file"
 }
 
 # signing_verify_rpms <public-key-file> <rpm>...: every package must carry a valid signature that checks

@@ -9,7 +9,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 # shellcheck source=lib/signing.sh
 . "$root/tools/lib/signing.sh"
 
-for t in gpg gpgconf rpmbuild rpmsign rpmkeys createrepo_c; do
+for t in gpg gpgconf rpmbuild rpmsign rpmkeys rpm2archive createrepo_c; do
     command -v "$t" >/dev/null 2>&1 || { echo "missing tool: $t" >&2; exit 2; }
 done
 
@@ -112,6 +112,50 @@ expect_fail "verification against a different key fails" signing_verify_rpms "$o
 cp "$rpm_file" "$tmp/repo/unsigned-old.rpm"
 signing_drop_unverifiable "$pub" "$tmp/repo"
 [ ! -e "$tmp/repo/unsigned-old.rpm" ] && [ -e "$tmp/repo/$(basename "$rpm_file")" ] && ok "unsigned package dropped, signed ones kept"
+
+echo "== payload"
+hello_sha=$(printf 'hello\n' | sha256sum | cut -d' ' -f1)
+printf '%s  ./usr/share/spawn-test-dummy/hello\n' "$hello_sha" >"$tmp/ok.manifest"
+signing_check_payload "$rpm_file" "$tmp/ok.manifest" && ok "payload matches its manifest"
+signing_check_payload "$tmp/repo/$(basename "$rpm_file")" "$tmp/ok.manifest" && ok "the signed copy has the same payload"
+printf '%064d  ./usr/share/spawn-test-dummy/hello\n' 0 >"$tmp/bad.manifest"
+expect_fail "changed file content is refused" signing_check_payload "$rpm_file" "$tmp/bad.manifest"
+{ cat "$tmp/ok.manifest"; printf '%s  ./usr/share/spawn-test-dummy/zz-missing\n' "$hello_sha"; } >"$tmp/missing.manifest"
+expect_fail "missing file is refused" signing_check_payload "$rpm_file" "$tmp/missing.manifest"
+: >"$tmp/empty.manifest"
+expect_fail "extra file in the package is refused" signing_check_payload "$rpm_file" "$tmp/empty.manifest"
+# variants of the dummy package: a scriptlet, a symlink, a setuid file
+variant() { # <name> <extra %install lines> <extra spec lines> <files lines>
+    local v=$1
+    cat >"$tmp/rpmbuild/SPECS/$v.spec" <<SPEC
+Name: $v
+Version: 1
+Release: 1
+Summary: Throwaway package for tools/test-signing.sh
+License: MIT
+BuildArch: noarch
+%description
+Nothing.
+%install
+mkdir -p %{buildroot}/usr/share/spawn-test-dummy
+echo hello > %{buildroot}/usr/share/spawn-test-dummy/hello
+$2
+$3
+%files
+/usr/share/spawn-test-dummy/hello
+$4
+SPEC
+    rpmbuild -bb --define "_topdir $tmp/rpmbuild" "$tmp/rpmbuild/SPECS/$v.spec" >"$tmp/rpmbuild-$v.log" 2>&1 \
+        || { tail -n 30 "$tmp/rpmbuild-$v.log" >&2; exit 1; }
+}
+variant spawn-test-script "" $'%post\ntrue' ""
+expect_fail "package with a scriptlet is refused" signing_check_payload "$tmp/rpmbuild/RPMS/noarch/spawn-test-script-1-1.noarch.rpm" "$tmp/ok.manifest"
+variant spawn-test-link "ln -s hello %{buildroot}/usr/share/spawn-test-dummy/link" "" "/usr/share/spawn-test-dummy/link"
+expect_fail "symlink in the payload is refused" signing_check_payload "$tmp/rpmbuild/RPMS/noarch/spawn-test-link-1-1.noarch.rpm" "$tmp/ok.manifest"
+variant spawn-test-suid "chmod 4755 %{buildroot}/usr/share/spawn-test-dummy/hello" "" ""
+expect_fail "setuid file is refused" signing_check_payload "$tmp/rpmbuild/RPMS/noarch/spawn-test-suid-1-1.noarch.rpm" "$tmp/ok.manifest"
+printf '%s  ./dummy.spec\n' "$(sha256sum <"$tmp/rpmbuild/SPECS/dummy.spec" | cut -d' ' -f1)" >"$tmp/src.manifest"
+signing_check_payload "$srpm_file" "$tmp/src.manifest" && ok "src.rpm payload (the spec) matches its manifest"
 
 echo "== repository"
 createrepo_c --general-compress-type gz "$tmp/repo" >/dev/null 2>&1
