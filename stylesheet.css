@@ -224,6 +224,17 @@
     box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
 }
 
+/* The shell theme pads the placeholder glyph (`.user-icon StIcon`, 12 px) for its own 64 px avatar, which leaves 16 px of
+ * glyph in 40 px and 8 px in the Grid footer's 32 px circle. A quarter of the circle on every side makes the glyph half
+ * the circle at both sizes, like GNOME's own menus. */
+.spawn-avatar-box .user-icon.spawn-avatar StIcon {
+    padding: 10px;
+}
+
+.spawn-grid-footer .spawn-avatar-box .user-icon.spawn-avatar StIcon {
+    padding: 8px;
+}
+
 /* the shell's placeholder avatar (no photo) is white on near-white in light themes: a visible disc */
 .spawn-light .spawn-avatar-box .user-icon.spawn-avatar {
     background-color: rgba(0, 0, 0, 0.16);
