@@ -34,6 +34,9 @@ test('rgb forms', () => {
     assertEquals(titles('rgba(53,132,228,0.8)'), ['#3584E4CC', 'hsla(213, 76%, 55%, 0.8)', 'rgba(53, 132, 228, 0.8)']);
     assertEquals(titles('rgb(53 132 228 / 80%)')[0], '#3584E4CC');
     assertEquals(titles('rgb(100%, 0%, 0%)')[0], '#FF0000');
+    assertEquals(titles('rgb(100%, 50%, 0%)')[0], '#FF8000');
+    assertEquals(titles('rgb(50%, 50%, 50%)')[0], '#808080');
+    assertEquals(titles('rgb(90%, 0%, 0%)')[0], '#E60000');
 });
 
 test('hsl forms', () => {
@@ -81,7 +84,7 @@ test('all 148 names resolve', () => {
 });
 
 test('range validation', () => {
-    for (const q of ['rgb(256,0,0)', 'rgb(-1,0,0)', 'rgb(1,2)', 'rgb(1,2,3,4)', 'rgb(1,2,3,1.5)', 'rgb(a,b,c)',
+    for (const q of ['rgb(256,0,0)', 'rgb(-1,0,0)', 'rgb(1,2)', 'rgb(1,2,3,4)', 'rgb(1,2,3,1.5)', 'rgb(a,b,c)', 'rgb(101%,0%,0%)',
         'hsl(0, 101%, 50%)', 'hsl(0, 50%, -1%)', 'hsl(x, 50%, 50%)', 'rgba(1,2,3,150%)', 'rgb(1,2,3', 'rgb(1,2,3)x',
         'colour nosuchcolour'])
         assertEquals(ids(q), [], q);

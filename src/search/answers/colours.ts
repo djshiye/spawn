@@ -161,7 +161,7 @@ function parseFunction(kind: string, body: string): Colour | null {
             const m = NUMBER.exec(args[i]);
             if (!m)
                 return null;
-            const n = m[1] ? parseFloat(args[i]) * 2.55 : parseFloat(args[i]);
+            const n = m[1] ? parseFloat(args[i]) * 255 / 100 : parseFloat(args[i]);
             if (n < 0 || n > 255.0000001)
                 return null;
             v.push(Math.min(255, Math.round(n)));
