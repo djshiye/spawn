@@ -57,6 +57,7 @@ import {applyScrollSettings, lookupApp} from '../util.js';
 import {animationDuration, markToolbar, nameItem} from '../widgets/a11y.js';
 import {makeFace, makeItemButton, wireItem} from '../widgets/interact.js';
 import {PowerBar} from '../widgets/powerBar.js';
+import {gridPowerWidth} from '../widgets/powerFit.js';
 import {resolveShortcut, type ShortcutHost} from '../widgets/shortcutRow.js';
 import type {TooltipManager} from '../widgets/tooltip.js';
 import {UserCard} from '../widgets/userCard.js';
@@ -262,13 +263,19 @@ export class GridFooter {
             this.actor.add_child(new St.Widget({style_class: 'spawn-grid-footer-rule', y_align: Clutter.ActorAlign.CENTER}));
         }
 
-        this._power = new PowerBar(scope, s, host);
+        this._power = new PowerBar(scope, s, host, () => this._sizePower());
         this._power.actor.x_expand = false;
-        // The bar fits its buttons to the width it is given (widgets/powerFit.ts): here it is asked for the
-        // width its buttons need at normal spacing (48n + 8), not a share of the row.
-        const n = Math.max(1, this._power.buttons().length);
-        this._power.actor.set_width(48 * n + 8);
+        this._sizePower();
         this.actor.add_child(this._power.actor);
+    }
+
+    /** The bar fits its buttons to the width it is given (widgets/powerFit.ts): here it is asked for the width its
+     *  buttons need at normal spacing, re-asked whenever that count or the display style changes. */
+    private _sizePower(): void {
+        const bar = this._power;
+        if (!bar)
+            return; // the first report comes from inside the constructor, before _power is set: build() sizes it next
+        bar.actor.set_width(gridPowerWidth(bar.wantedSlots(), bar.isMenuStyle()));
     }
 
     private _placeButton(entry: Entry): St.Button | null {

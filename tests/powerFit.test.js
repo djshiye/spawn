@@ -1,5 +1,5 @@
 // Power row fitting: fitPowerRow (build/ui/widgets/powerFit.js).
-import {fitPowerRow, OVERFLOW_ORDER} from '../build/ui/widgets/powerFit.js';
+import {fitPowerRow, gridPowerWidth, OVERFLOW_ORDER} from '../build/ui/widgets/powerFit.js';
 import {PowerType as P} from '../build/core/constants.js';
 import {assert, assertEquals, run, test} from './harness.js';
 
@@ -67,6 +67,20 @@ test('a single button in 60 px', () => {
     const r = fitPowerRow(60, [P.POWER_OFF]);
     assertEquals(r.mode, 'normal');
     assert(used(r) <= 60);
+});
+
+test('gridPowerWidth: 48n + 8 for the icon row, natural for the Menu style', () => {
+    assertEquals(gridPowerWidth(4, false), 200);
+    assertEquals(gridPowerWidth(5, false), 248);
+    assertEquals(gridPowerWidth(8, false), 392);
+    assertEquals(gridPowerWidth(0, false), 56);   // at least one slot
+    assertEquals(gridPowerWidth(1, true), -1);    // Menu style: natural width
+    assertEquals(gridPowerWidth(0, true), -1);
+});
+
+test('the Grid width always fits its buttons at normal size', () => {
+    for (const n of [1, 3, 4, 5, 8])
+        assertEquals(fitPowerRow(gridPowerWidth(n, false), RANK.slice(0, n)).mode, 'normal');
 });
 
 run();
