@@ -233,7 +233,7 @@ signing_check_tree() {
         for f in "$dir"/*.rpm; do
             [ -e "$f" ] || continue
             ( signing_verify_rpms "$pub" "$f" ) \
-                || signing_die "$(basename "$dir") does not verify. Rebuild it, or remove it if that release is no longer supported (git -C $root rm -r -- $(basename "$dir"))"
+                || signing_die "$(basename "$dir") does not verify. Rebuild it, or remove it if that release is no longer supported (git -C $root rm -r -- $(basename "$dir") && git -C $root commit -m \"Drop $(basename "$dir")\" && git -C $root push origin gh-pages)"
             n=$((n + 1))
         done
         [ "$n" -gt 0 ] || signing_die "no packages in $dir (remove the directory if that release is no longer supported)"

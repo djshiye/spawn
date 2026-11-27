@@ -60,6 +60,8 @@ cd "$root"
 wt="$root/.gh-pages"
 # shellcheck source=lib/signing.sh
 . "$root/tools/lib/signing.sh"
+# shellcheck source=lib/ghpages.sh
+. "$root/tools/lib/ghpages.sh"
 
 if [ -t 1 ]; then b=$'\e[1m'; c=$'\e[36m'; r=$'\e[0m'; else b=""; c=""; r=""; fi
 step() { printf '%s==>%s %s%s%s\n' "$c" "$r" "$b" "$*" "$r"; }
@@ -142,17 +144,8 @@ if ! git worktree list --porcelain | grep -qx "worktree $wt"; then
         git worktree add --orphan -b gh-pages "$wt"
     fi
 fi
-# A failed earlier run may have left half-written files; start from exactly what is committed.
-if git -C "$wt" rev-parse -q --verify HEAD >/dev/null; then
-    git -C "$wt" reset -q --hard HEAD
-fi
-git -C "$wt" clean -qfdx
-if [ "$have_remote" -eq 1 ]; then
-    if ! git -C "$wt" merge -q --ff-only origin/gh-pages; then
-        echo "Local gh-pages has diverged from origin/gh-pages; reconcile it in .gh-pages/ first." >&2
-        exit 1
-    fi
-fi
+# Start from exactly what is committed (a --push run: from exactly origin/gh-pages, see lib/ghpages.sh).
+ghpages_sync "$wt" "$have_remote" "$push"
 
 # ---- 3b. key policy: no silent downgrade, no silent key change ----
 pubkey="$wt/RPM-GPG-KEY-spawn"
@@ -345,6 +338,7 @@ sudo dnf install spawn &amp;&amp; spawn-enable</pre>
 </html>
 HTML
 
+[ "$push" -eq 0 ] || ghpages_refuse_dirty "$wt"
 step "Committing to gh-pages"
 git -C "$wt" add -A
 if git -C "$wt" diff --cached --quiet; then

@@ -95,7 +95,7 @@ What it does, in order:
 2. Exports the tree (`git archive HEAD`) to a temp dir, runs `npm ci` (from `package-lock.json`, `--prefer-offline`) and
    `tools/build.sh --release` there, and packs the export plus its `build/` into `spawn-<version>.tar.gz`
    (sorted, uid 0, mtime = commit time, `gzip -n`).
-3. Creates or updates the `.gh-pages/` git worktree (orphan `gh-pages` branch on first use; fast-forwards from `origin/gh-pages` when it exists).
+3. Creates or updates the `.gh-pages/` git worktree (orphan `gh-pages` branch on first use). A local run fast-forwards from `origin/gh-pages`; a `--push` run starts from exactly `origin/gh-pages`, discarding (and listing) any local commits that were never pushed, so a test build can never be published.
 4. For each of Fedora 43, 44, 45:
    1. `podman run registry.fedoraproject.org/fedora:N`: `dnf install rpm-build glib2`,
       `rpmbuild -ba --define "release_suffix .<count>"`; the `noarch.rpm` and `src.rpm` come out in a temp directory.
@@ -108,10 +108,11 @@ What it does, in order:
    Then writes `spawn.repo` (`gpgcheck=1`, `repo_gpgcheck=1`, `gpgkey=https://djshiye.github.io/spawn/RPM-GPG-KEY-spawn`, `skip_if_unavailable=True`; `gpgcheck=0` only while no key exists,
    `baseurl=https://djshiye.github.io/spawn/fedora-$releasever/`), `RPM-GPG-KEY-spawn`, `index.html` (with the fingerprint), `icon.svg`, `.nojekyll`
    and commits them to `gh-pages` as Dino Klisura (`GIT_AUTHOR_*`/`GIT_COMMITTER_*` set explicitly, no trailers).
+   With `--push`, it refuses to commit if any `*.dirty*` package is in the tree.
 6. With `--push`: `git push origin main`, then `git -C .gh-pages push origin gh-pages` (a plain, non-forced push; on the very first publish this creates the remote `gh-pages` branch).
 
-A test run (`--allow-dirty`) leaves a local `gh-pages` branch with `.dirty` packages in it. Delete it before the real publish,
-otherwise `publish.sh` builds on top of it: `git worktree remove --force .gh-pages && git branch -D gh-pages`.
+A test run (`--allow-dirty`) leaves a local `gh-pages` commit with `.dirty` packages in it. The next `--push` run discards it automatically
+and starts from `origin/gh-pages`, and as a backstop `--push` refuses to commit any `.dirty` package.
 
 Why the extension is compiled on the host and not in the container: building needs Node, `tsc` and the type packages
 from npm. Doing that in the container would need the npm registry at build time, and Fedora's nodejs differs per release.
@@ -204,10 +205,10 @@ Before it commits to `gh-pages` it verifies, against a temporary keyring that ho
 (`rpmkeys --checksig` with its own `--dbpath`, and `gpg --verify` in an empty `GNUPGHOME`), and fails hard otherwise:
 every `.rpm` and `.src.rpm` in EVERY `fedora-*/` directory of the gh-pages tree (including releases no longer built) is signed by that key,
 and every `repomd.xml.asc` is a good signature of its `repomd.xml` by that key (GOODSIG and a VALIDSIG for the primary's fingerprint).
-A directory that fails stops the publish; remove it (`git -C .gh-pages rm -r fedora-N`) if that release is no longer supported.
+A directory that fails stops the publish; remove it if that release is no longer supported, and push the removal (`git -C .gh-pages rm -r fedora-N && git -C .gh-pages commit -m "Drop Fedora N" && git -C .gh-pages push origin gh-pages`), because a `--push` run starts from `origin/gh-pages`.
 In addition each Fedora container checks its own packages with that release's rpm (`rpmkeys --dbpath /tmp/k --import` of the key,
-then `-K`) before running `createrepo_c`. The gh-pages worktree is reset to its last commit and cleaned at the start of every run, and
-"already published" means what is committed at `HEAD` of `gh-pages`, not what happens to lie in the working copy. `tools/test-signing.sh` runs the same functions against a throwaway key and a dummy package
+then `-K`) before running `createrepo_c`. The gh-pages worktree is reset to its last commit (to `origin/gh-pages` with `--push`) and cleaned at the start of every run, and
+"already published" means what is committed at `HEAD` of `gh-pages`, not what happens to lie in the working copy. `tools/test-ghpages.sh` tests the worktree handling against throwaway git repositories (git only). `tools/test-signing.sh` runs the same functions against a throwaway key and a dummy package
 (needs `rpm`, `rpm-sign`, `createrepo_c` and `gnupg2`; no podman).
 
 Safety rules, enforced by `publish.sh`:
