@@ -64,6 +64,14 @@ test('createBackup: a key set to its default value is left out; a fresh install 
     assertEquals(JSON.parse(B.createBackup(s, '1')).settings, {});
 });
 
+test('every key the schema marks "(internal)" is excluded from backups by name', () => {
+    const schema = source.lookup(SCHEMA_ID, true);
+    const internal = schema.list_keys().filter(k => schema.get_key(k).get_summary()?.includes('(internal)'));
+    assert(internal.length >= 3, 'the schema has internal keys');
+    for (const key of internal)
+        assert(B.BACKUP_EXCLUDED_KEYS.includes(key), `${key} is internal but not in BACKUP_EXCLUDED_KEYS`);
+});
+
 test('round trip: restoring into a fresh instance reproduces every backed-up value and folder', () => {
     const src = configured();
     const r = parsed(B.createBackup(src, '1.3.0'));

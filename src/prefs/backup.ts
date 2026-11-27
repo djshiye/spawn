@@ -7,7 +7,7 @@
 //     "folders":  {"<uuid>": {"name": "Games", "pinned-apps": "<GVariant text>"}, ...}
 //   }
 // Everything Spawn keeps lives in GSettings (the main schema and the folders' relocatable schema); there are no
-// other state files. Left out on purpose: every key whose schema summary says "(internal)" (the bookkeeping
+// other state files. Left out on purpose: the keys in BACKUP_EXCLUDED_KEYS, all marked "(internal)" in the schema (the bookkeeping
 // `known-apps` and `new-apps` describe the apps installed on THIS machine, restoring them elsewhere would hide or
 // flood the "New" badges; the dev-only switch of dev builds never travels), plus `migration-done` and
 // `prefs-visible-page`.
@@ -49,12 +49,15 @@ export const DEFAULT_BACKUP_NAME = 'spawn-settings.json';
 const MAX_FOLDERS = 500;
 const MAX_NAME_LENGTH = 256;
 
-/** Keys that are never written to or read from a backup besides those marked "(internal)" in their schema summary. */
-export const BACKUP_EXCLUDED_KEYS: readonly string[] = ['migration-done', 'prefs-visible-page'];
+/**
+ * Keys that are never written to or read from a backup: bookkeeping of this machine (known-apps, new-apps), the
+ * dev-only switch and the two state keys. Listed by name on purpose: schema summaries are translatable text, so
+ * they cannot decide what travels (tests/backup.test.js checks that every "(internal)" key is listed).
+ */
+export const BACKUP_EXCLUDED_KEYS: readonly string[] = ['migration-done', 'prefs-visible-page', 'dev-mode', 'known-apps', 'new-apps'];
 
-/** Excluded: the listed keys and every key whose schema summary says "(internal)" (known-apps, new-apps, the dev-only switch). */
-function excluded(schema: Gio.SettingsSchema, key: string): boolean {
-    return BACKUP_EXCLUDED_KEYS.includes(key) || schema.get_key(key).get_summary()?.includes('(internal)') === true;
+function excluded(key: string): boolean {
+    return BACKUP_EXCLUDED_KEYS.includes(key);
 }
 
 interface PlannedFolder {
@@ -93,7 +96,7 @@ function restorableKeys(settings: SpawnSettings): SettingKey[] {
     const schema = settings.raw.settings_schema;
     if (!schema)
         throw new Error('settings have no schema');
-    return schema.list_keys().filter(k => !excluded(schema, k)) as SettingKey[];
+    return schema.list_keys().filter(k => !excluded(k)) as SettingKey[];
 }
 
 export function createBackup(settings: SpawnSettings, extensionVersion: string): string {
@@ -164,7 +167,7 @@ export function parseBackup(text: string, settings: SpawnSettings): ParseResult 
     const values = new Map<string, GLib.Variant>();
     const known = new Set(schema.list_keys());
     for (const [key, text] of Object.entries(rawSettings)) {
-        if (!known.has(key) || excluded(schema, key)) {
+        if (!known.has(key) || excluded(key)) {
             ignored.push(key);
             continue;
         }
