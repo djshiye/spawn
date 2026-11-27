@@ -22,6 +22,7 @@ import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk?version=4.0';
 
 import {ContextMenuId, ShortcutId, SPAWN_ICON} from '../core/constants.js';
+import {reinsertAt} from '../core/entries.js';
 import {isValidFolderId} from '../core/folderId.js';
 import {resolveButtonIcon} from '../core/icons.js';
 import type {Entry, FolderSettings, SettingKey} from '../core/settings.js';
@@ -408,21 +409,28 @@ export function createEntryList(ctx: PrefsContext, opts: EntryListOptions): Adw.
     };
     const remove = (index: number): void => {
         const list = items();
-        const previous = items();
         const [entry] = list.splice(index, 1);
+        if (!entry)
+            return;
         // A deleted folder's name and contents are snapshotted so Undo can bring them back too.
-        const folderId = entry?.isFolder === 'true' && isValidFolderId(entry.id) ? entry.id : null;
+        const folderId = entry.isFolder === 'true' && isValidFolderId(entry.id) ? entry.id : null;
         const saved = folderId ? ctx.settings.snapshot([], [folderId]) : null;
         if (folderId)
             ctx.settings.deleteFolder(folderId);
         pendingFocus = [`del:${Math.min(index, list.length - 1)}`, 'add'];
         put(list);
-        if (entry)
-            toast(ctx, `Removed “${describeEntry(entry, ctx).title}”`, () => {
-                if (saved)
-                    ctx.settings.restore(saved);
-                put(previous);
-            });
+        // Undo puts back only this entry, into the list as it is then: later removals, moves and additions stay.
+        toast(ctx, `Removed “${describeEntry(entry, ctx).title}”`, () => {
+            const current = items();
+            // Already back (pinned again, or re-added): never write a duplicate.
+            const present = entry.id !== ShortcutId.SEPARATOR &&
+                (folderId ? current.some(e => e.id === entry.id) : has(entry.id));
+            if (present)
+                return;
+            if (saved)
+                ctx.settings.restore(saved);
+            put(reinsertAt(current, entry, index));
+        });
     };
 
     const restoreFocus = (): void => {

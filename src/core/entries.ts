@@ -13,6 +13,7 @@
 //   sanitizeEntries(raw, onSkip?): Entry[]  the entries of `raw` that are plain objects with a non-empty string
 //                                         `id` (kept as they are, in order); onSkip(entry, why) is called once for
 //                                         each dropped one
+//   reinsertAt(list, item, index): T[]    a copy of `list` with `item` inserted at `index`, clamped to 0..length
 
 export interface RawEntry {
     id: string;
@@ -39,5 +40,11 @@ export function sanitizeEntries<T extends RawEntry = RawEntry>(raw: unknown, onS
         }
         out.push(entry as T);
     }
+    return out;
+}
+
+export function reinsertAt<T>(list: readonly T[], item: T, index: number): T[] {
+    const out = [...list];
+    out.splice(Math.max(0, Math.min(index, out.length)), 0, item);
     return out;
 }
