@@ -81,10 +81,14 @@ for display in List Grid; do
 
     echo "-- U7 Undo of Remove from Folder focuses the folder"
     fresh
+    # two apps in the folder (the sandbox's seeded folder may be empty), so it survives the removal
+    dconf write "${K}folders/$F_INTERNET/pinned-apps" "[{'id': 'slack.desktop'}, {'id': 'com.discordapp.Discord.desktop'}]"; sleep 1
+    close_menu; open_menu 1.5
     base="$(count spawn-tile)"
     click_class "$FOLDER" 0 1; sleep 0.8
     click_class spawn-tile $((base + 1)) 3
     click_text "Remove from Folder"; sleep 0.8
+    key Escape 0.6   # leave the folder popup: Undo moves no focus while it shows
     key Ctrl+z 0.8
     check "Undo of Remove from Folder focuses the folder ($(ui_call FocusInfo | unwrap | json_get cls))" \
         "$(ui_call FocusInfo | unwrap | json_get cls | grep -q "$FOLDER" && echo 0 || echo 1)"
