@@ -90,6 +90,30 @@ test('range validation', () => {
         assertEquals(ids(q), [], q);
 });
 
+test('named colour shows the spelling that was typed', () => {
+    const d = q => colourAnswers(q).find(a => a.id === 'hex').description;
+    assertEquals(d('colour dark slate grey'), 'Hex colour · darkslategrey');
+    assertEquals(d('colour grey'), 'Hex colour · grey');
+    assertEquals(d('colour gray'), 'Hex colour · gray');
+    assertEquals(d('color Dark-Slate-Gray'), 'Hex colour · darkslategray');
+    assertEquals(d('colour light grey'), 'Hex colour · lightgrey');
+    assertEquals(d('colour cyan'), 'Hex colour · cyan');
+    assertEquals(d('colour magenta'), 'Hex colour · magenta');
+    assertEquals(d('colour aqua'), 'Hex colour · aqua');
+});
+
+test('value lookups prefer grey spellings', () => {
+    const d = q => colourAnswers(q).find(a => a.id === 'hex').description;
+    assertEquals(d('#808080'), 'Hex colour · grey');
+    assertEquals(d('rgb(128,128,128)'), 'Hex colour · grey');
+    assertEquals(d('hsl(0, 0%, 50%)'), 'Hex colour · grey');
+    assertEquals(d('#2f4f4f'), 'Hex colour · darkslategrey');
+    assertEquals(d('colour d3d3d3'), 'Hex colour · lightgrey');
+    assertEquals(d('#00ffff'), 'Hex colour · aqua');
+    assertEquals(d('#ff00ff'), 'Hex colour · fuchsia');
+    assertEquals(d('#80808080'), 'Hex colour');
+});
+
 test('false positives', () => {
     for (const q of ['#', '#12', '#12345', '#ggg', 'red', 'blue', 'colour', 'color', 'colour picker', 'color profile',
         'rgb', 'hsl', '3584e4', 'abc', '#hashtag', 'c#', 'f#', 'firefox', 'term', 'settings', 'files', 'help',
