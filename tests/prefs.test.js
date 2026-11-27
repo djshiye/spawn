@@ -4,6 +4,8 @@
 // in-memory backend (the "shell"), and the other way round. Nothing touches the user's dconf.
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import Gdk from 'gi://Gdk?version=4.0';
+import Gtk from 'gi://Gtk?version=4.0';
 
 import {assert, assertEquals, run, test} from './harness.js';
 
@@ -23,6 +25,8 @@ const {SpawnSettings, SCHEMA_ID, FOLDER_SCHEMA_ID, FolderSettings} = await impor
 const {applyMigration} = await import('../build/migrate/arcmenu.js');
 const {resetKeys, resetWithUndo, isModified} = await import('../build/prefs/widgets.js');
 const {friendlyIconName} = await import('../build/prefs/iconName.js');
+
+const {keyAction} = await import('../build/prefs/shortcutDialog.js');
 
 const PATH = '/org/gnome/shell/extensions/spawn/';
 
@@ -173,6 +177,38 @@ test('friendlyIconName shows a tidy label, never a raw file name', () => {
     assertEquals(friendlyIconName('distro-fedora.svg'), 'Fedora');
     assertEquals(friendlyIconName('start-here-symbolic.svg'), 'Start here');
     assertEquals(friendlyIconName('/home/me/Pictures/logo.png'), 'logo.png');
+});
+
+test('shortcut dialog: keyboard can confirm and navigate', () => {
+    const C = Gdk.ModifierType.CONTROL_MASK, A = Gdk.ModifierType.ALT_MASK, S = Gdk.ModifierType.SHIFT_MASK,
+        W = Gdk.ModifierType.SUPER_MASK;
+    const rows = [
+        [Gdk.KEY_Escape, 0, false, false, 'cancel'],
+        [Gdk.KEY_BackSpace, 0, true, false, 'clear'],
+        [Gdk.KEY_Tab, 0, true, false, 'pass'],
+        [Gdk.KEY_ISO_Left_Tab, S, true, false, 'pass'],
+        [Gdk.KEY_Tab, C, false, false, 'pass'],
+        [Gdk.KEY_Return, 0, true, false, 'confirm'],
+        [Gdk.KEY_KP_Enter, 0, true, false, 'confirm'],
+        [Gdk.KEY_space, 0, true, false, 'confirm'],
+        [Gdk.KEY_Return, 0, false, false, 'warn'],
+        [Gdk.KEY_Return, 0, true, true, 'pass'],
+        [Gdk.KEY_space, 0, true, true, 'pass'],
+        [Gdk.KEY_k, C | A, false, false, 'capture', Gtk.accelerator_name(Gdk.KEY_k, C | A)],
+        [Gdk.KEY_K, C | A | S, false, false, 'capture', Gtk.accelerator_name(Gdk.KEY_k, C | A | S)],
+        [Gdk.KEY_Return, C, true, false, 'capture', '<Control>Return'],
+        [Gdk.KEY_space, W, true, false, 'capture', '<Super>space'],
+        [Gdk.KEY_F5, 0, false, false, 'capture', 'F5'],
+        [Gdk.KEY_a, 0, false, false, 'warn'],
+        [Gdk.KEY_a, S, false, false, 'warn'],
+        [Gdk.KEY_Control_L, C, false, false, 'ignore'],
+    ];
+    for (const [keyval, mask, pending, other, kind, accel] of rows) {
+        const r = keyAction(keyval, mask, pending, other);
+        assertEquals(r.kind, kind, `key ${keyval} mask ${mask}`);
+        if (accel !== undefined)
+            assertEquals(r.accel, accel, `accel for key ${keyval} mask ${mask}`);
+    }
 });
 
 run();
