@@ -140,6 +140,8 @@ export class CategoryList {
     private readonly _appsBox: St.BoxLayout;
     private readonly _separator: St.Widget;
     private readonly _buttons = new Map<string, St.Button>();
+    // plain category names: the app list is named after its category, without the "contains new apps" suffix
+    private readonly _names = new Map<string, string>();
     private _list: AppList | null = null;
     /** The All Apps list while another category shows: hidden, only its first screenful (null = none kept). */
     private _kept: AppList | null = null;
@@ -268,6 +270,7 @@ export class CategoryList {
         for (const c of this._columnBox.get_children())
             c.destroy();
         this._buttons.clear();
+        this._names.clear();
         this._built = false;
         this._buildColumn();
         if (!this._buttons.has(this._selected))
@@ -359,17 +362,16 @@ export class CategoryList {
                 box.add_child(icon);
             }
             box.add_child(label);
-            if (cat.hasNew) {
+            if (cat.hasNew)
                 box.add_child(makeNewDot());
-                button.accessible_name = _('%s, contains new apps').format(cat.name);
-            }
             button.set_child(makeFace('spawn-row-surface', box));
-            nameItem(button, cat.name, {label, listItem: true});
+            nameItem(button, cat.hasNew ? _('%s, contains new apps').format(cat.name) : cat.name, {label, listItem: true});
             this._host.tooltips?.attach(button, label);
             wireItem(button, {activate: () => this.showCategory(cat.id)});
             button.connect('key-focus-in', () => this.showCategory(cat.id));
             this._columnBox.add_child(button);
             this._buttons.set(cat.id, button);
+            this._names.set(cat.id, cat.name);
         }
         this._built = true;
     }
@@ -435,7 +437,7 @@ export class CategoryList {
     private _buildList(id: string): AppList {
         const settings = this._services.settings;
         const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
-        markList(box, this._buttons.get(id)?.accessible_name || id);
+        markList(box, this._names.get(id) || id);
         this._appsBox.add_child(box);
         const list: AppList = {
             id,

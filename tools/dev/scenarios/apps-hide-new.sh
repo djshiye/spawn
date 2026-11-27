@@ -155,6 +155,12 @@ screenshot apps-new-row
 ui_call ShowView categories >/dev/null; sleep 1
 n="$(count spawn-new-dot)"
 check "a category dot is on screen ($n)" "$([ "$n" -ge 1 ]; echo $?)"
+cat_new="$(ui_call A11y | unwrap | python3 -c '
+import json, sys
+names = [i.get("name", "") for i in json.load(sys.stdin)["items"]
+         if "spawn-category-row" in i.get("cls", "").split() and "spawn-grid-category" not in i.get("cls", "").split()]
+print(sum(1 for n in names if n.endswith(", contains new apps")))')"
+check "the dotted category says it contains new apps ($cat_new)" "$([ "$cat_new" -ge 1 ]; echo $?)"
 screenshot apps-new-category-dot
 echo "-- search result"
 ui_call Search zqxnew >/dev/null; sleep 1.5
