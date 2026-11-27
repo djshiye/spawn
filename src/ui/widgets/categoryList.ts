@@ -18,7 +18,8 @@
 //   list.actor: St.Widget
 //   list.showCategory(id: string): void   ('all' | 'frequent' | GMenu id)
 //   list.ensureBuilt(): void              call when the view becomes visible
-//   list.refresh(): void                  rebuild the column and the selected list (AppIndex / settings changed)
+//   list.refresh(): void                  rebuild the column and the selected list (AppIndex / settings changed / a New
+//                                         app was launched); keeps the scroll offset and the focused row while the list is on screen
 //   list.setColumnVisible(visible)        false = flat "all apps" list without the category column
 //   list.columnScroll() / list.appScroll()   the two scroll views (scroll settings are re-applied live)
 //   list.categoryButtons(): St.Widget[]
@@ -128,6 +129,14 @@ export function categoryEntries(services: Services, frequent = true): CategoryEn
         });
     }
     return out;
+}
+
+/** What refresh() puts back after the rebuild. */
+interface Place {
+    category: string;
+    scroll: number;
+    focusApp: string | null;
+    focusCategory: string | null;
 }
 
 export class CategoryList {
@@ -263,6 +272,9 @@ export class CategoryList {
     refresh(): void {
         if (this._destroyed)
             return;
+        // Keep the place (scroll offset, focused row / category) when the list is on screen: a launch of a "New" app
+        // with the menu kept open, or an install, must not throw the user back to the top.
+        const place = this.actor.mapped ? this._place() : null;
         this._host.tooltips?.hide();
         this._dropList();
         this._dropKept();
@@ -276,6 +288,55 @@ export class CategoryList {
         if (!this._buttons.has(this._selected))
             this._selected = 'all';
         this._showList(this._selected);
+        if (place)
+            this._restorePlace(place);
+    }
+
+    /** Where the user is in the list (see refresh()). */
+    private _place(): Place {
+        const focus = global.stage.key_focus as Clutter.Actor | null;
+        let focusApp: string | null = null;
+        let focusCategory: string | null = null;
+        const list = this._list;
+        if (focus && list && list.box.contains(focus)) {
+            const index = this._rows(list).findIndex(r => r === focus || r.contains(focus));
+            if (index >= 0)
+                focusApp = list.apps[index]?.get_id() ?? null;
+        } else if (focus) {
+            for (const [id, b] of this._buttons) {
+                if (b === focus || b.contains(focus)) {
+                    focusCategory = id;
+                    break;
+                }
+            }
+        }
+        return {category: this._selected, scroll: this._appsScroll.vadjustment.value, focusApp, focusCategory};
+    }
+
+    private _restorePlace(place: Place): void {
+        // The selected category went away (refresh fell back to All Apps): start at the top.
+        if (place.category !== this._selected)
+            return;
+        // Focus first: grabbing it runs KeyRouter.onFocusChanged synchronously, whose scrollIntoView reads the new,
+        // not yet allocated row at y = 0, and a category button's key-focus-in re-runs _showList (offset 0).
+        try {
+            if (place.focusCategory) {
+                this._buttons.get(place.focusCategory)?.grab_key_focus();
+            } else if (place.focusApp && this._list) {
+                const list = this._list;
+                const index = list.apps.findIndex(a => a.get_id() === place.focusApp);
+                if (index >= 0) {
+                    if (index >= list.built)
+                        this._buildRows(list, index + 1 + BUFFER_ROWS - list.built);
+                    this._rows(list)[index]?.grab_key_focus();
+                }
+            }
+        } catch (e) {
+            error('could not restore the focus after a refresh', e);
+        }
+        // Then the scroll offset (as GridAllApps.refresh does); the adjustment clamps it to the range it has.
+        this._appsScroll.vadjustment.value = place.scroll;
+        this._queueFill();
     }
 
     setColumnVisible(visible: boolean): void {
