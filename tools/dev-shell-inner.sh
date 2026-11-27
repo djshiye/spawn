@@ -309,6 +309,12 @@ if [ -f "$root/tools/dev/scenarios/$scenario.sh" ] && grep -q '^# uses: recorder
     with_recorder=1
 fi
 
+# "# uses: rtl": the shell starts in a right-to-left text direction (Clutter mirrors every horizontal box).
+with_rtl=0
+if [ -f "$root/tools/dev/scenarios/$scenario.sh" ] && grep -q '^# uses: rtl' "$root/tools/dev/scenarios/$scenario.sh"; then
+    with_rtl=1
+fi
+
 # ---------------------------------------------------------------- seed the ISOLATED dconf
 enabled="['$uuid'"
 [ "$with_dtp" = 1 ] && enabled="$enabled, '$dtp_uuid'"
@@ -344,7 +350,9 @@ fi
 
 # ---------------------------------------------------------------- start the shell
 # SPAWN_MONITOR=WxH tries another screen size (e.g. 1280x720, or 3200x1800 for a 200% scale check).
-gnome-shell --headless --wayland --virtual-monitor ${SPAWN_MONITOR:-1600x900} --no-x11 >"$log" 2>&1 &
+# (`env` execs, so $! is still the shell)
+if [ "$with_rtl" = 1 ]; then rtl_env=(env CLUTTER_TEXT_DIRECTION=rtl); else rtl_env=(); fi
+"${rtl_env[@]}" gnome-shell --headless --wayland --virtual-monitor ${SPAWN_MONITOR:-1600x900} --no-x11 >"$log" 2>&1 &
 gshell_pid=$!
 
 for ((i = 0; i < 60; i++)); do

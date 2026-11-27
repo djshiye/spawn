@@ -2,7 +2,7 @@
 // recreated, so a re-sync after a model change keeps focus-less state cheap.
 //
 // No dead zones: the container has no padding and no spacing. The gap between two tiles (and the
-// gutter at the left / right edge of the grid, the pane's 8 px edge included) is transparent padding of the
+// gutter at the outer edges of the grid (mirrored in right-to-left), the pane's 8 px edge included) is transparent padding of the
 // tiles' own buttons (stylesheet.css), so the whole grid belongs to some tile. The first / last column carry
 // the 16 px gutter as inline padding and are that much wider.
 //
@@ -41,6 +41,7 @@ export class TileGrid {
     private _columns = 1;
     private _width = -1;
     private _gutter = GUTTER;
+    private _rtl = false;
 
     constructor() {
         this.actor = new St.BoxLayout({
@@ -67,7 +68,9 @@ export class TileGrid {
         }
         this.actor.add_style_class_name(sizeClass);
 
-        const same = this._columns === Math.max(1, columns) && this._width === tileWidth && this._gutter === gutter && tiles.length > 0 &&
+        // Clutter mirrors the rows in right-to-left locales: column 0 is then the right edge.
+        const rtl = this.actor.get_text_direction() === Clutter.TextDirection.RTL;
+        const same = this._columns === Math.max(1, columns) && this._width === tileWidth && this._gutter === gutter && this._rtl === rtl && tiles.length > 0 &&
             tiles.length === this._tiles.length && tiles.every((t, i) => t === this._tiles[i] && t.get_parent()?.get_parent() === this.actor);
         // Nothing moved (a model refresh that changed nothing visible): leave the rows alone, so the
         // keyboard focus on a tile survives it.
@@ -76,6 +79,7 @@ export class TileGrid {
         this._columns = Math.max(1, columns);
         this._width = tileWidth;
         this._gutter = gutter;
+        this._rtl = rtl;
         this._tiles = tiles;
         // Detach tiles first so destroying the old rows does not destroy them.
         for (const row of this.actor.get_children()) {
@@ -95,7 +99,9 @@ export class TileGrid {
             const right = tileWidth > 0 && col === this._columns - 1;
             // the gutter is the button's own transparent padding (inline: its class list stays stable)
             // Tiles are re-parented again and again: the inline style and width are only written when they differ.
-            const style = `${left ? `padding-left: ${gutter + TILE_INSET}px;` : ''}${right ? `padding-right: ${gutter + TILE_INSET}px;` : ''}` || null;
+            const padLeft = rtl ? right : left;
+            const padRight = rtl ? left : right;
+            const style = `${padLeft ? `padding-left: ${gutter + TILE_INSET}px;` : ''}${padRight ? `padding-right: ${gutter + TILE_INSET}px;` : ''}` || null;
             // The tile is `tileWidth` wide where it draws; the gutter is extra, transparent, clickable.
             const width = tileWidth > 0 ? tileWidth + (left ? gutter : 0) + (right ? gutter : 0) : -1;
             const was = PLACED.get(tile);

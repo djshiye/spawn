@@ -80,7 +80,8 @@ your area before writing code.
     name "<name>, contains new apps". Hidden apps never count. The bookkeeping is pure (`model/newApps.ts`);
     `model/newAppsStore.ts` keeps it in settings. Headless check: `tools/dev-shell.sh apps-hide-new`.
   - Keyboard: arrows/Tab/Return/Escape, Menu or Shift+F10 = context menu, typing
-    anywhere goes to search, mouse button 8 = back. Ctrl+Up/Down/Left/Right and Ctrl+Home/End on a
+    anywhere goes to search, mouse button 8 = back. In right-to-left languages the layout is mirrored, and the
+    arrow keys, Ctrl+arrow reordering and drop sides follow it (headless check `tools/dev-shell.sh core-rtl`). Ctrl+Up/Down/Left/Right and Ctrl+Home/End on a
     focused pinned entry (top level or inside an open folder) move it (List: Up/Down one position;
     Grid: Left/Right one position, Up/Down one row; no-op at the edges); the focus stays on the entry.
   - Delete Folder (its apps move to the top level) shows an in-menu banner "Folder “X” deleted [Undo]"
@@ -213,6 +214,7 @@ src/
                           CategoryList, ShortcutRow, PowerBar, UserCard, SearchBox, ResultList
   ui/contextMenu.ts       app context menu
   ui/dnd.ts               pinned drag & drop
+  model/direction.ts      left/right and before/after mirrored for right-to-left layouts
   model/hiddenApps.ts     pure helpers for the hidden-apps setting (add / remove / filter)
   model/newApps.ts        pure "New" bookkeeping (known-apps / new-apps); newAppsStore.ts keeps it in settings
   model/appIndex.ts       AppIndex: Shell.AppSystem + GMenu tree; categories,

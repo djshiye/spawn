@@ -23,7 +23,7 @@
 import Clutter from 'gi://Clutter';
 import type St from 'gi://St';
 
-import {nearestIndex} from '../../model/listNav.js';
+import {enterBelow, nearestIndex} from '../../model/listNav.js';
 import {centreOf, inView, pageTo} from './geometry.js';
 import type {Dir, Group, LayoutState} from './types.js';
 
@@ -119,11 +119,16 @@ export class Navigator {
         return true;
     }
 
+    /** Index of the selected (:checked) category button, 0 when none is checked. */
+    private _checkedCategory(cats: Group): number {
+        return Math.max(0, cats.items.findIndex(c => (c as St.Widget).has_style_pseudo_class('checked')));
+    }
+
     focusMain(last = false): void {
         const cats = this._src.categoryGroup();
         if (cats && !last && cats.items.length > 0) {
             // All apps with a category column: start on the selected category.
-            this.focusItem(cats, Math.max(0, cats.items.findIndex(c => (c as St.Widget).has_style_pseudo_class('checked'))));
+            this.focusItem(cats, this._checkedCategory(cats));
             return;
         }
         const groups = this._src.mainGroups().filter(g => g.items.length > 0);
@@ -200,9 +205,15 @@ export class Navigator {
                 return (this._state.searchTop && search ? this.focusItem(search, 'first') : false) || true;
             }
             const next = col[groupIdx + delta];
-            if (next)
-                return this.focusItem(next, delta > 0 ? Math.min(index % Math.max(cols, 1), next.items.length - 1) : 'last');
-            return true;
+            if (!next)
+                return true;
+            if (delta < 0)
+                return this.focusItem(next, 'last');
+            const to = enterBelow({cols, index, steps: Boolean(group.move)},
+                {cols: next.cols, count: next.items.length, row: ROW_GROUPS.has(next.id), steps: Boolean(next.move)});
+            if (to === 'nearest')
+                return this._focusNearest([next], focus as Clutter.Actor) || this.focusItem(next, 'first');
+            return this.focusItem(next, to);
         };
 
         const horizontal = (delta: number): boolean => {
@@ -233,7 +244,7 @@ export class Navigator {
                 return true;
             }
             if (cats && group.id === 'apps')
-                return this.focusItem(cats, Math.max(0, cats.items.findIndex(c => (c as St.Widget).has_style_pseudo_class('checked'))));
+                return this.focusItem(cats, this._checkedCategory(cats));
             return true;
         };
 
@@ -302,8 +313,13 @@ export class Navigator {
             const loc = this.locate(groups, global.stage.key_focus as Clutter.Actor | null);
             const current = loc ? groups.indexOf(loc.group) : -1;
             const n = groups.length;
-            if (n > 0)
+            // Focus outside the popup (it was opened with the pointer): Tab starts on the apps, Shift+Tab on the header.
+            if (n > 0 && !loc) {
+                const apps = groups.find(g => g.id === 'folder') ?? groups[0];
+                this.focusItem(delta > 0 ? apps : groups.find(g => g.id === 'header') ?? groups[n - 1], 'first');
+            } else if (n > 0) {
                 this.focusItem(groups[((current + delta) % n + n) % n], 'first');
+            }
             return;
         }
         const panes: Array<() => boolean> = [];
@@ -316,7 +332,7 @@ export class Navigator {
         const right = this._src.rightGroups().filter(g => g.items.length > 0);
         const focus = global.stage.key_focus as Clutter.Actor | null;
 
-        const add = (g: Group | null | undefined, which: 'first' | 'last' = 'first') => {
+        const add = (g: Group | null | undefined, which: 'first' | 'last' | number = 'first') => {
             if (!g || !g.items.length)
                 return;
             // Into the search results: the highlighted one.
@@ -331,7 +347,8 @@ export class Navigator {
             add(nav);
         if (linksTop)
             add(links);
-        add(cats, 'first');
+        if (cats)
+            add(cats, this._checkedCategory(cats));
         for (const g of main)
             add(g);
         if (!linksTop)

@@ -17,6 +17,7 @@ import St from 'gi://St';
 
 import type {Scope} from '../../core/scope.js';
 import type {Services} from '../../core/services.js';
+import {mirrorDir} from '../../model/direction.js';
 import {reorderTarget, type ReorderKey} from '../../model/reorder.js';
 import type {AppContextMenu} from '../contextMenu.js';
 import {scrollIntoView} from '../util.js';
@@ -177,10 +178,13 @@ export class KeyRouter {
         const sym = event.get_key_symbol();
         const state = event.get_state();
         const ctrl = Boolean(state & (Clutter.ModifierType.CONTROL_MASK | Clutter.ModifierType.MOD1_MASK));
+        // Clutter mirrors horizontal boxes in right-to-left locales; navigation and reordering work in logical terms.
+        const rtl = this._root.get_text_direction() === Clutter.TextDirection.RTL;
 
         // Ctrl+arrows / Home / End on a pinned entry or a folder's app reorder it; Ctrl+Z undoes a folder delete.
         if ((state & Clutter.ModifierType.CONTROL_MASK) && !(state & (Clutter.ModifierType.SHIFT_MASK | Clutter.ModifierType.MOD1_MASK))) {
-            const reorder = REORDER_KEYS.get(sym);
+            const key = REORDER_KEYS.get(sym);
+            const reorder = key ? mirrorDir(key, rtl) : undefined;
             if (reorder && this._reorderFocused(reorder))
                 return Clutter.EVENT_STOP;
             if ((sym === Clutter.KEY_z || sym === Clutter.KEY_Z) && this._undo.hasUndo()) {
@@ -204,9 +208,9 @@ export class KeyRouter {
         case Clutter.KEY_Down:
             return moved(this._nav.move('down'));
         case Clutter.KEY_Left:
-            return moved(this._nav.move('left'));
+            return moved(this._nav.move(mirrorDir('left', rtl)));
         case Clutter.KEY_Right:
-            return moved(this._nav.move('right'));
+            return moved(this._nav.move(mirrorDir('right', rtl)));
         case Clutter.KEY_Home:
         case Clutter.KEY_KP_Home:
         case Clutter.KEY_End:

@@ -31,3 +31,23 @@ expect_state "back to the default view" layout.view pinned
 expect_state "menu still open after the first Escape" open true
 key Escape 0.8
 expect_state "second Escape closes the menu" open false
+
+echo "-- Down from any tile of the last row into Frequent lands on its first row (U2)"
+K=/org/gnome/shell/extensions/spawn
+dconf write $K/default-menu-view "'Pinned_And_Frequent_Apps'"
+dconf write $K/pinned-apps "[{'id': 'org.gnome.Calculator.desktop'}, {'id': 'org.gnome.Calendar.desktop'}, {'id': 'org.gnome.Characters.desktop'}]"
+sleep 1
+close_menu
+ui_call SetFrequent "org.gnome.Nautilus.desktop,org.gnome.Settings.desktop,org.gnome.Calculator.desktop,org.gnome.Calendar.desktop" >/dev/null
+open_menu 1.5
+focus_class spawn-tile 2
+expect_state "third tile focused" layout.focusIndex 2
+key Down
+expect "Down from the third tile: a Frequent row" "$(ui_call FocusInfo | unwrap | json_get cls | cut -d' ' -f1)" "spawn-list-row"
+expect_state "...its first row" layout.focusIndex 0
+focus_class spawn-tile 1
+key Down
+expect_state "Down from the second tile: the first Frequent row too" layout.focusIndex 0
+dconf reset $K/default-menu-view
+dconf reset $K/pinned-apps
+sleep 1
