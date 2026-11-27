@@ -10,7 +10,7 @@ Each group has its own switch under **Settings > Menu > Search sources**.
 | Type | Get |
 |---|---|
 | `2+2`, `(3.5*4)/2`, `2^10`, `7 % 4` | arithmetic with brackets, powers and remainders |
-| `15% of 80`, `200 + 10%`, `20% off 80` | percentages |
+| `15% of 80`, `200 + 10%`, `200 + 10% + 5`, `20% off 80` | percentages |
 | `sqrt(16)`, `√16`, `cbrt 27`, `root(27, 3)`, `5²` | roots and powers |
 | `sin(30°)`, `cos(pi/3)`, `atan2(1, 1)`, `deg(pi)` | trigonometry (radians, or degrees with `°` / `deg`) |
 | `ln(e^2)`, `log(1000)`, `log(8, 2)`, `log2 1024`, `exp(1)` | logarithms |

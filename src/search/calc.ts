@@ -12,8 +12,9 @@
 //   unary   := ('-' | '+') unary | power
 //   power   := postfix ('^' unary)?                           right-associative; -2^2 = -(2^2); 2^-1 works
 //   postfix := primary ('%' | '!' | '°' | 'deg' | '²' | '³' | 'squared' | 'cubed')*
-//                                                             a % followed by the end, ')', ',', 'of' or 'off' is a
-//                                                             percentage; ° and deg convert degrees to radians
+//                                                             a % is a percentage unless a value follows it (a number,
+//                                                             '(', a constant, a function, √ or ∛): then it is modulo;
+//                                                             ° and deg convert degrees to radians
 //   primary := number | constant | '(' expr ')'
 //            | ('√' | '∛' | function) ( '(' expr (',' expr)* ')' | unary )
 // A function or root sign followed by "(" takes the bracketed argument list; otherwise it takes ONE unary-level
@@ -24,7 +25,7 @@
 // and never between two numbers ("2 3").
 //
 // Percentages: "15% of 80" = 12, "20% off 80" = 64, "50%" = 0.5, "200 + 10%" = 220 (10 % of 200),
-// "200 - 10%" = 180, "10 % 3" = 1 (modulo: the % is followed by a value).
+// "200 - 10%" = 180, "200 + 10% + 5" = 225, "10% * 50" = 5, "10 % 3" = 1 (modulo: the % is followed by a value).
 //
 // Numbers use "." as the decimal point and have no thousands separator ("1,5" is rejected). An exponent is
 // allowed ("4e2", "1.5E-3"), and so are 0x (hex), 0b (binary) and 0o (octal) integers, any case. A bare literal
@@ -347,6 +348,10 @@ interface Value {
 
 const plain = (v: number): Value => ({v, pct: false});
 
+/** Tokens after which a "%" is a percentage: anything that cannot start a value (a value means modulo). */
+const PERCENT_BEFORE_OPS = new Set([')', ',', '+', '-', '*', '/', '^', '&', '|', '<<', '>>']);
+const PERCENT_BEFORE_WORDS = new Set(['of', 'off', 'mod', 'xor']);
+
 class Parser {
     private _i = 0;
     private _depth = 0;
@@ -415,7 +420,7 @@ class Parser {
             this._i++;
             this.operations++;
             const right = this._term();
-            const rv = right.pct ? left.v * right.v : right.v;
+            const rv = right.pct && !left.pct ? left.v * right.v : right.v;
             left = plain(t.v === '+' ? left.v + rv : left.v - rv);
             check(left.v);
         }
@@ -526,7 +531,11 @@ class Parser {
 
     private _percentFollows(at: number): boolean {
         const n = this._tokens[at];
-        return !n || (n.t === 'op' && (n.v === ')' || n.v === ',')) || (n.t === 'id' && (n.v === 'of' || n.v === 'off'));
+        if (!n)
+            return true;
+        if (n.t === 'op')
+            return PERCENT_BEFORE_OPS.has(n.v);
+        return n.t === 'id' && PERCENT_BEFORE_WORDS.has(n.v);
     }
 
     private _primary(): Value {

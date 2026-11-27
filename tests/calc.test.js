@@ -49,6 +49,22 @@ test('percentages', () => {
     assertEquals(ev('(10 + 10)% of 50'), 10);
     assertEquals(ev('10 % 3'), 1); // a value follows: modulo
     assertEquals(ev('20 % (2+1)'), 2);
+    assertEquals(ev('200 + 10% + 5'), 225);
+    assertEquals(ev('100 - 10% - 5'), 85);
+    assertEquals(ev('10% + 5'), 5.1);
+    assertEquals(ev('10%-5'), -4.9);
+    assertEquals(ev('10% plus 5'), 5.1);
+    assertEquals(ev('10% * 50'), 5);
+    assertEquals(ev('10% times 50'), 5);
+    assertEquals(ev('10% / 2'), 0.05);
+    assertEquals(calculate('10%^2').text, '0.01');
+    assertEquals(ev('200 + 10% * 2'), 200.2);
+    assertEquals(ev('2 * 10% + 5'), 5.2);
+    assertEquals(ev('10% + 10%'), 0.2);
+    assertEquals(ev('10 % -3'), -2.9); // a sign after % is an operator, not the start of a modulo operand
+    assertEquals(ev('10 % (-3)'), 1); // modulo by a negative number still works with brackets
+    assertEquals(ev('10 mod -3'), 1);
+    assertEquals(ev('10% 3'), 1); // a value follows: modulo
 });
 
 test('constants and functions', () => {
