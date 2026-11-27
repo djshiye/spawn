@@ -37,6 +37,7 @@ import Gio from 'gi://Gio';
 import type GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
 
+import {DEV_ONLY_KEYS} from '../core/flavour.js';
 import {isCommandEntry, type RawEntry, sanitizeEntries} from '../core/entries.js';
 import type {Entry} from '../core/settings.js';
 import * as ops from '../model/pinnedOps.js';
@@ -52,10 +53,10 @@ const MAX_NAME_LENGTH = 256;
 
 /**
  * Keys that are never written to or read from a backup: bookkeeping of this machine (known-apps, new-apps), the
- * dev-only switch and the two state keys. Listed by name on purpose: schema summaries are translatable text, so
+ * dev-only switch (named in core/flavour.ts, so a release build never mentions it) and the two state keys. Listed by name on purpose: schema summaries are translatable text, so
  * they cannot decide what travels (tests/backup.test.js checks that every "(internal)" key is listed).
  */
-export const BACKUP_EXCLUDED_KEYS: readonly string[] = ['migration-done', 'prefs-visible-page', 'dev-mode', 'known-apps', 'new-apps'];
+export const BACKUP_EXCLUDED_KEYS: readonly string[] = ['migration-done', 'prefs-visible-page', 'known-apps', 'new-apps', ...DEV_ONLY_KEYS];
 
 function excluded(key: string): boolean {
     return BACKUP_EXCLUDED_KEYS.includes(key);
