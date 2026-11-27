@@ -236,7 +236,12 @@ test('more length, mass, volume, time, speed, temperature, data', () => {
     assertEquals(t('1 millennium in centuries'), '10 century');
     assertEquals(t('1 mach in m/s'), '343 m/s');
     assertEquals(t('1 speed of light in km/h'), '1079252800 km/h');
-    assertEquals(t('1 lightspeed in m/s'), '299792460 m/s');
+    assertEquals(t('1 lightspeed in m/s'), '299792458 m/s');
+    assertEquals(t('1 gib in b'), '1073741824 B');
+    assertEquals(t('1 tib in b'), '1099511627776 B');
+    assertEquals(t('1 au in m'), '149597870700 m');
+    assertEquals(t('1 light year in km'), '9460730500000 km');
+    assertEquals(t('1 au in km'), '149597870 km');
     assertEquals(t('0 rankine in k'), '0 K');
     assertEquals(t('491.67 °r in c'), '0 °C');
     assertEquals(t('32 f in degr'), '491.67 °R');

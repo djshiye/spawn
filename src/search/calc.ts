@@ -56,8 +56,9 @@
 //   isCalculation(text): boolean             true when text is an expression WITH an operator, percentage or function
 //                                            (a bare number or constant is not a calculation: "2048" must find apps)
 //   calculate(text): {value, text} | null    isCalculation + evaluate + formatNumber; null when not a calculation
-//   formatNumber(x, digits = 12): string     `digits` significant digits, no trailing zeros, "." decimal, never
-//                                            locale dependent, no floating point noise (0.1+0.2 -> 0.3), no "-0"
+//   formatNumber(x, digits = 12): string     `digits` significant digits, except whole numbers up to 2^53, which
+//                                            keep every digit; no trailing zeros, "." decimal, never locale
+//                                            dependent, no floating point noise (0.1+0.2 -> 0.3), no "-0"
 //   groupDigits(text): string                display only: U+00A0 thousands separators in the integer part of a
 //                                            formatNumber() result with 5 or more integer digits; fraction and
 //                                            exponent forms are left alone
@@ -657,6 +658,12 @@ export function formatNumber(x: number, digits = 12): string {
     const r = Number(x.toPrecision(digits));
     if (r === 0)
         return '0';
+    // Whole numbers up to 2^53 are exact in a double: show every digit ("2^40" is 1099511627776, not
+    // 1099511627780), unless the difference from the rounded value is small enough to be float noise
+    // ("sqrt(2)^2*4e15" is 8000000000000002 in floating point and stays 8000000000000000). Known limit: a real
+    // integer within a few units of a round number above 1e15 is still shown rounded.
+    if (Number.isInteger(x) && Math.abs(x) <= 2 ** 53 && Math.abs(x - r) > 4 * Number.EPSILON * Math.abs(x))
+        return String(x);
     // String() is plain decimal from 1e-7 up to 1e21 and "1.5e+21" outside; both are locale independent.
     return String(r).replace('e+', 'e');
 }

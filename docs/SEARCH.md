@@ -21,7 +21,7 @@ Each group has its own switch under **Settings > Menu > Search sources**.
 | `what is 15% of 80?`, `10 mod 3`, `2 to the power of 10`, `3 squared` | plain words |
 
 Constants: `pi` (π), `e`, `tau` (τ), `phi` (φ). The decimal point is `.`; a comma separates function arguments. Long
-answers are shown with spaces between the thousands; the copied number never has them.
+answers are shown with spaces between the thousands; the copied number never has them. Whole numbers are shown with every digit (up to 9 007 199 254 740 992); other answers are rounded to 12 significant digits.
 
 ## Unit conversion (`search-unit-conversion`, on)
 

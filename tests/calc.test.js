@@ -106,6 +106,13 @@ test('calculate returns the formatted text', () => {
     assertEquals(calculate('2/3').text, '0.666666666667');
     assertEquals(calculate('(3.5*4)/2').text, '7');
     assertEquals(calculate('2^10').text, '1024');
+    assertEquals(calculate('2^40').text, '1099511627776');
+    assertEquals(calculate('0xFFFFFFFFFF + 0').text, '1099511627775');
+    assertEquals(calculate('1 << 53').text, '9007199254740992');
+    assertEquals(calculate('2^53').text, '9007199254740992');
+    assertEquals(calculate('-(2^53)').text, '-9007199254740992');
+    assertEquals(calculate('999999999999+2').text, '1000000000001');
+    assertEquals(calculate('12345678901234+1').text, '12345678901235');
     assertEquals(calculate('2^64').text, '18446744073700000000');
     assertEquals(calculate('1000000*1000000000000').text, '1000000000000000000');
     assertEquals(calculate('10^30').text, '1e30');
@@ -122,6 +129,12 @@ test('formatNumber: significant digits, no noise, no locale', () => {
     assertEquals(formatNumber(1e21), '1e21');
     assertEquals(formatNumber(1.5e-7), '1.5e-7');
     assertEquals(formatNumber(1234.5, 3), '1230');
+    assertEquals(formatNumber(2 ** 40), '1099511627776');
+    assertEquals(formatNumber(2 ** 53), '9007199254740992');
+    assertEquals(formatNumber(8000000000000002), '8000000000000000'); // noise above 1e15 stays hidden
+    assertEquals(formatNumber(1666666666666666.8), '1666666666670000');
+    assertEquals(formatNumber(1073741824, 8), '1073741824');
+    assertEquals(formatNumber(1234, 3), '1234');
     assertEquals(formatNumber(NaN), '');
     assertEquals(formatNumber(Infinity), '');
     assertEquals(formatNumber(3.14159265358979, 8), '3.1415927');
@@ -423,7 +436,7 @@ test('groupDigits', () => {
     assertEquals(groupDigits('1000000000000000000'), '1 000 000 000 000 000 000');
     assertEquals(groupDigits(''), '');
     assertEquals(groupDigits('abc'), 'abc');
-    assertEquals(groupDigits(formatNumber(2 ** 40)), '1 099 511 627 780');
+    assertEquals(groupDigits(formatNumber(2 ** 40)), '1 099 511 627 776');
 });
 
 run();
