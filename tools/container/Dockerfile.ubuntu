@@ -1,9 +1,11 @@
-# GNOME Shell 51 test image for CI (.github/workflows/ci.yml): ubuntu:devel carries GNOME Shell 51. Everything the
+# GNOME Shell 51 test image for CI (.github/workflows/ci.yml): ubuntu:26.10 carries GNOME Shell 51
+# (moving to ubuntu:devel would silently test a newer shell; the build fails below if the major version is not 51;
+# bump the tag together with the job name when the next shell is supported). Everything the
 # headless harness (tools/dev-shell.sh) needs, software rendering, and no extension version validation. The
 # repository is bind-mounted at run time; the extension is built on the host first (tools/build.sh).
 # Build:  docker build --build-arg UID=$(id -u) -f tools/container/Dockerfile.ubuntu -t spawn-dev:ubuntu tools/container
 # Run as --user dev: dbus-daemon needs the user to exist in /etc/passwd.
-FROM ubuntu:devel
+FROM ubuntu:26.10
 ARG UID=1000
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
@@ -22,5 +24,7 @@ RUN rm -rf /run/systemd/seats \
     && (getent passwd "$UID" | cut -d: -f1 | xargs -r userdel -r 2>/dev/null; true) \
     && useradd --uid "$UID" --user-group --home-dir /home/dev --create-home --shell /bin/bash dev \
     && chmod 0777 /home/dev \
-    && dpkg -l gnome-shell mutter gjs | tail -3
+    && dpkg -l gnome-shell mutter gjs | tail -3 \
+    && v=$(dpkg-query -W -f='${Version}' gnome-shell) \
+    && case "$v" in 51.*|1:51.*) ;; *) echo "gnome-shell $v is not GNOME Shell 51: fix the FROM line" >&2; exit 1;; esac
 ENV HOME=/home/dev
