@@ -26,7 +26,8 @@ const FUNC = /^(rgba?|hsla?)\s*(?:\(([^()]*)\)|\s([^()]+))$/;
 const NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)(%?)$/;
 const HUE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:deg)?$/;
 
-// CSS Color Module level 4 named colours; the first of two equal values is the one shown ("gray", not "grey").
+// CSS Color Module level 4 named colours; for a hex/rgb/hsl colour that equals two names, the
+// first is shown, except that "grey" spellings win (UK English); a typed name is echoed as typed.
 const NAMED_TEXT =
     'aliceblue:f0f8ff,antiquewhite:faebd7,aqua:00ffff,aquamarine:7fffd4,azure:f0ffff,beige:f5f5dc,bisque:ffe4c4,' +
     'black:000000,blanchedalmond:ffebcd,blue:0000ff,blueviolet:8a2be2,brown:a52a2a,burlywood:deb887,' +
@@ -67,7 +68,7 @@ function buildNames(): void {
         const name = item.slice(0, i);
         const value = parseInt(item.slice(i + 1), 16);
         byName.set(name, value);
-        if (!byValue.has(value))
+        if (!byValue.has(value) || name.includes('grey'))
             byValue.set(value, name);
     }
 }
@@ -80,6 +81,8 @@ interface Colour {
     a: number | null;
     /** The format that was typed: 'hex', 'rgb' or 'hsl'. */
     typed: string;
+    /** The CSS name that was typed (normalised), if any. */
+    name?: string;
 }
 
 function parseHex(digits: string, typed: string): Colour {
@@ -161,7 +164,7 @@ function parseFunction(kind: string, body: string): Colour | null {
             const m = NUMBER.exec(args[i]);
             if (!m)
                 return null;
-            const n = m[1] ? parseFloat(args[i]) * 2.55 : parseFloat(args[i]);
+            const n = m[1] ? parseFloat(args[i]) * 255 / 100 : parseFloat(args[i]);
             if (n < 0 || n > 255.0000001)
                 return null;
             v.push(Math.min(255, Math.round(n)));
@@ -197,10 +200,11 @@ function parseColour(text: string, keyword: boolean): Colour | null {
         return parseHex(text, 'hex');
     if (!byName)
         buildNames();
-    const v = (byName as Map<string, number>).get(text.replace(/[\s_-]+/g, ''));
+    const key = text.replace(/[\s_-]+/g, '');
+    const v = (byName as Map<string, number>).get(key);
     if (v === undefined)
         return null;
-    return {r: v >> 16, g: (v >> 8) & 255, b: v & 255, a: null, typed: 'name'};
+    return {r: v >> 16, g: (v >> 8) & 255, b: v & 255, a: null, typed: 'name', name: key};
 }
 
 function hex2(n: number): string {
@@ -223,7 +227,7 @@ function rows(c: Colour): Answer[] {
     if (c.a === null) {
         if (!byValue)
             buildNames();
-        const name = (byValue as Map<number, string>).get((c.r << 16) | (c.g << 8) | c.b);
+        const name = c.name ?? (byValue as Map<number, string>).get((c.r << 16) | (c.g << 8) | c.b);
         if (name)
             hexDesc += ` · ${name}`;
     }

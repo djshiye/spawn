@@ -34,6 +34,9 @@ test('rgb forms', () => {
     assertEquals(titles('rgba(53,132,228,0.8)'), ['#3584E4CC', 'hsla(213, 76%, 55%, 0.8)', 'rgba(53, 132, 228, 0.8)']);
     assertEquals(titles('rgb(53 132 228 / 80%)')[0], '#3584E4CC');
     assertEquals(titles('rgb(100%, 0%, 0%)')[0], '#FF0000');
+    assertEquals(titles('rgb(100%, 50%, 0%)')[0], '#FF8000');
+    assertEquals(titles('rgb(50%, 50%, 50%)')[0], '#808080');
+    assertEquals(titles('rgb(90%, 0%, 0%)')[0], '#E60000');
 });
 
 test('hsl forms', () => {
@@ -81,10 +84,34 @@ test('all 148 names resolve', () => {
 });
 
 test('range validation', () => {
-    for (const q of ['rgb(256,0,0)', 'rgb(-1,0,0)', 'rgb(1,2)', 'rgb(1,2,3,4)', 'rgb(1,2,3,1.5)', 'rgb(a,b,c)',
+    for (const q of ['rgb(256,0,0)', 'rgb(-1,0,0)', 'rgb(1,2)', 'rgb(1,2,3,4)', 'rgb(1,2,3,1.5)', 'rgb(a,b,c)', 'rgb(101%,0%,0%)',
         'hsl(0, 101%, 50%)', 'hsl(0, 50%, -1%)', 'hsl(x, 50%, 50%)', 'rgba(1,2,3,150%)', 'rgb(1,2,3', 'rgb(1,2,3)x',
         'colour nosuchcolour'])
         assertEquals(ids(q), [], q);
+});
+
+test('named colour shows the spelling that was typed', () => {
+    const d = q => colourAnswers(q).find(a => a.id === 'hex').description;
+    assertEquals(d('colour dark slate grey'), 'Hex colour · darkslategrey');
+    assertEquals(d('colour grey'), 'Hex colour · grey');
+    assertEquals(d('colour gray'), 'Hex colour · gray');
+    assertEquals(d('color Dark-Slate-Gray'), 'Hex colour · darkslategray');
+    assertEquals(d('colour light grey'), 'Hex colour · lightgrey');
+    assertEquals(d('colour cyan'), 'Hex colour · cyan');
+    assertEquals(d('colour magenta'), 'Hex colour · magenta');
+    assertEquals(d('colour aqua'), 'Hex colour · aqua');
+});
+
+test('value lookups prefer grey spellings', () => {
+    const d = q => colourAnswers(q).find(a => a.id === 'hex').description;
+    assertEquals(d('#808080'), 'Hex colour · grey');
+    assertEquals(d('rgb(128,128,128)'), 'Hex colour · grey');
+    assertEquals(d('hsl(0, 0%, 50%)'), 'Hex colour · grey');
+    assertEquals(d('#2f4f4f'), 'Hex colour · darkslategrey');
+    assertEquals(d('colour d3d3d3'), 'Hex colour · lightgrey');
+    assertEquals(d('#00ffff'), 'Hex colour · aqua');
+    assertEquals(d('#ff00ff'), 'Hex colour · fuchsia');
+    assertEquals(d('#80808080'), 'Hex colour');
 });
 
 test('false positives', () => {

@@ -10,7 +10,7 @@ Each group has its own switch under **Settings > Menu > Search sources**.
 | Type | Get |
 |---|---|
 | `2+2`, `(3.5*4)/2`, `2^10`, `7 % 4` | arithmetic with brackets, powers and remainders |
-| `15% of 80`, `200 + 10%`, `20% off 80` | percentages |
+| `15% of 80`, `200 + 10%`, `200 + 10% + 5`, `20% off 80` | percentages |
 | `sqrt(16)`, `√16`, `cbrt 27`, `root(27, 3)`, `5²` | roots and powers |
 | `sin(30°)`, `cos(pi/3)`, `atan2(1, 1)`, `deg(pi)` | trigonometry (radians, or degrees with `°` / `deg`) |
 | `ln(e^2)`, `log(1000)`, `log(8, 2)`, `log2 1024`, `exp(1)` | logarithms |
@@ -21,7 +21,7 @@ Each group has its own switch under **Settings > Menu > Search sources**.
 | `what is 15% of 80?`, `10 mod 3`, `2 to the power of 10`, `3 squared` | plain words |
 
 Constants: `pi` (π), `e`, `tau` (τ), `phi` (φ). The decimal point is `.`; a comma separates function arguments. Long
-answers are shown with spaces between the thousands; the copied number never has them.
+answers are shown with spaces between the thousands; the copied number never has them. Whole numbers are shown with every digit (up to 9 007 199 254 740 992); other answers are rounded to 12 significant digits.
 
 ## Unit conversion (`search-unit-conversion`, on)
 
@@ -41,7 +41,7 @@ Type `<amount> <unit> in <unit>` (also `to`, `as`, `=`, `->`): `5 km in miles`, 
 | Pressure | Pa, hPa, kPa, MPa, bar, mbar, psi, atm, torr, mmHg, inHg |
 | Energy | J, kJ, MJ, cal, kcal, Wh, kWh, MWh, BTU, eV, ft·lbf |
 | Power | W, kW, MW, GW, hp, PS, BTU/h |
-| Force and torque | N, kN, lbf, kgf, dyn; N·m (`newton metres`), lbf·ft (`lb ft`), kgf·m |
+| Force and torque | N, kN (case matters: `kn` is the knot), lbf, kgf, dyn; N·m (`newton metres`), lbf·ft (`lb ft`), kgf·m |
 | Angle | degree, radian, grad, turn, arcmin, arcsec |
 | Frequency | Hz, kHz, MHz, GHz, THz, rpm |
 | Fuel economy | mpg (US), mpg uk, km/l, l/100km |
@@ -56,7 +56,7 @@ not offered: exchange rates need the internet.
 | Type | Get |
 |---|---|
 | `192.168.1.130/26`, `10.0.0.5 255.255.255.0` | network, usable host range, subnet mask, broadcast, host count, wildcard mask |
-| `/26`, `255.255.240.0` | the mask for a prefix, or the prefix for a mask |
+| `/26`, `255.255.240.0` | the mask for a prefix, or the prefix for a mask (a bare mask must start with 255; use `mask 240.0.0.0` for shorter ones) |
 | `192.168.1.0/24 into /26` | the subnets |
 | `10.1.2.3 in 10.0.0.0/8` | whether the address is inside the network |
 | `192.168.1.10`, `fe80::1` | what kind of address it is (private, public, link-local...), as a number, in hex and binary, reverse DNS name |
