@@ -24,7 +24,7 @@ GLib.spawn_command_line_sync(`rm -rf ${tmp}`); // the compiled schema is already
 
 const {SpawnSettings, SCHEMA_ID, FOLDER_SCHEMA_ID, FolderSettings} = await import('../build/core/settings.js');
 const {applyMigration} = await import('../build/migrate/arcmenu.js');
-const {resetKeys, resetWithUndo, isModified, spinBounds, spinRow, optionalSpinRow} = await import('../build/prefs/widgets.js');
+const {resetKeys, resetWithUndo, isModified, spinBounds, spinRow, optionalSpinRow, subpageRow, watch} = await import('../build/prefs/widgets.js');
 const {friendlyIconName} = await import('../build/prefs/iconName.js');
 
 const {keyAction} = await import('../build/prefs/shortcutDialog.js');
@@ -241,6 +241,26 @@ test('spin rows show a valid stored value above the call site\'s bounds and neve
     optionalSpinRow(ctx, 'menu-button-border-radius', 'R', 0, 25);
     shell.set_value('menu-button-border-radius', new GLib.Variant('(bi)', [true, 40]));
     assertEquals(prefs.get('menu-button-border-radius'), [true, 40]);
+});
+
+test('visiting a sub-page twice leaves only the latest visit\'s watchers connected', () => {
+    if (!Gtk.init_check()) {
+        print('  skipped: no display (run under xvfb-run)');
+        return;
+    }
+    Adw.init();
+    const {prefs} = fixture();
+    const ctx = {settings: prefs, window: Object.assign(new Adw.PreferencesWindow(), {push_subpage() {}})};
+    let count = 0;
+    const row = subpageRow(ctx, {title: 'T', build: () => {
+        const g = new Adw.PreferencesGroup();
+        watch(ctx, g, ['menu-height'], () => count++);
+        return [g];
+    }});
+    row.emit('activated');
+    row.emit('activated');
+    prefs.set('menu-height', 777);
+    assertEquals(count, 1);
 });
 
 run();

@@ -114,9 +114,17 @@ export function connectDisposable(raw: Gio.Settings, signals: ReadonlyArray<read
     };
 }
 
+/** While a sub-page is being built, the disposers of every watch() made for it (see subpageRow). */
+let collecting: Array<() => void> | null = null;
+
 export function watch(ctx: PrefsContext, widget: Gtk.Widget, keys: readonly SettingKey[], cb: () => void): void {
-    const dispose = connectDisposable(ctx.settings.raw, keys.map(key => [`changed::${key}`, cb] as const));
-    onWindowClose(ctx, dispose);
+    const disconnect = connectDisposable(ctx.settings.raw, keys.map(key => [`changed::${key}`, cb] as const));
+    const unregister = onWindowClose(ctx, disconnect);
+    const dispose = (): void => {
+        disconnect();
+        unregister();
+    };
+    collecting?.push(dispose);
     widget.connect('destroy', dispose);
 }
 
@@ -449,8 +457,21 @@ export function subpageRow(ctx: PrefsContext, spec: SubpageSpec): Adw.ActionRow 
     } else if (subtitle) {
         row.set_subtitle(subtitle);
     }
+    // The handlers closures keep a popped page's widgets alive, so their 'destroy' never comes: the previous visit's
+    // watchers are released when the page is opened again (it cannot be on screen then: only its parent page has the row).
+    let disposePrevious: (() => void) | null = null;
     row.connect('activated', () => {
-        const built = spec.build();
+        disposePrevious?.();
+        const outer = collecting;
+        const mine: Array<() => void> = [];
+        collecting = mine;
+        let built: ReturnType<SubpageSpec['build']>;
+        try {
+            built = spec.build();
+        } finally {
+            collecting = outer;
+        }
+        disposePrevious = () => mine.splice(0).forEach(dispose => dispose());
         let content: Adw.PreferencesPage;
         if (built instanceof Adw.PreferencesPage) {
             content = built;
