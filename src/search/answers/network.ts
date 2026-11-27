@@ -5,7 +5,7 @@
 //   192.168.1.0/24, 192.168.1.130/26, 10.0.0.5 255.255.255.0, 10.0.0.5 mask 255.255.255.0, 10.0.0.5/255.255.255.0
 //                                     network, usable range, mask, broadcast, usable hosts, wildcard (RFC 3021 /31, /32)
 //   /26, cidr 26, prefix 26           mask, hosts, wildcard, address count
-//   netmask 255.255.240.0, mask ..., or a bare contiguous mask "255.255.240.0"      prefix length, hosts, wildcard
+//   netmask 255.255.240.0, mask ..., or a bare mask starting 255 ("255.255.240.0")      prefix length, hosts, wildcard
 //   192.168.1.0/24 into /26 (to, split, split into)    the subnets (the first 7 and a summary when there are many)
 //   192.168.1.10                      address type (private, loopback...), integer, hex, binary, reverse DNS name
 //   is 10.1.2.3 in 10.0.0.0/8 | 10.1.2.3 in 10.0.0.0/8      containment, IPv4 and IPv6
@@ -507,8 +507,10 @@ function dispatch(q: string): Answer[] {
         const ip = parseIPv4(q);
         if (ip === null)
             return [];
+        // A bare value is a mask only when it starts with 255 (prefix 8 to 31). Shorter masks such as
+        // 224.0.0.0 are much more often typed as addresses; "mask 224.0.0.0" still answers as a mask.
         const p = maskToPrefix(ip);
-        if (p !== null && ip !== 0 && ip !== 0xffffffff)
+        if (p !== null && p >= 8 && ip !== 0xffffffff)
             return maskRows(p);
         // Something like 255.0.255.0 is a broken mask, not an address.
         if (ip >>> 24 === 255 && ip !== 0xffffffff)

@@ -116,6 +116,9 @@ test('prefix and mask on their own', () => {
     assertEquals(rows('255.0.0.0')[0], ['prefix', '/8', 'Prefix length']);
     assertEquals(ids('255.0.255.0'), []);
     assertEquals(ids('mask 255.0.255.0'), []);
+    assertEquals(rows('mask 224.0.0.0')[0], ['prefix', '/3', 'Prefix length']);
+    assertEquals(rows('netmask 128.0.0.0')[0], ['prefix', '/1', 'Prefix length']);
+    assertEquals(byId('10.0.0.5 240.0.0.0', 'network').title, '0.0.0.0/4');
     assertEquals(rows('netmask 255.255.255.255')[0], ['prefix', '/32', 'Prefix length']);
     assertEquals(rows('netmask 0.0.0.0')[0], ['prefix', '/0', 'Prefix length']);
 });
@@ -176,12 +179,18 @@ test('bare IPv4 address', () => {
         '255.255.255.255': ['Broadcast address', '255.255.255.255/32 · RFC 919'],
         '240.0.0.1': ['Reserved address', '240.0.0.0/4 · RFC 1112'],
         '0.0.0.0': ['Reserved address', '0.0.0.0/8 · RFC 1122'],
+        '224.0.0.0': ['Multicast address', '224.0.0.0/4 · RFC 5771'],
+        '240.0.0.0': ['Reserved address', '240.0.0.0/4 · RFC 1112'],
+        '254.0.0.0': ['Reserved address', '240.0.0.0/4 · RFC 1112'],
+        '192.0.0.0': ['Reserved address', '192.0.0.0/24 · RFC 6890'],
+        '128.0.0.0': ['Public address', 'IPv4'],
     };
     for (const [ip, [t, d]] of Object.entries(kind)) {
         const a = byId(ip, 'type');
         assert(a, ip);
         assertEquals([a.title, a.description], [t, d], ip);
     }
+    assertEquals(ids('224.0.0.0'), ['type', 'int', 'hex', 'binary', 'ptr']);
     assertEquals(byId('0.0.0.0', 'int').title, '0');
     assertEquals(byId('0.0.0.0', 'hex').title, '0x00000000');
     assertEquals(byId('255.255.255.255', 'int').title, '4294967295');

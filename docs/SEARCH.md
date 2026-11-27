@@ -56,7 +56,7 @@ not offered: exchange rates need the internet.
 | Type | Get |
 |---|---|
 | `192.168.1.130/26`, `10.0.0.5 255.255.255.0` | network, usable host range, subnet mask, broadcast, host count, wildcard mask |
-| `/26`, `255.255.240.0` | the mask for a prefix, or the prefix for a mask |
+| `/26`, `255.255.240.0` | the mask for a prefix, or the prefix for a mask (a bare mask must start with 255; use `mask 240.0.0.0` for shorter ones) |
 | `192.168.1.0/24 into /26` | the subnets |
 | `10.1.2.3 in 10.0.0.0/8` | whether the address is inside the network |
 | `192.168.1.10`, `fe80::1` | what kind of address it is (private, public, link-local...), as a number, in hex and binary, reverse DNS name |
