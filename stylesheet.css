@@ -542,13 +542,8 @@
     padding: 0 2px;
 }
 
-/* multi-lined-labels: at most two lines, then an ellipsis. Clutter.Text measures a wrapped AND ellipsized
- * label as one line (Pango's default height), so the label gets two lines of room up front; it then wraps
- * and ellipsizes to that allocation. Every tile in a row keeps the same height that way. */
-.spawn-tile-label-multi {
-    min-height: 2.5em;
-    max-height: 2.5em;
-}
+/* multi-lined-labels: the label is a TwoLineLabel (ui/widgets/tileLabel.ts) that reports exactly two lines of
+ * height whatever the font and scale, so no fixed height is set here. */
 
 .spawn-folder-plate {
     border-radius: 12px;

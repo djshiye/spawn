@@ -26,6 +26,7 @@
 //   Pseudo(s cls, i nth) -> s  the style pseudo classes of that actor ("hover active ..."), '' when absent
 //   TextRect(s text, i nth) -> s   JSON [x, y, w, h] of the nth VISIBLE St.Label whose text is exactly `text`
 //                            (a context menu item such as "Hide from Menu"), or ""
+//   TextLines(s text, i nth) -> i  how many lines the nth visible St.Label with exactly `text` lays out (0: none found)
 //   FocusActor(s cls, i nth) give the nth visible actor with `cls` the keyboard focus
 //   MenuItems(s cls) -> s    JSON: the items of the visible menu whose actor carries `cls` (e.g. spawn-button-menu):
 //                            [{kind: 'item'|'separator'|'submenu', label, visible, open?, items?}]
@@ -101,6 +102,7 @@ const IFACE = `
     <method name="ClipboardText"><arg type="s" direction="out" name="text"/></method>
     <method name="Count"><arg type="s" direction="in" name="cls"/><arg type="i" direction="out" name="count"/></method>
     <method name="TextRect"><arg type="s" direction="in" name="text"/><arg type="i" direction="in" name="nth"/><arg type="s" direction="out" name="rect"/></method>
+    <method name="TextLines"><arg type="s" direction="in" name="text"/><arg type="i" direction="in" name="nth"/><arg type="i" direction="out" name="lines"/></method>
     <method name="FocusActor"><arg type="s" direction="in" name="cls"/><arg type="i" direction="in" name="nth"/></method>
     <method name="MenuItems"><arg type="s" direction="in" name="cls"/><arg type="s" direction="out" name="json"/></method>
     <method name="Windows"><arg type="s" direction="out" name="json"/></method>
@@ -561,6 +563,10 @@ export function installUiDevHooks(scope: Scope, settings: SpawnSettings, popup: 
         TextRectAsync: ([text, nth]: [string, number], inv: Invocation) => reply(inv, () => {
             const a = findText(text)[nth];
             return new GLib.Variant('(s)', [a ? JSON.stringify(rectOf(a)) : '']);
+        }),
+        TextLinesAsync: ([text, nth]: [string, number], inv: Invocation) => reply(inv, () => {
+            const a = findText(text)[nth] as St.Label | undefined;
+            return new GLib.Variant('(i)', [a ? a.clutter_text.get_layout().get_line_count() : 0]);
         }),
         PseudoAsync: ([cls, nth]: [string, number], inv: Invocation) => reply(inv, () => {
             const a = findAll(cls)[nth] as unknown as {get_style_pseudo_class?: () => string | null} | undefined;

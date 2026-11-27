@@ -19,17 +19,16 @@
 //   TileOptions: {folderUuid?, iconSize?, multiLine?, name?, context?}
 //   new ActionTile(name, icon, activate, host?, opts?)   same look, arbitrary action;
 //                                                        opts.context = right click / Menu key
-//   styleTileLabel(label, multiLine)                     shared by FolderTile
 
 import Clutter from 'gi://Clutter';
 import type Gio from 'gi://Gio';
 import type Shell from 'gi://Shell';
-import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import {nameItem} from './a11y.js';
 import {makeItemButton, makeSurface, wireItem} from './interact.js';
 import {makeNewBadge, newAccessibleName} from './newBadge.js';
+import {makeTileLabel} from './tileLabel.js';
 import type {TooltipManager} from './tooltip.js';
 
 export interface TileHost {
@@ -126,21 +125,6 @@ export class ActionTile {
     }
 }
 
-/**
- * One ellipsized line, or (multiLine) up to two wrapped lines: the label is capped at two lines'
- * height by `.spawn-tile-label-multi` and Clutter.Text ellipsizes what does not fit.
- */
-export function styleTileLabel(label: St.Label, multiLine: boolean): void {
-    const ct = label.clutter_text;
-    ct.ellipsize = Pango.EllipsizeMode.END;
-    if (multiLine) {
-        label.add_style_class_name('spawn-tile-label-multi');
-        ct.line_alignment = Pango.Alignment.CENTER;
-        ct.line_wrap = true;
-        ct.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
-    }
-}
-
 /** Icon + name label inside `button`; returns both. */
 export function buildTileContent(button: St.Button, name: string, icon: Gio.Icon | string | null, iconSize: number, tooltips?: TooltipManager, multiLine = false): {icon: St.Icon; label: St.Label} {
     button.x_expand = false;
@@ -164,13 +148,7 @@ export function buildTileContent(button: St.Button, name: string, icon: Gio.Icon
         iconActor.icon_name = icon;
     else if (icon)
         iconActor.gicon = icon;
-    const label = new St.Label({
-        text: name,
-        style_class: 'spawn-tile-label',
-        x_align: Clutter.ActorAlign.CENTER,
-        x_expand: true,
-    });
-    styleTileLabel(label, multiLine);
+    const label = makeTileLabel(name, multiLine);
     box.add_child(iconActor);
     box.add_child(label);
     const surface = makeSurface('spawn-tile-surface');
