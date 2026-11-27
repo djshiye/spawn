@@ -6,6 +6,8 @@ name: CI
 # Branch protection note: a workflow skipped by `paths-ignore` reports no checks, so a docs-only pull request would
 # wait for a required check forever. If you make "check" required, either drop `paths-ignore` below or add a
 # trivial always-green workflow with the same job name that runs on the ignored paths.
+# Keep the paths-ignore lists in step with require_ci_green in tools/release.sh, which treats these paths as
+# untested-but-safe.
 on:
   pull_request:
     paths-ignore:
@@ -53,7 +55,7 @@ jobs:
             gjs gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gmenu-3.0 libglib2.0-bin zip unzip
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Typecheck
         run: npm run typecheck
@@ -96,11 +98,13 @@ jobs:
       - name: Did the extension change?
         id: changes
         run: |
-          if git diff --name-only HEAD^1 HEAD | grep -E '^(src/|schemas/|stylesheet\.css$|tools/)' ; then
+          # Same inputs as the rebuild check in tools/dev-shell.sh, plus tools/. package(-lock).json is left out on
+          # purpose: the check job covers dependency bumps, and Dependabot would otherwise run this job every week.
+          if git diff --name-only HEAD^1 HEAD | grep -E '^(src/|schemas/|data/|stylesheet\.css$|metadata\.json$|tsconfig\.json$|tools/)' ; then
             echo "run=true" >>"$GITHUB_OUTPUT"
           else
             echo "run=false" >>"$GITHUB_OUTPUT"
-            echo "No change under src/, schemas/, stylesheet.css or tools/: skipping the shell scenarios."
+            echo "No change under src/, schemas/, data/, stylesheet.css, metadata.json, tsconfig.json or tools/: skipping the shell scenarios."
           fi
 
       - name: Set up Node.js
@@ -119,7 +123,7 @@ jobs:
       - name: Build the extension
         if: steps.changes.outputs.run == 'true'
         run: |
-          npm ci
+          npm ci --ignore-scripts
           tools/build.sh
 
       - name: Build the GNOME Shell 51 image

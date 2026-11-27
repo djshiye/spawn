@@ -60,9 +60,14 @@ cd "$root"
 wt="$root/.gh-pages"
 # shellcheck source=lib/signing.sh
 . "$root/tools/lib/signing.sh"
+# shellcheck source=lib/ghpages.sh
+. "$root/tools/lib/ghpages.sh"
 
 if [ -t 1 ]; then b=$'\e[1m'; c=$'\e[36m'; r=$'\e[0m'; else b=""; c=""; r=""; fi
 step() { printf '%s==>%s %s%s%s\n' "$c" "$r" "$b" "$*" "$r"; }
+
+# the payload check below needs this even when nothing is signed
+command -v rpm2archive >/dev/null 2>&1 || { echo "rpm2archive not found. Install it: sudo dnf install rpm" >&2; exit 2; }
 
 # ---- 0. signing key (checked before the slow build) ----
 signed=0
@@ -100,7 +105,6 @@ step "Building $name (release suffix $release_suffix) for Fedora ${FEDORA_RELEAS
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-mkdir -p "$work/out"
 
 # ---- 2. export the tree, compile it once on the host, make the source tarball ----
 step "Exporting the tree and compiling the extension (npm ci + tools/build.sh --release)"
@@ -118,12 +122,40 @@ fi
     npm ci --prefer-offline --no-audit --no-fund --ignore-scripts >"$work/npm.log" 2>&1 \
         || { tail -n 30 "$work/npm.log" >&2; exit 1; }
     tools/build.sh --release >"$work/build.log" 2>&1 || { tail -n 30 "$work/build.log" >&2; exit 1; }
+    # no test hooks may be in what ships (absolute path: the script works relative to its own tree)
+    tools/check-release.sh "$PWD/build" >"$work/check-release.log" 2>&1 \
+        || { cat "$work/check-release.log" >&2; exit 1; }
     # the tarball is the git archive plus build/; not the tools' scratch output
     rm -rf node_modules dist build/.built
 )
 epoch=$(git log -1 --format=%ct)
 tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$epoch" -C "$work/tree" -cf - "$name" \
     | gzip -n > "$work/$name.tar.gz"
+
+# The build container sees only this directory: the tarball and its output. The host-compiled tree and the
+# expected manifests stay outside it, so a container cannot change what its output is checked against.
+ctr="$work/ctr"
+mkdir -p "$ctr"
+cp "$work/$name.tar.gz" "$ctr/"
+
+# What the binary rpm must contain, file by file (sha256  ./path), derived from the host build and the spec's
+# %install: build/ minus schemas/ and *.d.ts, the schema in the system directory, spawn-enable, %license, %doc.
+# Update this block together with %install in build-aux/spawn.spec. `ext` is %{extdir} without the leading slash.
+src="$work/tree/$name"
+ext="usr/share/gnome-shell/extensions/spawn@djshiye.github.io"
+schema=org.gnome.shell.extensions.spawn.gschema.xml
+{
+    ( cd "$src/build" && find . -type f ! -path './schemas/*' ! -name '*.d.ts' -print0 \
+        | xargs -0 sha256sum ) | sed "s|  \./|  ./$ext/|"
+    printf '%s  ./usr/share/glib-2.0/schemas/%s\n' "$(sha256sum <"$src/build/schemas/$schema" | cut -d' ' -f1)" "$schema"
+    printf '%s  ./usr/bin/spawn-enable\n'          "$(sha256sum <"$src/build-aux/spawn-enable" | cut -d' ' -f1)"
+    printf '%s  ./usr/share/licenses/spawn/LICENSE\n' "$(sha256sum <"$src/LICENSE" | cut -d' ' -f1)"
+    printf '%s  ./usr/share/doc/spawn/README.md\n'  "$(sha256sum <"$src/README.md" | cut -d' ' -f1)"
+} | LC_ALL=C sort -k2 >"$work/expected-bin.manifest"
+{
+    printf '%s  ./%s.tar.gz\n' "$(sha256sum <"$work/$name.tar.gz" | cut -d' ' -f1)" "$name"
+    printf '%s  ./spawn.spec\n' "$(sha256sum <"$src/build-aux/spawn.spec" | cut -d' ' -f1)"
+} | LC_ALL=C sort -k2 >"$work/expected-src.manifest"
 
 # ---- 3. gh-pages worktree ----
 step "Preparing the gh-pages worktree (.gh-pages/)"
@@ -142,17 +174,8 @@ if ! git worktree list --porcelain | grep -qx "worktree $wt"; then
         git worktree add --orphan -b gh-pages "$wt"
     fi
 fi
-# A failed earlier run may have left half-written files; start from exactly what is committed.
-if git -C "$wt" rev-parse -q --verify HEAD >/dev/null; then
-    git -C "$wt" reset -q --hard HEAD
-fi
-git -C "$wt" clean -qfdx
-if [ "$have_remote" -eq 1 ]; then
-    if ! git -C "$wt" merge -q --ff-only origin/gh-pages; then
-        echo "Local gh-pages has diverged from origin/gh-pages; reconcile it in .gh-pages/ first." >&2
-        exit 1
-    fi
-fi
+# Start from exactly what is committed (a --push run: from exactly origin/gh-pages, see lib/ghpages.sh).
+ghpages_sync "$wt" "$have_remote" "$push"
 
 # ---- 3b. key policy: no silent downgrade, no silent key change ----
 pubkey="$wt/RPM-GPG-KEY-spawn"
@@ -192,6 +215,7 @@ else
 fi
 
 # ---- 4. build in a container, sign on the host, index in a container, per Fedora release ----
+images=()
 for fedora in "${FEDORA_RELEASES[@]}"; do
 IMAGE="$IMAGE_BASE:$fedora"
 # Fedora version in the path, like the baseurl's $releasever.
@@ -199,11 +223,12 @@ repo_dir="$wt/fedora-$fedora"
 mkdir -p "$repo_dir"
 cache="${XDG_CACHE_HOME:-$HOME/.cache}/spawn-publish/dnf-$fedora"
 mkdir -p "$cache"
-rm -rf "$work/out"; mkdir -p "$work/out"
+rm -rf "$ctr/out"; mkdir -p "$ctr/out"
+cp -f "$work/$name.tar.gz" "$ctr/"   # a container cannot hand the next Fedora release a changed tarball
 
 step "Running rpmbuild in $IMAGE"
 podman run --rm \
-    -v "$work:/work:Z" -v "$cache:/var/cache/libdnf5:Z" \
+    -v "$ctr:/work:Z" -v "$cache:/var/cache/libdnf5:Z" \
     -e NAME="$name" -e SUFFIX="$release_suffix" -e FEDORA="$fedora" \
     "$IMAGE" bash -euo pipefail -c '
         dnf install -y --setopt=install_weak_deps=False rpm-build glib2 >/dev/null
@@ -224,15 +249,27 @@ podman run --rm \
         grep -E "^(Wrote:|Checking for unpackaged)" /work/rpmbuild.log
         cp /root/rpmbuild/RPMS/noarch/*.rpm /root/rpmbuild/SRPMS/*.src.rpm /work/out/
     '
+# the digest is only recorded (in the gh-pages commit), not pinned: the floating tag keeps Fedora's fixes
+digest=$(podman image inspect --format '{{.Digest}}' "$IMAGE" 2>/dev/null || echo unknown)
+echo "   image $IMAGE@$digest"
+images+=("$IMAGE@$digest")
+
+step "Checking the Fedora $fedora packages hold exactly the host-built files"
+for f in "$ctr"/out/*.rpm; do
+    case "$f" in
+        *.src.rpm) signing_check_payload "$f" "$work/expected-src.manifest" ;;
+        *)         signing_check_payload "$f" "$work/expected-bin.manifest" ;;
+    esac
+done
 
 if [ "$signed" -eq 1 ]; then
     # On the host, so the private key (or the YubiKey) is never exposed to a container. Must happen before
     # createrepo_c, whose metadata records each package's checksum.
     step "Signing the Fedora $fedora packages"
-    signing_sign_rpms "$signing_key" "$work"/out/*.rpm
-    signing_verify_rpms "$pubkey" "$work"/out/*.rpm
+    signing_sign_rpms "$signing_key" "$ctr"/out/*.rpm
+    signing_verify_rpms "$pubkey" "$ctr"/out/*.rpm
 fi
-cp "$work"/out/*.rpm "$repo_dir/"
+cp "$ctr"/out/*.rpm "$repo_dir/"
 if [ "$signed" -eq 1 ]; then
     # Packages already in the repository that do not verify against this key would fail gpgcheck=1 for
     # everyone: drop them (see docs/RELEASING.md for why they are dropped and not re-signed).
@@ -345,6 +382,7 @@ sudo dnf install spawn &amp;&amp; spawn-enable</pre>
 </html>
 HTML
 
+[ "$push" -eq 0 ] || ghpages_refuse_dirty "$wt"
 step "Committing to gh-pages"
 git -C "$wt" add -A
 if git -C "$wt" diff --cached --quiet; then
@@ -352,7 +390,7 @@ if git -C "$wt" diff --cached --quiet; then
 else
     GIT_AUTHOR_NAME=$COMMIT_NAME GIT_AUTHOR_EMAIL=$COMMIT_EMAIL \
     GIT_COMMITTER_NAME=$COMMIT_NAME GIT_COMMITTER_EMAIL=$COMMIT_EMAIL \
-        git -C "$wt" commit -q -m "Publish $name-1$release_suffix for Fedora ${FEDORA_RELEASES[*]}"
+        git -C "$wt" commit -q -m "Publish $name-1$release_suffix for Fedora ${FEDORA_RELEASES[*]}" -m "Built in: ${images[*]}"
     git -C "$wt" log --oneline -1
 fi
 
