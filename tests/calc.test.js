@@ -438,6 +438,24 @@ test('false positives stay null', () => {
     assertEquals(calculate('100%') !== null, true);
 });
 
+test('numeric dates are not calculations (the date answer has them)', () => {
+    for (const q of ['2026-12-25', '25/12/2026', '25-12-2026', '1/1/2027', '2026-1-5', '1-1-2026', '2026−12−25',
+        '(2026-12-25)', '= 2026-12-25', '2026-12-25=', '2026-12-25 - 2026-01-01', '25/12/2026 - 1/1/2026',
+        '25/12/2026+1', '12/31/2026']) {
+        assertEquals(calculate(q), null, q);
+        assertEquals(isCalculation(q), false, q);
+    }
+    // still maths
+    assertEquals(calculate('10-4-3').text, '3');
+    assertEquals(calculate('100/10/5').text, '2');
+    assertEquals(calculate('2026 - 12 - 25').text, '1989');
+    assertEquals(calculate('25-12').text, '13');
+    assertEquals(calculate('2026-12-25.5').text, '1988.5');
+    assertEquals(calculate('2000/10/5').text, '40');
+    // evaluate() is not affected (units reads numbers with it)
+    assertEquals(ev('2026-12-25'), 1989);
+});
+
 test('groupDigits', () => {
     assertEquals(groupDigits('1234567.891'), '1 234 567.891');
     assertEquals(groupDigits('1234'), '1234');

@@ -87,6 +87,10 @@ screenshot search-answers-time-dark
 shows "time in new york" "New York"
 shows "days until 25 dec" "day"
 screenshot search-answers-date-dark
+search "2026-12-25"
+expect "a numeric date leads with the date, not a sum" "$(first)" "Friday 25 December 2026"
+reopen
+copies "25/12/2026" "25 December 2026" "Return on a day-first date copies the date"
 shows "week number" "Week "
 shows "today + 90 days" " 20"
 

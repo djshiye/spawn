@@ -601,6 +601,11 @@ class Parser {
 const LEADING_WORD = /^\s*([a-zπτφ]+)\s*/i;
 const START_WORDS = new Set(['what', 'whats', 'calc', 'calculate']);
 const LEADING_NOISE = /^\s*(?:=|(?:what\s+is|what['’]?s|calculate|calc)(?![a-zπτφ\d]))/i;
+// A numeric date ("2026-12-25", "25/12/2026", "25-12-2026") is the date answer's (answers/dates.ts), never a
+// subtraction or division: anywhere in the text, so "2026-12-25 - 2026-01-01" is left to the date difference too.
+// The dash class matches the minus signs the tokenizer and dates.ts both accept. The shape counts, not whether the
+// date is valid: a division of three numbers ending in a four-digit year is never meant, and no row beats a wrong one.
+const DATE_SHAPE = /(?<![\w.])(?:\d{4}[-−–—]\d{1,2}[-−–—]\d{1,2}|\d{1,2}[/\-−–—]\d{1,2}[/\-−–—]\d{4})(?![\w.])/;
 const TRAILING_NOISE = /\s*[=?]+\s*$/;
 
 /** Cheap rejection (no exception) of a lone word or of a first word that can never start an expression: app names. */
@@ -646,7 +651,7 @@ export function isCalculation(text: string): boolean {
 }
 
 export function calculate(text: string): {value: number; text: string} | null {
-    if (!mayBeCalculation(text, false))
+    if (!mayBeCalculation(text, false) || DATE_SHAPE.test(text))
         return null;
     try {
         const p = parseText(text);
