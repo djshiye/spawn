@@ -143,7 +143,7 @@ create the key (next section) before the first public publish if you can.
 User commands (also in the README):
 
 ```sh
-sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.github.io/spawn/spawn.repo && sudo dnf install -y spawn && spawn-enable
+sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.github.io/spawn/spawn.repo && sudo dnf install spawn && spawn-enable
 sudo dnf upgrade
 spawn-enable --remove; sudo dnf remove spawn
 ```
@@ -179,7 +179,7 @@ Signing happens on the host (`tools/lib/signing.sh`), never in a container, so t
    curl -sSfO https://djshiye.github.io/spawn/RPM-GPG-KEY-spawn
    gpg --show-keys --fingerprint RPM-GPG-KEY-spawn      # compare with the fingerprint in the README
    sudo rpm --import RPM-GPG-KEY-spawn
-   sudo dnf install -y spawn && spawn-enable
+   sudo dnf install spawn && spawn-enable
    ```
 
    Say that the key comes from the same site as the packages (trust on first use), so users should compare the fingerprint.
@@ -246,7 +246,7 @@ Only if the primary itself is lost or leaked (revoke it with the stored revocati
 `RPM-GPG-KEY-spawn`, the new build is signed by it, and packages signed by the old key are dropped. Existing users trust only the old key, so
 with `repo_gpgcheck=1` their next `dnf upgrade` fails until they accept the new one. Announce it with the new fingerprint in the README and
 the release notes. They take it through dnf's normal import prompt, comparing the fingerprint dnf shows with the announced one
-(`sudo dnf clean all` first, so that dnf asks again). Warn them that `dnf -y` and `--assumeyes` accept the key without showing it, which
+(`sudo dnf clean all` first, so that dnf asks again). Warn them that `dnf -y` and `--assumeyes` accept the key without waiting for an answer, which
 defeats the check; they should answer the prompt themselves. They may remove the old key afterwards (`rpm -qa 'gpg-pubkey*'`, then `sudo rpm -e <name>`).
 
 ### Trust on first use
