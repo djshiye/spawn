@@ -100,6 +100,7 @@ test('a folder the pinned list points at but the file does not hold is left out 
     const r = parsed(doc({'pinned-apps': "[{'id': 'a.desktop'}, {'id': 'f1', 'name': 'Games', 'isFolder': 'true'}, {'id': 'b.desktop'}]"}));
     assert(r.ok, r.error);
     assertEquals(r.plan.missingFolders, ['f1']);
+    assertEquals(r.plan.missingFolderNames, ['"Games"']);
     assertEquals(r.plan.values.get('pinned-apps').recursiveUnpack(), [{id: 'a.desktop'}, {id: 'b.desktop'}]);
     assertEquals(r.plan.ignored, []);
     // a local folder of that name is replaced with everything else, never left behind empty and nameless

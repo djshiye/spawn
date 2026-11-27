@@ -77,7 +77,7 @@ function confirmRestore(ctx: PrefsContext, plan: RestorePlan, apply: () => void)
     if (commands)
         body += `\n\n${commands} Restore only a backup you trust.`;
     if (plan.missingFolders.length > 0)
-        body += `\n\nLeft out (folder missing from the backup): ${nameList(plan.missingFolders)}.`;
+        body += `\n\nLeft out (folder missing from the backup): ${nameList(plan.missingFolderNames)}.`;
     if (plan.skipped.length > 0)
         body += `\n\nNot restored: ${nameList(plan.skipped)}.`;
     if (plan.ignored.length > 0)

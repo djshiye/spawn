@@ -77,6 +77,8 @@ export interface RestorePlan {
     skipped: string[];
     /** Folder ids the file's pinned list points at but the file does not hold; their entries are dropped from the plan. */
     missingFolders: string[];
+    /** The same folders by the name their pinned entry carries (the id when it has none), quoted, for the confirmation. */
+    missingFolderNames: string[];
     /** Display lines of the commands the restore adds to the menu (entries that run their id as a command line when clicked). */
     commands: string[];
     extensionVersion: string | null;
@@ -261,6 +263,10 @@ export function parseBackup(text: string, settings: SpawnSettings): ParseResult 
         if (!folders.has(id))
             missingFolders.push(id);
     }
+    const missingFolderNames = missingFolders.map(id => {
+        const entry = (pinned as RawEntry[]).find(e => e.isFolder === 'true' && e.id === id);
+        return `"${entry?.name || id}"`;
+    });
     if (missingFolders.length > 0) {
         pinned = pinned.filter(e => !(e.isFolder === 'true' && missingFolders.includes(e.id)));
         values.set('pinned-apps', new GLib.Variant('aa{ss}', pinned as never));
@@ -280,7 +286,7 @@ export function parseBackup(text: string, settings: SpawnSettings): ParseResult 
         }
     }
     const ext = doc['extensionVersion'];
-    return {ok: true, plan: {values, folders, ignored, skipped, missingFolders, commands: commandsAdded(values, settings), extensionVersion: typeof ext === 'string' ? ext.slice(0, 40) : null}};
+    return {ok: true, plan: {values, folders, ignored, skipped, missingFolders, missingFolderNames, commands: commandsAdded(values, settings), extensionVersion: typeof ext === 'string' ? ext.slice(0, 40) : null}};
 }
 
 /** One sentence naming the commands the restore adds (at most 8), or '' when there are none. */
