@@ -16,8 +16,10 @@ The RPM `Release` is `1.<commit count>.<dist>`, appended by `publish.sh`, so eve
 
 ## Cut a release
 
-1. Finish the work on `main`. CI (`.github/workflows/ci.yml`) must be green; it runs typecheck, lint, tests and the
-   `smoke` / `lifecycle` shell scenarios but not the whole harness, so also run `tools/dev-shell.sh all` locally.
+1. Finish the work on `main`. CI (`.github/workflows/ci.yml`) must be green. It runs typecheck, lint and the unit tests on every pull request
+   and push, and, on pull requests that change the extension, a few headless GNOME Shell 51 scenarios (the list is in
+   `ci.yml`). It does not run the whole harness or the `--with-dtp` variants, so also run `tools/dev-shell.sh all` locally.
+   `tools/release.sh` refuses to release when CI is not green.
    Move the `CHANGELOG.md` "Unreleased" entries under the new version.
 2. `tools/bump-version.sh 1.1.0 "what changed"` (updates package.json, package-lock.json, metadata.json, the spec and its changelog), review and commit.
 3. If the supported shells changed: edit `shell-version` in `metadata.json` and `%global min_shell` in `build-aux/spawn.spec`
@@ -151,14 +153,15 @@ spawn-enable --remove; sudo dnf remove spawn
 
 ## Signing
 
-Packages and repository metadata are signed with a GPG key that stays on your machine. The layout is the usual best practice:
-an **offline certify-only primary key** (ed25519, no expiry) kept on an encrypted stick, and a **signing subkey** (ed25519, no expiry)
-in your everyday keyring or, better, on a YubiKey. `RPM-GPG-KEY-spawn` is the full public certificate (primary, subkey and their
-binding signatures); its fingerprint is the primary's, and `publish.sh` is always told the primary's fingerprint.
+Packages and repository metadata are signed with a GPG key that stays on your machine. `tools/make-signing-key.sh` creates one
+ed25519 key with no expiry that both certifies and signs, in your everyday keyring. A stronger layout is optional and `publish.sh`
+accepts it too: an **offline certify-only primary key** on an encrypted stick and a **signing subkey** in your keyring or on a
+YubiKey (see "One-time setup", step 3). Either way `RPM-GPG-KEY-spawn` is the full public certificate (the primary, any subkeys and
+their binding signatures), its fingerprint is the primary's, and `publish.sh` is always told the primary's fingerprint.
 
 Why nothing expires: dnf remembers a repository key by the primary key's ID and never refreshes it (its repo keyring is
 `<cachedir>/pubring`). A key that expires, or whose expiry is extended afterwards, breaks every user's `dnf upgrade` until each of them
-re-imports it by hand, so there is no expiry to run into. The protection against a leaked subkey is revocation and replacement (below),
+re-imports it by hand, so there is no expiry to run into. The protection against a leaked key is revocation and replacement (below),
 not a timer.
 Users get `gpgcheck=1` (each package) and `repo_gpgcheck=1` (`repodata/repomd.xml`, which lists every package and its checksum).
 Signing happens on the host (`tools/lib/signing.sh`), never in a container, so the private key and its passphrase never enter one.
@@ -229,6 +232,8 @@ The same rule removes packages signed by the old key after a rotation.
 
 Use this when the YubiKey or the laptop's subkey is lost, broken or suspected stolen. The primary (from the stick) stays the same, so users keep
 trusting the same identity.
+This only applies to the optional subkey layout. With the single key that `tools/make-signing-key.sh` creates there is no
+subkey: a lost or leaked key means "Rotating to a new primary key" below.
 
 1. Get the primary secret back temporarily (import the backup on a trusted machine, ideally offline), then
    `gpg --edit-key <primary fpr>`, `addkey` (ed25519, sign, no expiry), optionally `keytocard` it, and `save`. If the old subkey was
@@ -257,8 +262,9 @@ installs, dnf fetches the key from there and asks them to accept it. Whoever con
 key and the packages together, and the user would not notice. The signature therefore protects against unsigned or altered packages after you
 published them (a mirror, a proxy, a stale cache, a partial compromise of the hosting) and, from the second install on, against anyone who does
 not hold the private key. It does not protect a first install against a compromised GitHub account. To narrow that gap the fingerprint is in the
-README and on the landing page, and users are asked to compare it with the one dnf displays. The primary key lives on an offline stick and the signing subkey on your
-machine or a YubiKey, both outside GitHub and not in an Actions secret, so that one compromised account does not hold both the site and the key.
+README and on the landing page, and users are asked to compare it with the one dnf displays. The private key lives only on the release machine (or, with the optional layout, the primary on an
+offline stick and the signing subkey on that machine or a YubiKey), never on GitHub or in an Actions secret, so that one compromised
+account does not hold both the site and the key.
 
 ## Open items
 
