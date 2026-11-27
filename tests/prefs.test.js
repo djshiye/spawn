@@ -29,6 +29,9 @@ const {friendlyIconName} = await import('../build/prefs/iconName.js');
 
 const {keyAction} = await import('../build/prefs/shortcutDialog.js');
 
+// Gtk.init_check() must be asked once: a second call after a failed one reports success and widgets then crash.
+const HAVE_DISPLAY = Gtk.init_check() && Gdk.Display.get_default() !== null;
+
 const PATH = '/org/gnome/shell/extensions/spawn/';
 
 /** `prefs` is the SpawnSettings the window uses; `shell` is another Gio.Settings on the same backend. */
@@ -224,7 +227,7 @@ test('spinBounds uses the schema range for ranged keys and the caller\'s bounds 
 });
 
 test('spin rows show a valid stored value above the call site\'s bounds and never overwrite an external write', () => {
-    if (!Gtk.init_check()) {
+    if (!HAVE_DISPLAY) {
         print('  skipped: no display (run under xvfb-run)');
         return;
     }
@@ -244,7 +247,7 @@ test('spin rows show a valid stored value above the call site\'s bounds and neve
 });
 
 test('visiting a sub-page twice leaves only the latest visit\'s watchers connected', () => {
-    if (!Gtk.init_check()) {
+    if (!HAVE_DISPLAY) {
         print('  skipped: no display (run under xvfb-run)');
         return;
     }
