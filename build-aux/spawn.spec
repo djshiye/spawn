@@ -6,7 +6,7 @@
 # The one source of truth for the version is package.json; this line, metadata.json "version-name" and the
 # Changelog are kept equal by tools/bump-version.sh (publish.sh and %%check refuse a mismatch).
 Name:           spawn
-Version:        1.6.0
+Version:        1.7.0
 # tools/publish.sh appends .<commit count> so every build from main is a newer release.
 Release:        1%{?release_suffix}%{?dist}
 Summary:        Fast, resilient application menu for GNOME Shell (ArcMenu replacement)
@@ -90,6 +90,9 @@ test ! -e dev/benchmark.js
 %{_datadir}/glib-2.0/schemas/org.gnome.shell.extensions.spawn.gschema.xml
 
 %changelog
+* Sat Nov 28 2026 Dino Klisura <115914552+djshiye@users.noreply.github.com> - 1.7.0-1
+- Bug-fix and polish pass: long app names wrap, High Contrast outlines, right-to-left keys, more exact search answers, safer backups and releases; a panel icon on a hung network share can no longer freeze the desktop
+
 * Wed Nov 25 2026 Dino Klisura <115914552+djshiye@users.noreply.github.com> - 1.6.0-1
 - Offline smart answers in search (maths, units, time zones, dates, networks, emoji, quick settings); one click stops a screen recording while the menu is open, also over games
 
