@@ -1,6 +1,6 @@
 # Spawn roadmap
 
-Reviewed November 2026, against `main` at 1.4.0 (GNOME Shell 49, 50 and 51; Fedora DNF repository only, signed).
+Reviewed November 2026, against `main` at 1.6.0 (GNOME Shell 49, 50 and 51; Fedora DNF repository only, signed).
 This is a plan, not a promise. It is reviewed after each release. The original 1.0 plan is kept below with each
 item's status, so the numbers used in issues and notes still mean the same thing.
 
@@ -9,9 +9,11 @@ item's status, so the numbers used in issues and notes still mean the same thing
 Spawn replaces ArcMenu's two-pane layout without ArcMenu's crashes, imports ArcMenu's settings in one click, and has
 grown well past the 1.0 scope:
 
-- **Two layouts:** Classic (two panes, the default) and Grid (one column, a paged grid of pinned apps, 1.4.0).
+- **Two layouts:** Classic (two panes, the default) and Grid (one column, a paged grid of pinned apps, 1.4.0; an icon grid for All apps, 1.5.0).
 - **Search is the strongest part:** ranked with typo tolerance and usage, a calculator, unit conversion, Settings
   panels and app actions (1.3.0).
+- **Search answers questions (1.6.0):** harder maths, many more unit conversions, time zones, dates, number bases and
+  colours, network helpers, emoji, quick text tools and quick settings, all offline.
 - **Safe to install and to change:** signed packages and repository metadata, CI on every pull request with a headless
   GNOME Shell 51, a split layout module, and an accessibility pass (screen reader names, focus rings, reduced motion).
 - **Fast:** about 20 ms from open to painted, under 1 ms per app search with 300+ apps, no actor leaks.
@@ -19,9 +21,9 @@ grown well past the 1.0 scope:
 What is still missing: web search as a fallback, touch gestures, open on hover / hot corner, free placement,
 translations, unread badges, and GNOME Shell 52 (due March 2027).
 
-## Next: Spawn 1.5.0
+## Done in Spawn 1.5.0
 
-Fixes and features from the November 2026 review of 1.4.0 (all chosen by Dino):
+Fixes and features from the November 2026 review of 1.4.0 (all chosen by Dino), all shipped in 1.5.0:
 
 1. Grid: drag an app from All apps onto the header pill to pin it.
 2. Grid: a folder on another page opens on its own page, inside the menu.
@@ -32,7 +34,7 @@ Fixes and features from the November 2026 review of 1.4.0 (all chosen by Dino):
 7. Search: power actions (lock, log out, restart, power off), off by default.
 8. Runner: run a typed command, like Alt+F2, off by default.
 
-## After 1.5.0
+## Next
 
 9. "Search the web for…" as the last result (item 14 below).
 10. Touch: long press for the context menu, swipe to turn Grid pages (item 22).
@@ -57,19 +59,19 @@ Fixes and features from the November 2026 review of 1.4.0 (all chosen by Dino):
 | 11 | Unit conversion in search | Done, 1.3.0 |
 | 12 | Settings panels and app actions as results | Done, 1.3.0 |
 | 13 | Usage-aware ranking | Done (a "Clear usage history" button is still open) |
-| 14 | "Search the web for…" | After 1.5.0 |
+| 14 | "Search the web for…" | Next |
 | 15 | A second layout: grid start | Done, 1.4.0 (quiet version: no Recommended row, by Dino's choice) |
-| 16 | Translations | After 1.5.0 |
+| 16 | Translations | Next |
 | 17 | Back up and restore settings | Done, 1.3.0 |
-| 18 | Open on hover and hot corner | After 1.5.0 |
+| 18 | Open on hover and hot corner | Next |
 | 19 | Multi-monitor polish | Open |
-| 20 | Run a typed command from the runner | 1.5.0 |
+| 20 | Run a typed command from the runner | Done, 1.5.0 |
 | 21 | Screen size checks | Checked in the sandbox at 720p, 150 % text and 4K 200 % (November 2026) |
-| 22 | Touch and tablet | After 1.5.0 (taps on panel icons fixed in 1.3.0) |
+| 22 | Touch and tablet | Next (taps on panel icons fixed in 1.3.0) |
 | 23 | More layouts, picked by demand | Later |
 | 24 | File search beyond recent files | Later |
-| 25 | Unread badges | After 1.5.0 |
-| 26 | Free menu placement | After 1.5.0 |
+| 25 | Unread badges | Next |
+| 26 | Free menu placement | Next |
 
 The original plan, as written for 1.0.0, follows. Its last two sections ("Not planned" and "How each release is
 judged") still apply.

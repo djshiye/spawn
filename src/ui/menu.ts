@@ -105,6 +105,8 @@ export class SpawnPopup {
     private readonly _scope: Scope;
     private readonly _services: Services;
     private readonly _listeners = new Set<OpenListener>();
+    /** Spawn buttons that emitted 'destroy': never touched again (a call on a disposed wrapper logs a Gjs-CRITICAL). */
+    private readonly _goneAnchors = new WeakSet<object>();
 
     private _anchorOwned: {scope: Scope; release(): void} | null = null;
     private _anchor: St.Widget | null = null;
@@ -130,6 +132,15 @@ export class SpawnPopup {
         this._intellihide = createIntellihideHold(scope.child('intellihide'));
         this._fullscreen = createFullscreenReveal(scope.child('fullscreen reveal'));
         scope.add(() => this._teardown(), 'SpawnPopup');
+        // High Contrast flipped while the menu is open: swap the outlines now, not at the next open
+        try {
+            scope.connect(St.Settings.get(), 'notify::high-contrast', () => {
+                if (this._menu)
+                    applyTone(this._menu.actor, this._menu.box);
+            });
+        } catch (e) {
+            error('high contrast watch failed', e);
+        }
         try {
             installUiDevHooks(scope.child('ui dev hooks'), services.settings, this, services.appIndex);
         } catch (e) {
@@ -152,6 +163,11 @@ export class SpawnPopup {
 
     openFolderByIndex(index: number): void {
         this._layout?.openFolderByIndex(index);
+    }
+
+    /** Dev hook (Ui.CompleteRows): build every row of the Classic app list, which is otherwise built lazily. */
+    completeAppRows(): void {
+        this._layout?.completeAppRows();
     }
 
     /** Dev hook (Ui.SetPlaces): fake devices / bookmarks in the right pane; null = the real ones. */
@@ -177,6 +193,7 @@ export class SpawnPopup {
             anchor: this._anchor ? this._anchor.constructor.name : null,
             side: this._side,
             layout: this._layout?.debugState() ?? null,
+            intellihideWatch: this._intellihide.debugWatch,
         };
     }
 
@@ -347,7 +364,10 @@ export class SpawnPopup {
 
         anchorScope.connect(menu, 'open-state-changed', (_menu: unknown, open: boolean) => this._onOpenState(open));
         // A destroyed anchor (panel extension restart) takes the popup shell with it.
-        anchorScope.connect(anchor, 'destroy', () => this._release());
+        anchorScope.connect(anchor, 'destroy', () => {
+            this._goneAnchors.add(anchor);
+            this._release();
+        });
         anchorScope.add(() => {
             // Rescue the layout before the shell around it is destroyed.
             if (layout.actor.get_parent())
@@ -391,6 +411,10 @@ export class SpawnPopup {
         }
     }
 
+    private _anchorGone(anchor: unknown): boolean {
+        return typeof anchor === 'object' && anchor !== null && this._goneAnchors.has(anchor);
+    }
+
     private _release(): void {
         const wasOpen = this._open;
         const anchor = this._anchor;
@@ -424,9 +448,11 @@ export class SpawnPopup {
         }
         if (!open) {
             this._clearHover();
-            // Resolve a closing click on a panel launcher BEFORE a fullscreen panel hides again.
-            const passedTo = this._passClickOn(anchor);
-            if (!passedTo)
+            const gone = this._anchorGone(anchor);
+            // Resolve a closing click on a panel launcher BEFORE a fullscreen panel hides again (not when the button
+            // itself was destroyed: that close is no click, and nothing may touch the button after this dispatch).
+            const passedTo = gone ? null : this._passClickOn(anchor);
+            if (!passedTo && !gone)
                 this._restoreHover(anchor);
             this._intellihide.release();
             // A tray icon / indicator clicked over a fullscreen game opens its menu on that panel: keep the panel
@@ -532,7 +558,7 @@ export class SpawnPopup {
     private _restoreHover(anchor: St.Widget | null): void {
         this._scope.idle(() => {
             try {
-                if (this._open)
+                if (this._open || this._anchorGone(anchor))
                     return;
                 const [x, y] = global.get_pointer();
                 const target = panelClickTarget({x, y, button: PRIMARY}, anchor, panelClickDeps());
@@ -607,7 +633,7 @@ export class SpawnPopup {
             return null;
         this._passedButton = click.button;
         this._scope.idle(() => {
-            if (isActorAlive(button))
+            if (!this._anchorGone(button) && isActorAlive(button))
                 button.handlePassedClick?.(click.button);
         });
         return button;

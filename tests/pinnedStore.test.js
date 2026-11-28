@@ -360,4 +360,18 @@ test('captureState + pin is undone by restoreFolder; a later change to a folder 
     scope.dispose();
 });
 
+test('restoreFolder keeps every folder the snapshot knows', () => {
+    const {store, settings, scope} = fixture([app('a'), folder('F1', 'Fold'), folder('F2', 'Two')], {F1: [app('x')], F2: [app('y')]});
+    settings.folder('F1').name = 'Fold';
+    const undo = store.captureState('x');
+    store.removeFromFolder('F1', 'x.desktop');
+    store.markDissolved(undo);
+    assert(store.restoreFolder(undo));
+    assertEquals(settings.folder('F1').name, 'Fold');
+    assertEquals(settings.folder('F1').pinnedApps.map(e => e.id), ['x.desktop']);
+    assertEquals(settings.folder('F2').pinnedApps.map(e => e.id), ['y.desktop']);
+    assertEquals(settings.get('pinned-apps').map(e => e.id), ['a.desktop', 'F1', 'F2']);
+    scope.dispose();
+});
+
 run();

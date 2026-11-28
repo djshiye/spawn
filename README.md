@@ -92,7 +92,7 @@ Spawn comes from its own signed repository for Fedora 43, 44 and 45:
 
 ```sh
 sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.github.io/spawn/spawn.repo
-sudo dnf install -y spawn && spawn-enable
+sudo dnf install spawn && spawn-enable
 ```
 
 Then log out and back in. The first time, dnf asks you to accept the signing key: check that its fingerprint is

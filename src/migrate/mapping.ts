@@ -68,8 +68,10 @@ export interface PlanEnv {
     iconExists?(value: string): boolean;
 }
 
-/** Integer keys whose Spawn schema has a <range> (kept in sync by tests/migrate.test.js). */
+/** Every integer key whose Spawn schema has a <range> (tests/migrate.test.js checks both directions). */
 export const INT_RANGES: Readonly<Record<string, readonly [min: number, max: number]>> = {
+    'menu-button-icon-size': [8, 64],
+    'menu-button-padding': [-1, 64],
     'menu-height': [360, 1600],
     'menu-width-adjustment': [-350, 800],
     'left-panel-width': [420, 1200],
@@ -80,6 +82,11 @@ export const INT_RANGES: Readonly<Record<string, readonly [min: number, max: num
     'menu-position-alignment': [0, 100],
     'runner-font-size': [0, 30],
     'max-search-results': [1, 50],
+    'icon-size-apps': [-1, 128],
+    'icon-size-shortcuts': [-1, 128],
+    'icon-size-categories': [-1, 128],
+    'icon-size-buttons': [-1, 128],
+    'icon-size-misc': [-1, 128],
 };
 /** `menu-arrow-rise` (bi): the px part is clamped to Spawn's 0..50 (ArcMenu allows -50..50; a negative rise pulls the menu over the panel). */
 const ARROW_RISE_RANGE = [0, 50] as const;

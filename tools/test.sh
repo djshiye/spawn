@@ -39,7 +39,12 @@ for t in tests/*.test.js; do
         fi
         continue
     fi
-    if ! gjs -m "$t"; then
+    # The prefs widget tests need a display; without one they print "skipped", so use a virtual one where there is xvfb.
+    runner=(gjs -m "$t")
+    if [ "$t" = tests/prefs.test.js ] && [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xvfb-run >/dev/null 2>&1; then
+        runner=(xvfb-run -a gjs -m "$t")
+    fi
+    if ! "${runner[@]}"; then
         fail=1
     fi
 done

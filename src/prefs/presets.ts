@@ -20,7 +20,7 @@ import Gtk from 'gi://Gtk?version=4.0';
 import type {SettingKey} from '../core/settings.js';
 import type {ThemeColors} from '../theme/css.js';
 import {
-    findPreset, moveItem, parsePresets, presetFromColors, presetWrites, removeItem, renameItem, serializePresets,
+    findPreset, moveItem, parsePresets, presetFromColors, presetWrites, removeItem, renameItem, restoreRemoved, serializePresets,
     type ThemePreset, uniqueName,
 } from '../theme/presets.js';
 import type {PrefsContext} from './context.js';
@@ -205,10 +205,9 @@ export function openPresetManager(ctx: PrefsContext): void {
         const gone = list[index];
         if (!gone)
             return;
-        const before = ctx.settings.snapshot(['menu-themes']);
         pendingFocus = [`del:${Math.min(index, list.length - 2)}`];
         put(removeItem(list, index));
-        toast(ctx, `Removed "${gone.name}"`, () => ctx.settings.restore(before));
+        toast(ctx, `Removed "${gone.name}"`, () => put(restoreRemoved(readPresets(ctx), gone, index)));
     };
     const restoreFocus = (): void => {
         const wanted = pendingFocus;

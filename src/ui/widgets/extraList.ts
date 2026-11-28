@@ -185,7 +185,7 @@ export class ExtraList {
     }
 
     private _moreRow(): St.Button {
-        return this._row('document-open-recent-symbolic', _('More Recent Files...'), null, () => {
+        return this._row('document-open-recent-symbolic', _('More Recent Files…'), null, () => {
             this._host.close();
             try {
                 Gio.AppInfo.launch_default_for_uri('recent:///', global.create_app_launch_context(0, -1));

@@ -5,6 +5,103 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **High contrast outlines:** with GNOME's High Contrast turned on, the menu now draws clear outlines around tiles,
+  buttons and fields. Turning High Contrast on or off while the menu is open takes effect straight away, including
+  the dimmed look of apps that are no longer installed.
+- **Right-to-left languages:** in Arabic, Hebrew and other right-to-left languages, the arrow keys, Ctrl+arrow
+  reordering and drag and drop now move apps the way the mirrored menu looks. The pinned grid has an even margin on
+  both sides.
+- **Settings backup check:** restoring a backup now lists any commands it would add to the menu, so a file from
+  someone else cannot quietly add an entry that runs a command when clicked.
+
+### Changed
+
+- **Bare addresses in search:** typing an address such as `224.0.0.0` or `240.0.0.0` now describes the address
+  instead of treating it as a subnet mask. Type `mask 240.0.0.0` for the mask answer.
+- **`%` in front of a minus sign:** `10 % -3` is now read as a percentage and gives -2.9, in line with `200 + 10% + 5`
+  below. Type `10 mod -3` for the remainder.
+- **Settings backups:** a restore now tells you more clearly what it left out. It names the folders (for example
+  "Games") instead of showing internal ids, and a damaged backup no longer leaves an empty folder behind.
+- **Install command:** the one in the README no longer answers dnf's questions for you, so you can check the signing
+  key's fingerprint before accepting it.
+- **Fedora upgrades:** Spawn no longer blocks them. If the Spawn repository is unreachable, or has no packages yet
+  for a newer Fedora release, dnf now skips it with a warning instead of refusing to run. To get this, run the
+  install line from the README once more.
+- **ArcMenu import:** panel button and icon sizes outside Spawn's range are now brought into range, instead of being
+  dropped.
+- For developers: a release now stops if CI has not passed, if the local copy has changes that are not on GitHub,
+  or if the packages do not hold exactly the files that were built.
+- For developers: more checks run in CI, and the shell scenarios and Settings tests are stricter and more reliable.
+
+### Fixed
+
+- **Search answers:**
+  - Large whole numbers are exact: `2^40` gives 1 099 511 627 776 and `1 GiB in B` gives 1 073 741 824 B, instead of
+    a rounded number ending in made-up zeros.
+  - Percentages work in the middle of a sum: `200 + 10% + 5` gives 225 and `10% * 50` gives 5. Before, you got 200 or
+    no answer.
+  - A date such as `2026-12-25` or `25/12/2026` shows the date first, instead of a meaningless sum that Return would
+    copy.
+  - A function written without brackets takes the whole of a value like `2pi`, so `sin 2pi` gives 0.
+  - `kN` now means the kilonewton in unit conversions (`5 kN in lbf`). Lower-case `kn` still means knots.
+  - `days since 31 jan` near a month end now includes the days, for example "1 month 2 days" instead of "1 month".
+  - Colours given as percentages, such as `rgb(100%, 50%, 0%)`, now give `#FF8000`, as browsers do.
+  - Colour answers show the name the way you typed it, and use "grey" rather than "gray".
+  - IPv4-mapped IPv6 addresses such as `::ffff:192.0.2.1` show the IPv4 part in its usual dotted form.
+  - `~` works in every word of a command typed in the runner, so `mkdir ~/Projects` makes the folder in your home
+    folder instead of a stray folder called `~`.
+- **Keyboard in the menu:**
+  - Tab and Shift+Tab into the All Apps category column return to the category you had chosen, instead of jumping
+    back to All Apps.
+  - Pressing Down on the last row of the pinned grid goes to the first Frequent app or quick link below it, and in
+    the Grid layout to the footer button under the focus, instead of skipping ahead.
+  - Tab in a folder opened with the mouse goes to its first app, not to Rename.
+  - Going back to the top of a long pinned list shows the "Pinned" title again, instead of leaving the first row
+    half faded.
+  - After undoing an Unpin, the keyboard goes back to the restored entry for pinned commands, apps that are not
+    installed and apps marked New (and to the folder after undoing Remove from Folder), instead of the first tile.
+- **Classic All Apps list:**
+  - Launching a new app with Ctrl held (menu kept open) no longer sends the list back to the top or moves the
+    keyboard focus to the search box.
+  - The category column grows to fit its longest name.
+  - Screen readers say "contains new apps" for a category with a new app, as they already did in the Grid layout's
+    category menu.
+- **Pinned apps and folders:**
+  - Pinned apps and commands show a new name or icon straight away after an app update or an edit in Settings.
+    Before, they kept the old one until the next login. Pinning the same command twice no longer breaks its tile.
+  - Undoing a drop that made a new folder no longer leaves that folder's settings behind, and an app added to the
+    new folder while Undo is still offered is now kept.
+  - Restoring a backup whose pinned apps list an app or a folder more than once no longer leaves duplicates behind,
+    so moving an app out of a folder, unpinning it or deleting the folder works as expected.
+  - The runner lists a pinned app as soon as it is installed. Before, the app could stay missing until the menu had
+    been opened.
+- **Look of the menu:**
+  - Long app names wrap onto two lines at normal screen scale.
+  - The Grid footer's power buttons resize straight away when you turn buttons on or off or change the style.
+  - The stand-in user picture, shown when you have not chosen one, is no longer tiny in the Grid footer.
+  - The "Jump to letter" tip in the Grid layout no longer covers the first app under the letter.
+  - "More Recent Files" uses the proper ellipsis character.
+  - The button beside a removable drive now says what a click does: "Eject" when the drive will be ejected, "Unmount"
+    otherwise. Before, it could say "Unmount" and then eject the drive.
+- **Settings:**
+  - In the Set Shortcut dialog, the keyboard can now confirm a shortcut.
+  - Undo in lists puts back only the item you removed.
+  - The number boxes for results per source, panel button icon size and padding, and icon sizes allow the full range
+    the menu supports, so a value brought over from ArcMenu or a backup is shown correctly. Restoring a backup while
+    Settings is open no longer cuts corner radius, border width or tile sizes down to the box's limit.
+- **Update notice:** if Spawn is updated while the screen is locked (or while Spawn is switched off), the "log out
+  and back in" notice now appears when you unlock, instead of not at all.
+- **Panel button:**
+  - When Dash to Panel or App Icons Taskbar is running but gives Spawn no panel to use, the menu button still moves
+    to the top bar after ten seconds, but Spawn no longer writes a warning to the system log every two seconds.
+  - With Dash to Panel's intellihide, closing the menu while the mouse is still on the panel no longer keeps the
+    shell waking up ten times a second until the mouse moves away.
+  - No more error lines in the system log when the panel is rebuilt or the session ends while the menu is open.
+  - A panel button icon on a network share that stops answering can no longer freeze the desktop. The icon file is
+    checked in the background, and the button shows the standard icon if the check fails or takes too long.
+
 ## [1.6.0] - 2026-11-25
 
 ### Added

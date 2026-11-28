@@ -34,6 +34,7 @@ import {error, warn} from '../core/log.js';
 import type {Scope} from '../core/scope.js';
 import type {SpawnSettings} from '../core/settings.js';
 import {parseBookmarks} from './bookmarkFile.js';
+import {type MountAction, mountAction} from './mountAction.js';
 
 const BOOKMARK_COALESCE_MS = 100;
 const MOUNT_COALESCE_MS = 50;
@@ -119,11 +120,14 @@ class MountPlace implements Place {
     readonly name: string;
     readonly icon: Gio.Icon;
     readonly ejectLabel: string;
+    private readonly _action: MountAction;
 
     constructor(readonly kind: 'device' | 'network', private readonly _mount: Gio.Mount) {
         this.name = _mount.get_name();
         this.icon = _mount.get_symbolic_icon();
-        this.ejectLabel = _mount.can_unmount() ? _('Unmount') : _mount.can_eject() ? _('Eject') : '';
+        // The label, the action and the failure message all follow this one answer.
+        this._action = mountAction(_mount);
+        this.ejectLabel = this._action === 'eject' ? _('Eject') : this._action === 'unmount' ? _('Unmount') : '';
     }
 
     /** Same mount, name, icon and eject label (a re-read that changed nothing need not rebuild the pane). */
@@ -143,18 +147,21 @@ class MountPlace implements Place {
 
     eject(): void {
         const mount = this._mount;
+        const action = this._action;
+        if (!action)
+            return;
         void (async () => {
             const op = await mountOperation(mount);
             const done = (finish: () => void): void => {
                 try {
                     finish();
                 } catch (e) {
-                    notify(_('Ejecting drive “%s” failed:').replace('%s', this.name), message(e));
+                    notify((action === 'eject' ? _('Ejecting drive “%s” failed:') : _('Unmounting “%s” failed:')).replace('%s', this.name), message(e));
                 } finally {
                     op.close();
                 }
             };
-            if (mount.can_eject())
+            if (action === 'eject')
                 mount.eject_with_operation(Gio.MountUnmountFlags.NONE, op.op, null, (_m: Gio.Mount | null, res: Gio.AsyncResult) => done(() => mount.eject_with_operation_finish(res)));
             else
                 mount.unmount_with_operation(Gio.MountUnmountFlags.NONE, op.op, null, (_m: Gio.Mount | null, res: Gio.AsyncResult) => done(() => mount.unmount_with_operation_finish(res)));

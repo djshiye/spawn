@@ -15,7 +15,8 @@
 //   isTruncated(label)                        is the label's text cut off with an ellipsis
 //   clear(actor)                              destroy every child of a container
 //   applyTone(actor, probe?)                  add/remove "spawn-light" on `actor` when the shell theme's
-//                                             foreground at `probe` is dark (light shell theme)
+//                                             foreground at `probe` is dark (light shell theme); also "spawn-hc" while GNOME's
+//                                             High Contrast switch is on
 //   warmStyles(root)                          resolve the styles (and start the icon loads) of root and its visible descendants now
 
 import Clutter from 'gi://Clutter';
@@ -28,6 +29,7 @@ import type {Services} from '../core/services.js';
 import type {SpawnSettings} from '../core/settings.js';
 import {iconSize as clampIconSize} from '../core/limits.js';
 import {appInfoOf} from '../model/appInfo.js';
+import {scrollTarget} from '../model/scroll.js';
 
 export function lookupApp(services: Services, id: string): Shell.App | null {
     try {
@@ -115,13 +117,7 @@ export function scrollIntoView(scroll: St.ScrollView | null, actor: Clutter.Acto
     const viewH = box.y2 - box.y1;
     const [, top] = relativeY(actor, scroll.get_child() as unknown as Clutter.Actor | null);
     const h = actor.height;
-    const margin = 8;
-    let value = adj.value;
-    if (top - margin < value)
-        value = top - margin;
-    else if (top + h + margin > value + viewH)
-        value = top + h + margin - viewH;
-    adj.value = Math.max(0, value);
+    adj.value = scrollTarget({value: adj.value, viewH, top, height: h});
 }
 
 function relativeY(actor: Clutter.Actor, ancestor: Clutter.Actor | null): [boolean, number] {
@@ -183,6 +179,24 @@ export function applyTone(actor: St.Widget, probe: St.Widget = actor): void {
         actor.add_style_class_name('spawn-light');
     else
         actor.remove_style_class_name('spawn-light');
+    applyContrast(actor);
+}
+
+/**
+ * GNOME's High Contrast switch (St.Settings, the one the shell loads its own high-contrast stylesheet by): tag `actor`
+ * with "spawn-hc" so stylesheet.css draws outlines instead of soft tints. Read at every open, like the tone; SpawnPopup also re-applies it when the switch flips.
+ */
+function applyContrast(actor: St.Widget): void {
+    let high: boolean;
+    try {
+        high = St.Settings.get().high_contrast;
+    } catch {
+        high = false;
+    }
+    if (high)
+        actor.add_style_class_name('spawn-hc');
+    else
+        actor.remove_style_class_name('spawn-hc');
 }
 
 /**

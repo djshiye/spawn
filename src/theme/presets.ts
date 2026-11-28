@@ -23,7 +23,9 @@
 //   presetWrites(p): PresetWrite[]                the key / value pairs applying `p` writes (12 entries: override on + 11 keys)
 //   uniqueName(presets, wanted): string           `wanted`, or `wanted 2`, `wanted 3` ... when taken
 //   moveItem(list, from, to) / removeItem(list, i) / renameItem(list, i, name)   immutable list edits for the manage dialog
+//   restoreRemoved(current, gone, index): ThemePreset[]   Undo of a removal: puts only `gone` back (see below)
 
+import {reinsertAt} from '../core/entries.js';
 import {sanitizeColor, type ThemeColors} from './css.js';
 
 export const PRESET_FIELDS = 12;
@@ -173,6 +175,15 @@ export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
 
 export function removeItem<T>(list: readonly T[], index: number): T[] {
     return list.filter((_, i) => i !== index);
+}
+
+/** `current` with `gone` put back at `index` (clamped); unchanged when an identical preset (same name ignoring
+ *  case and surrounding spaces, same eleven values) is already there; a clashing name gets uniqueName(). */
+export function restoreRemoved(current: readonly ThemePreset[], gone: ThemePreset, index: number): ThemePreset[] {
+    const key = gone.name.trim().toLowerCase();
+    if (current.some(p => p.name.trim().toLowerCase() === key && colorsEqual(presetColors(p), presetColors(gone))))
+        return [...current];
+    return reinsertAt(current, {...gone, name: uniqueName(current, gone.name)}, index);
 }
 
 export function renameItem(list: readonly ThemePreset[], index: number, name: string): ThemePreset[] {

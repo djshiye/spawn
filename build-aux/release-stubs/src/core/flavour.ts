@@ -4,6 +4,8 @@ import type {SpawnSettings} from './settings.js';
 
 export const DEV_BUILD = false;
 
+export const DEV_ONLY_KEYS: readonly string[] = [];
+
 export function isDevMode(_settings: SpawnSettings): boolean {
     return false;
 }

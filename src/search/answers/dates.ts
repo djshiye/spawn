@@ -168,23 +168,19 @@ function shift(day: number, dur: Duration, sign: number): number | null {
     return year >= 1 && year <= 9999 ? result : null;
 }
 
-/** Calendar difference between two days (a <= b) as years, months, days. */
+/** Calendar difference between two days (a <= b) as years, months, days. Months are counted while the start's
+ *  day-of-month has not been passed; the remainder is counted from the clamped anchor (31 Jan + 1 month = 28 Feb). */
 function calendarDiff(a: number, b: number): string {
     const [y1, m1, d1] = civilFromDays(a);
     const [y2, m2, d2] = civilFromDays(b);
-    let years = y2 - y1;
-    let months = m2 - m1;
-    let days = d2 - d1;
-    if (days < 0) {
-        months--;
-        const pm = m2 === 1 ? 12 : m2 - 1;
-        days += daysInMonth(m2 === 1 ? y2 - 1 : y2, pm);
-    }
-    if (months < 0) {
-        years--;
-        months += 12;
-    }
-    return joinParts([[years, 'year'], [months, 'month'], [days, 'day']]);
+    let total = (y2 - y1) * 12 + (m2 - m1);
+    if (d2 < d1)
+        total--;
+    const index = m1 - 1 + total;
+    const ty = y1 + Math.floor(index / 12);
+    const tm = index - Math.floor(index / 12) * 12 + 1;
+    const anchor = daysFromCivil(ty, tm, Math.min(d1, daysInMonth(ty, tm)));
+    return joinParts([[Math.floor(total / 12), 'year'], [total % 12, 'month'], [b - anchor, 'day']]);
 }
 
 // ---------------------------------------------------------------------------------------------------------------

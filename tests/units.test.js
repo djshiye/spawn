@@ -154,6 +154,15 @@ test('energy, power, force, torque', () => {
     assertEquals(t('100 newton metres in kgf m').startsWith('10.19716'), true);
     assertEquals(t('1 nm in m'), '1e-9 m'); // nanometre
     assertEquals(t('1 n·m in n m'), '1 N·m');
+    assertEquals(t('5 kN in lbf'), '1124.0447 lbf');
+    assertEquals(t('1 kN in N'), '1000 N');
+    assertEquals(t('2000 N in kN'), '2 kN');
+    assertEquals(t('5kN in n'), '5000 N');
+    assertEquals(t('kN in lbf'), '224.80894 lbf');
+    assertEquals(t('1 kN 500 N in N'), '1500 N');
+    assertEquals(t('1 kN in km/h'), null); // the kilonewton is not a speed
+    assertEquals(t('5 kn in lbf'), null); // lower-case kn is the knot
+    assertEquals(t('5 KN in km/h'), '9.26 km/h'); // other casings stay the knot
 });
 
 test('angle and frequency', () => {
@@ -236,7 +245,12 @@ test('more length, mass, volume, time, speed, temperature, data', () => {
     assertEquals(t('1 millennium in centuries'), '10 century');
     assertEquals(t('1 mach in m/s'), '343 m/s');
     assertEquals(t('1 speed of light in km/h'), '1079252800 km/h');
-    assertEquals(t('1 lightspeed in m/s'), '299792460 m/s');
+    assertEquals(t('1 lightspeed in m/s'), '299792458 m/s');
+    assertEquals(t('1 gib in b'), '1073741824 B');
+    assertEquals(t('1 tib in b'), '1099511627776 B');
+    assertEquals(t('1 au in m'), '149597870700 m');
+    assertEquals(t('1 light year in km'), '9460730500000 km');
+    assertEquals(t('1 au in km'), '149597870 km');
     assertEquals(t('0 rankine in k'), '0 K');
     assertEquals(t('491.67 °r in c'), '0 °C');
     assertEquals(t('32 f in degr'), '491.67 °R');
@@ -325,6 +339,10 @@ test('ambiguous spellings keep their meaning', () => {
     assertEquals(findUnit('g').symbol, 'g');
     assertEquals(findUnit('gr').symbol, 'gr');
     assertEquals(findUnit('mil').symbol, 'thou');
+    assertEquals(findUnit('kN').symbol, 'kN');
+    assertEquals(findUnit(' kN. ').symbol, 'kN');
+    assertEquals(findUnit('KN').symbol, 'kn');
+    assertEquals(findUnit('constructor'), null);
     assertEquals(findUnit('pt').symbol, 'pt');
     assertEquals(findUnit('min').symbol, 'min');
     assertEquals(findUnit('b').symbol, 'B');

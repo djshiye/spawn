@@ -210,6 +210,14 @@ export function nextBackoffMs(attempt: number): number {
     return Math.min(BACKOFF_MAX_MS, BACKOFF_START_MS * 2 ** Math.min(n, 16));
 }
 
+/** Retry interval once the attacher has fallen back to Main.panel: the 'changed' triggers do the real work. */
+export const FALLBACK_RETRY_MS = 30000;
+
+/** Delay of the next retry: the doubling backoff while waiting, FALLBACK_RETRY_MS once fallen back. */
+export function retryDelayMs(attempt: number, fellBack: boolean): number {
+    return fellBack ? FALLBACK_RETRY_MS : nextBackoffMs(attempt);
+}
+
 export type PanelBox = 'left' | 'center' | 'right';
 export type PositionSetting = 'Left' | 'Center' | 'Right';
 

@@ -26,6 +26,10 @@ expect_state "start view is the pinned grid" layout.view pinned
 expect "the right pane is hidden" "$(count spawn-right-pane)" "0"
 expect "one header pill" "$(count spawn-grid-header-button)" "1"
 expect "footer: user card" "$(count spawn-user-card)" "1"
+# the default user picture's glyph is half its circle (the shell theme's 12 px padding once squeezed it to 8 px in 32)
+glyph() { ui_call IconSize spawn-avatar 0 | unwrap | python3 -c 'import json,sys; s=sys.stdin.read().strip(); print(json.loads(s)[0] if s else 0)'; }
+g="$(glyph)"
+check "footer: the default user picture is half the circle, 16 px ($g px)" "$([ "${g:-0}" -ge 15 ] && [ "${g:-0}" -le 17 ] && echo 0 || echo 1)"
 expect "footer: three folder buttons" "$(count spawn-grid-icon-button)" "3"
 pages=$(state_get layout.gridPages)
 check "two pages of pinned apps (got $pages)" "$([ "${pages:-0}" -ge 2 ]; echo $?)"
@@ -98,6 +102,8 @@ open_menu 1.2
 expect_state "layout style" layout.layoutStyle Classic
 expect "the right pane is back" "$(count spawn-right-pane)" "1"
 expect "no footer" "$(count spawn-grid-footer)" "0"
+g="$(glyph)"
+check "Classic: the default user picture is half the circle, 20 px ($g px)" "$([ "${g:-0}" -ge 19 ] && [ "${g:-0}" -le 21 ] && echo 0 || echo 1)"
 screenshot grid-07-classic-again
 close_menu
 dconf reset $K/layout-style

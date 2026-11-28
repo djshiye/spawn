@@ -80,7 +80,8 @@ your area before writing code.
     name "<name>, contains new apps". Hidden apps never count. The bookkeeping is pure (`model/newApps.ts`);
     `model/newAppsStore.ts` keeps it in settings. Headless check: `tools/dev-shell.sh apps-hide-new`.
   - Keyboard: arrows/Tab/Return/Escape, Menu or Shift+F10 = context menu, typing
-    anywhere goes to search, mouse button 8 = back. Ctrl+Up/Down/Left/Right and Ctrl+Home/End on a
+    anywhere goes to search, mouse button 8 = back. In right-to-left languages the layout is mirrored, and the
+    arrow keys, Ctrl+arrow reordering and drop sides follow it (headless check `tools/dev-shell.sh core-rtl`). Ctrl+Up/Down/Left/Right and Ctrl+Home/End on a
     focused pinned entry (top level or inside an open folder) move it (List: Up/Down one position;
     Grid: Left/Right one position, Up/Down one row; no-op at the edges); the focus stays on the entry.
   - Delete Folder (its apps move to the top level) shows an in-menu banner "Folder “X” deleted [Undo]"
@@ -102,7 +103,7 @@ your area before writing code.
   opens (and the other way round).
 - Dash to Panel intellihide: while the menu is open on a panel with intellihide enabled, the panel is held
   revealed (Dash to Panel's temporary hold). It is released when the menu closes, once the pointer is off the
-  panel, immediately on a fullscreen monitor, and on disable or panel rebuild (src/panel/intellihide.ts).
+  panel (re-checked on pointer motion and fullscreen changes, with a 1 s safety poll), immediately on a fullscreen monitor, and on disable or panel rebuild (src/panel/intellihide.ts).
 - Option to hide the Activities button (restore its *previous* visibility).
 - Preferences (Adw): General, Button, Menu (views, sizes), Pinned & Shortcuts,
   Appearance, Import from ArcMenu, About.
@@ -149,6 +150,11 @@ spoken. A pass with Orca is still to do.
 - **Reduce animation.** GNOME's "Reduce Animation" (`org.gnome.desktop.interface enable-animations`, read through
   `St.Settings.enable_animations`): the popup open / close (`menuParams.ts`), the folder popup fade and the tooltips
   skip their `ease()`, and `spawn-reduce-motion` on the menu and runner zeroes the stylesheet's `transition-duration`.
+- **High contrast.** GNOME's High Contrast switch (`St.Settings.high_contrast`): `applyTone()` adds `spawn-hc` to the menu,
+  context menus and runner, and the last block of `stylesheet.css` draws inset outlines (hover 60 %, selected 85 %, keyboard
+  focus solid and thicker) around items, 1 px outlines around the cards, entry and menus, full-strength separators and
+  dimmed texts at 90 %; no size changes. Read on every open and followed live (`notify::high-contrast` re-applies the tone on an open menu and rebuilds the pinned tiles, whose dimmed "not installed" ones change opacity)
+  (`tools/dev/scenarios/ui-high-contrast.sh`).
 - **Preferences.** Icon-only buttons have a tooltip and an accessible label (`label()` in `prefs/widgets.ts`), as do the
   search entries, the icon grid, the colour buttons, the scale and the ambiguous "Set / Add / Disable / Rescan" buttons;
   the dialogs are keyboard driven. Preference strings are not translated yet (no gettext in `src/prefs`).
@@ -199,8 +205,9 @@ src/
                           reconnects to the new emitter whenever DtP restarts.
   panel/attacher.ts       ButtonAttacher: keeps one MenuButton per valid target,
                           retries invalid targets with backoff (100 ms → 2 s, give
-                          up after 10 s and fall back to Main.panel), guarded
-                          removal, Activities-button handling.
+                          up after 10 s and fall back to Main.panel, warn once
+                          and retry every 30 s until valid targets return),
+                          guarded removal, Activities-button handling.
   ui/button.ts            MenuButton (PanelMenu.Button subclass): icon/label/style
   ui/menu.ts              SpawnPopup: single popup shared by all buttons,
                           re-anchored to the clicked button; lazily builds layout
@@ -212,6 +219,7 @@ src/
                           CategoryList, ShortcutRow, PowerBar, UserCard, SearchBox, ResultList
   ui/contextMenu.ts       app context menu
   ui/dnd.ts               pinned drag & drop
+  model/direction.ts      left/right and before/after mirrored for right-to-left layouts
   model/hiddenApps.ts     pure helpers for the hidden-apps setting (add / remove / filter)
   model/newApps.ts        pure "New" bookkeeping (known-apps / new-apps); newAppsStore.ts keeps it in settings
   model/appIndex.ts       AppIndex: Shell.AppSystem + GMenu tree; categories,

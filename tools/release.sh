@@ -24,14 +24,15 @@ PKG="spawn"
 LIVE_WAIT_SECONDS=900
 
 main() {
-    local check=0 wait_live=1 pulled=0 arg
+    local check=0 wait_live=1 pulled=0 skip_ci=0 arg
     for arg in "$@"; do
         case "$arg" in
             --check) check=1 ;;
             --no-wait) wait_live=0 ;;
+            --skip-ci) skip_ci=1 ;;         # by hand only: do not ask GitHub whether CI passed
             --already-pulled) pulled=1 ;;   # internal: set when the script re-runs itself after updating
             -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-            *) echo "usage: $0 [--check] [--no-wait]" >&2; exit 2 ;;
+            *) echo "usage: $0 [--check] [--no-wait] [--skip-ci]" >&2; exit 2 ;;
         esac
     done
 
@@ -64,8 +65,17 @@ main() {
         git pull -q --ff-only origin main || fail "main could not be fast-forwarded from GitHub; reconcile it by hand"
         if [ "$(git hash-object "$0")" != "$before" ]; then
             ok "release.sh itself was updated; running the new version"
+            rm -rf "$work"   # exec skips the EXIT trap; the new run makes its own
             exec "$0" "$@" --already-pulled
         fi
+    fi
+    # Only what GitHub has may be built, signed and pushed: a local commit that was never reviewed must not ride along.
+    local remote_main
+    remote_main=$(git ls-remote origin refs/heads/main | awk '{print $1}') || fail "could not read main from GitHub"
+    [ -n "$remote_main" ] || fail "could not read main from GitHub"
+    if [ "$(git rev-parse HEAD)" != "$remote_main" ]; then
+        git log --oneline "$remote_main..HEAD" >&2 2>/dev/null || true
+        fail "local main is not GitHub's main ($(git rev-parse --short HEAD) here, ${remote_main:0:7} on GitHub): push it through a pull request first, or reset it with: git reset --hard origin/main"
     fi
     tools/bump-version.sh --check >/dev/null || fail "the version numbers disagree (tools/bump-version.sh --check)"
     version=$(awk '/^Version:/ {print $2; exit}' build-aux/spawn.spec)
@@ -91,6 +101,7 @@ main() {
     git push -q --dry-run origin refs/remotes/origin/gh-pages:refs/heads/gh-pages >/dev/null 2>&1 \
         || fail "this machine's git is not allowed to push to github.com/djshiye/spawn (sign in with: gh auth login)"
     ok "git can push to GitHub, and the published key matches"
+    if [ "$skip_ci" -eq 1 ]; then note "CI check skipped (--skip-ci)"; else require_ci_green; fi
 
     local already=0 f
     for f in $(git ls-tree --name-only origin/gh-pages "fedora-${FEDORA_RELEASES[0]}/"); do
@@ -154,6 +165,32 @@ step() { printf '\n%s==>%s %s%s%s\n' "$c" "$r" "$b" "$*" "$r"; }
 ok()   { printf '   %s✓%s %s\n' "$g" "$r" "$*"; }
 note() { printf '   %s•%s %s\n' "$y" "$r" "$*"; }
 fail() { printf '\n%sRelease stopped:%s %s\n' "$b" "$r" "$*" >&2; exit 1; }
+
+# CI's "check" job (.github/workflows/ci.yml) must have passed for this code. CI skips commits that change only
+# *.md / docs/** (its paths-ignore: keep the filter below in step) and, on a push of several commits, runs only for
+# the last one, so walk back along main to the newest commit that has a "check" run and require that nothing but
+# docs changed since.
+CI_API="https://api.github.com/repos/djshiye/spawn"
+require_ci_green() {
+    local sha state changed
+    for sha in $(git rev-list --first-parent -n 20 HEAD); do
+        state=$(curl -fsSL --proto '=https' --tlsv1.2 --max-time 30 -H 'Accept: application/vnd.github+json' \
+                    "$CI_API/commits/$sha/check-runs?check_name=check" \
+                | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s).check_runs||[];
+                    if(!r.length){console.log("none");return}
+                    const x=r[0]; console.log(x.status!=="completed"?"pending":x.conclusion)})') \
+            || fail "could not ask GitHub for the CI result of $(git rev-parse --short "$sha") (use --skip-ci by hand if GitHub's API is down)"
+        [ "$state" = none ] && continue
+        changed=$(git diff --name-only "$sha" HEAD | grep -Ev '(\.md$|^docs/)' | tr '\n' ' ' || true)
+        [ -z "$changed" ] || fail "CI never ran on the latest code (newest checked commit is ${sha:0:7}; changed since: $changed)"
+        case "$state" in
+            success) ok "CI passed for ${sha:0:7}"; return 0 ;;
+            pending) fail "CI is still running for ${sha:0:7}; run the release again when it has finished" ;;
+            *)       fail "CI failed ($state) for ${sha:0:7}: fix main first (github.com/djshiye/spawn/actions)" ;;
+        esac
+    done
+    fail "no CI result found in the last 20 commits of main"
+}
 
 # Keygrips of the key's signing-capable parts (the primary and/or a signing subkey).
 signing_keygrips() {

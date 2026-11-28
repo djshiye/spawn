@@ -431,15 +431,28 @@ test('sizes outside the schema range are clamped with a warning', () => {
     assertEquals(p.warnings.length, 3);
 });
 
-test('INT_RANGES matches the <range> of the compiled schema', () => {
+test('INT_RANGES lists exactly the ranged integer keys of the compiled schema', () => {
     const dir = compileSpawnSchemas();
     const source = Gio.SettingsSchemaSource.new_from_directory(dir, Gio.SettingsSchemaSource.get_default(), false);
     const schema = source.lookup('org.gnome.shell.extensions.spawn', true);
-    for (const [key, [min, max]] of Object.entries(INT_RANGES)) {
+    const ranged = {};
+    for (const key of schema.list_keys()) {
         const [type, range] = schema.get_key(key).get_range().deepUnpack();
-        assertEquals(type, 'range', key);
-        assertEquals(range.deepUnpack(), [min, max], key);
+        if (type === 'range')
+            ranged[key] = range.deepUnpack();
     }
+    assertEquals(Object.keys(INT_RANGES).sort(), Object.keys(ranged).sort());
+    for (const [key, bounds] of Object.entries(INT_RANGES))
+        assertEquals(bounds, ranged[key], key);
+});
+
+test('button and icon sizes outside the schema range are clamped with a warning', () => {
+    const p = planMigration(snap({'menu-button-icon-size': 4, 'menu-button-padding': 80, 'icon-size-apps': 200,
+        'icon-size-misc': -1, 'icon-size-buttons': 128}));
+    const v = k => p.items.find(i => i.key === k).value;
+    assertEquals([v('menu-button-icon-size'), v('menu-button-padding'), v('icon-size-apps'), v('icon-size-misc'), v('icon-size-buttons')],
+        [8, 64, 128, -1, 128]);
+    assertEquals(p.warnings.length, 3);
 });
 
 test('arcmenu-layout-max-frequent-apps: 0 (no limit) becomes 50, out-of-range values are clamped, with a warning', () => {
@@ -649,6 +662,14 @@ test('show-category-sub-menus stays skipped, with the reason', () => {
 
 test('disableArcMenu is exported (not invoked: would talk to a real shell)', () => {
     assert(typeof disableArcMenu === 'function');
+});
+
+test('applyMigration: clamped button and icon sizes are written, none fail', () => {
+    const settings = freshSettings();
+    const plan = planMigration(snap({'menu-button-icon-size': 4, 'menu-button-padding': 80, 'icon-size-apps': 200}), spawnDefaults(settings));
+    const r = applyMigration(plan, settings);
+    assertEquals(r.failed, []);
+    assertEquals([settings.get('menu-button-icon-size'), settings.get('menu-button-padding'), settings.get('icon-size-apps')], [8, 64, 128]);
 });
 
 run();

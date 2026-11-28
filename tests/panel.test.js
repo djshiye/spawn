@@ -1,5 +1,5 @@
 import {
-    ExtState, GIVE_UP_MS, isActorAlive, nextBackoffMs, panelSide, panelSlot, resolveTargets, samePanel, validatePanel,
+    ExtState, FALLBACK_RETRY_MS, GIVE_UP_MS, isActorAlive, nextBackoffMs, panelSide, panelSlot, resolveTargets, retryDelayMs, samePanel, validatePanel,
 } from '../build/panel/validate.js';
 import {assert, assertEquals, run, test} from './harness.js';
 
@@ -88,6 +88,12 @@ test('a wrapper that throws is skipped, valid ones survive', () => {
 test('backoff doubles from 100 ms and caps at 2 s', () => {
     assertEquals([0, 1, 2, 3, 4, 5, 6, 40].map(nextBackoffMs), [100, 200, 400, 800, 1600, 2000, 2000, 2000]);
     assertEquals(GIVE_UP_MS, 10000);
+});
+
+test('retry delay: doubling backoff while waiting, slow once fallen back', () => {
+    assertEquals([0, 1, 4, 5, 40].map(a => retryDelayMs(a, false)), [100, 200, 1600, 2000, 2000]);
+    assertEquals([0, 5, 40].map(a => retryDelayMs(a, true)), [30000, 30000, 30000]);
+    assertEquals(FALLBACK_RETRY_MS, 30000);
 });
 
 test('panelSlot', () => {

@@ -46,7 +46,9 @@ Log out and in (Wayland) if the shell does not pick up a new extension.
 `gnome-extensions enable` only works for extensions the shell already knows, and it learns about a newly installed
 system-wide extension at the next login. The extension lands in `/usr/share/gnome-shell/extensions/` and its schema in
 `/usr/share/glib-2.0/schemas/`. `spawn.repo` sets `gpgcheck=1`, `repo_gpgcheck=1` and `metadata_expire=1h`, so a plain
-`sudo dnf upgrade` sees a new release within an hour without `--refresh` (GNOME Software checks about once a day). The
+`sudo dnf upgrade` sees a new release within an hour without `--refresh` (GNOME Software checks about once a day). It also sets
+`skip_if_unavailable=True`, so if the site is down or has no packages yet for a newer Fedora release, dnf skips Spawn with a warning
+instead of stopping. The
 signing key is downloaded from the same site as the packages, so comparing its fingerprint with the README is what
 makes it trustworthy. To forget the repository after uninstalling: `sudo rm /etc/yum.repos.d/spawn.repo`.
 

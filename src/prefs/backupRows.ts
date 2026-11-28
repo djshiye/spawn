@@ -14,6 +14,7 @@ import {
     applyBackup,
     createBackup,
     DEFAULT_BACKUP_NAME,
+    describeCommands,
     describePlan,
     parseBackup,
     readBackupFileAsync,
@@ -65,12 +66,22 @@ function backUp(ctx: PrefsContext): void {
     });
 }
 
+/** At most 8 names, then "and N more". */
+function nameList(names: readonly string[]): string {
+    return `${names.slice(0, 8).join(', ')}${names.length > 8 ? `, and ${names.length - 8} more` : ''}`;
+}
+
 function confirmRestore(ctx: PrefsContext, plan: RestorePlan, apply: () => void): void {
     let body = `This replaces your current Spawn settings, pinned apps and folders.\n\n${describePlan(plan)}`;
-    if (plan.ignored.length > 0) {
-        const shown = plan.ignored.slice(0, 8).join(', ');
-        body += `\n\nIgnored (not known to this version): ${shown}${plan.ignored.length > 8 ? `, and ${plan.ignored.length - 8} more` : ''}.`;
-    }
+    const commands = describeCommands(plan);
+    if (commands)
+        body += `\n\n${commands} Restore only a backup you trust.`;
+    if (plan.missingFolders.length > 0)
+        body += `\n\nLeft out (folder missing from the backup): ${nameList(plan.missingFolderNames)}.`;
+    if (plan.skipped.length > 0)
+        body += `\n\nNot restored: ${nameList(plan.skipped)}.`;
+    if (plan.ignored.length > 0)
+        body += `\n\nIgnored (not known to this version): ${nameList(plan.ignored)}.`;
     const dialog = new Adw.AlertDialog({heading: 'Restore Settings?', body});
     dialog.add_response('cancel', 'Cancel');
     dialog.add_response('restore', 'Restore');

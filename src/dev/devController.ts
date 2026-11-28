@@ -18,6 +18,7 @@ import type {Scope} from '../core/scope.js';
 import type {Services} from '../core/services.js';
 import type {Hotkeys} from '../input/hotkeys.js';
 import type {MenuController} from '../input/dbus.js';
+import type {PanelTargets} from '../panel/targets.js';
 import {isMenuOpen, menusOfStatusArea} from '../panel/shellPopups.js';
 import type {SpawnPopup} from '../ui/menu.js';
 import type {SpawnRunner} from '../ui/runner.js';
@@ -30,6 +31,7 @@ export interface DevControllerContext {
     runner: SpawnRunner | null;
     runnerAccelBound(): boolean;
     firstButton(): St.Widget | null;
+    panelTargets(): PanelTargets | null;
     enableMs(): number;
     startMs(): Record<string, number>;
 }
@@ -55,6 +57,17 @@ export function installDevController(controller: MenuController, ctx: DevControl
             enable: {totalMs: ctx.enableMs(), subsystems: ctx.startMs()},
         }, sections);
         return result.then(r => JSON.stringify(r)).finally(() => bench.dispose());
+    };
+    controller.forceNoPanels = on => {
+        const t = ctx.panelTargets();
+        if (!t)
+            throw new Error('panel targets unavailable');
+        const own = t as unknown as {resolve?: unknown};
+        if (on)
+            own.resolve = () => ({targets: [], pending: true, reason: 'dev: no valid panels (forced)'});
+        else
+            delete own.resolve; // back to PanelTargets.prototype.resolve
+        t.notifyChanged();
     };
     controller.activateWorkspace = index => {
         const ws = global.workspace_manager.get_workspace_by_index(index);

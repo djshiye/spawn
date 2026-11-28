@@ -4,6 +4,9 @@
 // in-memory backend (the "shell"), and the other way round. Nothing touches the user's dconf.
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import Gdk from 'gi://Gdk?version=4.0';
+import Gtk from 'gi://Gtk?version=4.0';
+import Adw from 'gi://Adw';
 
 import {assert, assertEquals, run, test} from './harness.js';
 
@@ -21,8 +24,15 @@ GLib.spawn_command_line_sync(`rm -rf ${tmp}`); // the compiled schema is already
 
 const {SpawnSettings, SCHEMA_ID, FOLDER_SCHEMA_ID, FolderSettings} = await import('../build/core/settings.js');
 const {applyMigration} = await import('../build/migrate/arcmenu.js');
-const {resetKeys, resetWithUndo, isModified} = await import('../build/prefs/widgets.js');
+const {resetKeys, resetWithUndo, isModified, spinBounds, spinRow, optionalSpinRow, subpageRow, watch} = await import('../build/prefs/widgets.js');
+const {createEntryList} = await import('../build/prefs/lists.js');
+const {gridRows} = await import('../build/prefs/pages/appearance.js');
 const {friendlyIconName} = await import('../build/prefs/iconName.js');
+
+const {keyAction} = await import('../build/prefs/shortcutDialog.js');
+
+// Gtk.init_check() must be asked once: a second call after a failed one reports success and widgets then crash.
+const HAVE_DISPLAY = Gtk.init_check() && Gdk.Display.get_default() !== null;
 
 const PATH = '/org/gnome/shell/extensions/spawn/';
 
@@ -173,6 +183,132 @@ test('friendlyIconName shows a tidy label, never a raw file name', () => {
     assertEquals(friendlyIconName('distro-fedora.svg'), 'Fedora');
     assertEquals(friendlyIconName('start-here-symbolic.svg'), 'Start here');
     assertEquals(friendlyIconName('/home/me/Pictures/logo.png'), 'logo.png');
+});
+
+test('shortcut dialog: keyboard can confirm and navigate', () => {
+    const C = Gdk.ModifierType.CONTROL_MASK, A = Gdk.ModifierType.ALT_MASK, S = Gdk.ModifierType.SHIFT_MASK,
+        W = Gdk.ModifierType.SUPER_MASK;
+    const rows = [
+        [Gdk.KEY_Escape, 0, false, false, 'cancel'],
+        [Gdk.KEY_BackSpace, 0, true, false, 'clear'],
+        [Gdk.KEY_Tab, 0, true, false, 'pass'],
+        [Gdk.KEY_ISO_Left_Tab, S, true, false, 'pass'],
+        [Gdk.KEY_Tab, C, false, false, 'pass'],
+        [Gdk.KEY_Return, 0, true, false, 'confirm'],
+        [Gdk.KEY_KP_Enter, 0, true, false, 'confirm'],
+        [Gdk.KEY_space, 0, true, false, 'confirm'],
+        [Gdk.KEY_Return, 0, false, false, 'warn'],
+        [Gdk.KEY_Return, 0, true, true, 'pass'],
+        [Gdk.KEY_space, 0, true, true, 'pass'],
+        [Gdk.KEY_k, C | A, false, false, 'capture', Gtk.accelerator_name(Gdk.KEY_k, C | A)],
+        [Gdk.KEY_K, C | A | S, false, false, 'capture', Gtk.accelerator_name(Gdk.KEY_k, C | A | S)],
+        [Gdk.KEY_Return, C, true, false, 'capture', '<Control>Return'],
+        [Gdk.KEY_space, W, true, false, 'capture', '<Super>space'],
+        [Gdk.KEY_F5, 0, false, false, 'capture', 'F5'],
+        [Gdk.KEY_a, 0, false, false, 'warn'],
+        [Gdk.KEY_a, S, false, false, 'warn'],
+        [Gdk.KEY_Control_L, C, false, false, 'ignore'],
+    ];
+    for (const [keyval, mask, pending, other, kind, accel] of rows) {
+        const r = keyAction(keyval, mask, pending, other);
+        assertEquals(r.kind, kind, `key ${keyval} mask ${mask}`);
+        if (accel !== undefined)
+            assertEquals(r.accel, accel, `accel for key ${keyval} mask ${mask}`);
+    }
+});
+
+test('spinBounds uses the schema range for ranged keys and the caller\'s bounds otherwise', () => {
+    const {prefs} = fixture();
+    assertEquals(spinBounds(prefs.raw, 'max-search-results', 1, 20), [1, 50]);
+    assertEquals(spinBounds(prefs.raw, 'menu-button-icon-size', 14, 64), [8, 64]);
+    assertEquals(spinBounds(prefs.raw, 'menu-button-padding', -1, 25), [-1, 64]);
+    assertEquals(spinBounds(prefs.raw, 'icon-size-apps', -1, 64), [-1, 128]);
+    assertEquals(spinBounds(prefs.raw, 'menu-button-position-offset', 0, 20), [0, 20]);
+    assertEquals(spinBounds(prefs.raw, 'menu-arrow-rise', 0, 50), [0, 50]);
+    assertEquals(spinBounds(prefs.raw, 'no-such-key', 3, 7), [3, 7]);
+});
+
+test('spin rows show a valid stored value above the call site\'s bounds and never overwrite an external write', () => {
+    if (!HAVE_DISPLAY) {
+        print('  skipped: no display (run under xvfb-run)');
+        return;
+    }
+    Adw.init();
+    const {prefs, shell} = fixture();
+    const ctx = {settings: prefs, window: new Adw.PreferencesWindow()};
+    prefs.raw.set_int('max-search-results', 30);
+    const row = spinRow(ctx, 'max-search-results', 'R', 1, 20);
+    assertEquals(row.value, 30);
+    row.get_adjustment().set_value(29);
+    assertEquals(shell.get_int('max-search-results'), 29);
+
+    prefs.set('menu-button-border-radius', [true, 10]);
+    optionalSpinRow(ctx, 'menu-button-border-radius', 'R', 0, 25);
+    shell.set_value('menu-button-border-radius', new GLib.Variant('(bi)', [true, 40]));
+    assertEquals(prefs.get('menu-button-border-radius'), [true, 40]);
+});
+
+test('visiting a sub-page twice leaves only the latest visit\'s watchers connected', () => {
+    if (!HAVE_DISPLAY) {
+        print('  skipped: no display (run under xvfb-run)');
+        return;
+    }
+    Adw.init();
+    const {prefs} = fixture();
+    const ctx = {settings: prefs, window: Object.assign(new Adw.PreferencesWindow(), {push_subpage() {}})};
+    let count = 0;
+    const row = subpageRow(ctx, {title: 'T', build: () => {
+        const g = new Adw.PreferencesGroup();
+        watch(ctx, g, ['menu-height'], () => count++);
+        return [g];
+    }});
+    row.emit('activated');
+    row.emit('activated');
+    prefs.set('menu-height', 777);
+    assertEquals(count, 1);
+});
+
+test('an entry list inside a sub-page is released when the page is opened again', () => {
+    if (!HAVE_DISPLAY) {
+        print('  skipped: no display (run under xvfb-run)');
+        return;
+    }
+    Adw.init();
+    const {prefs} = fixture();
+    const ctx = {settings: prefs, window: Object.assign(new Adw.PreferencesWindow(), {push_subpage() {}})};
+    let builds = 0;
+    const row = subpageRow(ctx, {title: 'T', build: () => {
+        const g = createEntryList(ctx, {
+            title: 'L', kind: 'context',
+            source: {get: () => { builds++; return prefs.get('context-menu-items'); }, set: v => prefs.set('context-menu-items', v), keys: ['context-menu-items']},
+        });
+        return [g];
+    }});
+    row.emit('activated');
+    row.emit('activated');
+    builds = 0;
+    prefs.set('context-menu-items', [{id: 'Spawn_Settings'}]);
+    // Only the latest visit's list still rebuilds (once per change; a leaked first list would double it).
+    const afterOne = builds;
+    row.emit('activated');
+    row.emit('activated');
+    builds = 0;
+    prefs.set('context-menu-items', []);
+    assertEquals(builds, afterOne, 'a popped sub-page\'s list is still listening');
+});
+
+test('the icon-size-grid rows keep an external value outside their range', () => {
+    if (!HAVE_DISPLAY) {
+        print('  skipped: no display (run under xvfb-run)');
+        return;
+    }
+    Adw.init();
+    const {prefs, shell} = fixture();
+    const ctx = {settings: prefs, window: new Adw.PreferencesWindow()};
+    const rows = gridRows(ctx);
+    shell.set_value('icon-size-grid', new GLib.Variant('a{si}', {width: 300}));
+    assertEquals(prefs.get('icon-size-grid').width, 300);
+    assertEquals(rows[1].value, 256);
 });
 
 run();

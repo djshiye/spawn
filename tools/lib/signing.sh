@@ -48,6 +48,7 @@ signing_pretty_fpr() { printf '%s\n' "$1" | sed 's/.\{4\}/& /g; s/ $//'; }
 signing_require_tools() {
     command -v gpg >/dev/null 2>&1 || signing_die "gpg not found. Install it: sudo dnf install gnupg2"
     command -v rpmkeys >/dev/null 2>&1 || signing_die "rpmkeys not found. Install it: sudo dnf install rpm"
+    command -v rpm2archive >/dev/null 2>&1 || signing_die "rpm2archive not found. Install it: sudo dnf install rpm"
     if ! command -v rpmsign >/dev/null 2>&1; then
         signing_die "rpmsign not found; it is not part of the rpm package. Install it: sudo dnf install rpm-sign"
     fi
@@ -120,6 +121,36 @@ signing_sign_rpms() {
             --define "_openpgp_sign_id $fpr" --define "_gpg_name $fpr" "$f" >/dev/null \
             || signing_die "rpmsign failed for $f"
     done
+}
+
+# signing_check_payload <rpm> <manifest>: the package's payload must be exactly the files in the manifest
+# (lines "sha256  ./path", sorted by path, as sha256sum prints them), regular files only (no symlinks, devices),
+# no setuid/setgid bits, and the package must carry no scriptlets or triggers (spawn.spec has none). Run before
+# signing, so nothing the build container added or changed is ever signed.
+signing_check_payload() {
+    local rpm=$1 manifest=$2 dir got odd scripts modes
+    dir=$(mktemp -d)
+    if ! rpm2archive - <"$rpm" | tar -xzf - -C "$dir" --no-same-owner --no-same-permissions; then
+        rm -rf "$dir"; signing_die "could not unpack the payload of $rpm"
+    fi
+    odd=$(cd "$dir" && find . ! -type f ! -type d)
+    [ -z "$odd" ] || { rm -rf "$dir"; signing_die "$rpm holds entries that are not regular files: $odd"; }
+    # %doc and %license land in .../spawn/ on Fedora and in .../spawn-<version>/ where the docdir macro is versioned
+    # (rpm's own default): treat both the same, so the check does not depend on the macro.
+    got=$(cd "$dir" && find . -type f -print0 | xargs -0 -r sha256sum \
+        | sed -E 's#  \./usr/share/(doc|licenses)/([^/]+)-[0-9][^/]*/#  ./usr/share/\1/\2/#' | LC_ALL=C sort -k2)
+    rm -rf "$dir"
+    if [ "$got" != "$(cat "$manifest")" ]; then
+        diff <(printf '%s\n' "$got") "$manifest" >&2 || true
+        signing_die "$rpm does not hold exactly the host-built files (< in the package, > expected)"
+    fi
+    # capture first: a failing rpm must refuse the package, not look like "no scriptlets" / "no setuid files"
+    scripts=$(LC_ALL=C rpm -qp --scripts --triggers --filetriggers "$rpm") \
+        || signing_die "could not read the scriptlets of $rpm"
+    [ -z "$scripts" ] || signing_die "$rpm carries scriptlets or triggers; spawn.spec has none"
+    modes=$(LC_ALL=C rpm -qp --qf '[%{FILEMODES:perms}\n]' "$rpm") \
+        || signing_die "could not read the file modes of $rpm"
+    ! printf '%s\n' "$modes" | grep -q '[sS]' || signing_die "$rpm has a setuid or setgid file"
 }
 
 # signing_verify_rpms <public-key-file> <rpm>...: every package must carry a valid signature that checks
@@ -204,6 +235,8 @@ gpgcheck=1
 repo_gpgcheck=1
 gpgkey=$url/RPM-GPG-KEY-spawn
 metadata_expire=1h
+# If this site is unreachable or has no packages for your Fedora release yet, dnf skips Spawn instead of stopping.
+skip_if_unavailable=True
 REPO
     else
         cat >"$file" <<REPO
@@ -214,6 +247,7 @@ enabled=1
 # The packages are built locally and are NOT signed yet.
 gpgcheck=0
 metadata_expire=1h
+skip_if_unavailable=True
 REPO
     fi
 }
@@ -230,7 +264,7 @@ signing_check_tree() {
         for f in "$dir"/*.rpm; do
             [ -e "$f" ] || continue
             ( signing_verify_rpms "$pub" "$f" ) \
-                || signing_die "$(basename "$dir") does not verify. Rebuild it, or remove it if that release is no longer supported (git -C $root rm -r -- $(basename "$dir"))"
+                || signing_die "$(basename "$dir") does not verify. Rebuild it, or remove it if that release is no longer supported (git -C $root rm -r -- $(basename "$dir") && git -C $root commit -m \"Drop $(basename "$dir")\" && git -C $root push origin gh-pages)"
             n=$((n + 1))
         done
         [ "$n" -gt 0 ] || signing_die "no packages in $dir (remove the directory if that release is no longer supported)"

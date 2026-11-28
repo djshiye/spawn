@@ -19,6 +19,7 @@
 //   layout.handleKey(event): boolean   Escape routing: true when the layout consumed the key
 //   layout.search(query): void         put `query` in the search entry (dev / D-Bus hook)
 //   layout.showView(id): void          'pinned' | 'frequent' | 'categories' | 'all' | 'favorites' | 'recent' | 'results' | 'default'
+//   layout.completeAppRows(): void     dev hook: build every row of the All Apps / category list now
 //   layout.setFakePlaces(specs | null) dev hook: fake devices / bookmarks in the right pane
 //   layout.debugState(): object        view, focus, counts (dev hook)
 //   LayoutHost                         what the layout may ask of the popup:
@@ -234,7 +235,7 @@ export class SpawnLayout implements ShortcutHost {
             pin: (id, name) => this._undo.changePinned(_('Pinned \u201c%s\u201d').format(name), () => this._services.pinned.pin(id)),
             unpin: (id, name) => this._undo.changePinned(_('Unpinned \u201c%s\u201d').format(name), () => this._services.pinned.unpin(id), id),
             removeFromFolder: (uuid, id, name) => this._undo.changePinned(_('Removed \u201c%s\u201d from folder').format(name),
-                () => this._services.pinned.removeFromFolder(uuid, id), id),
+                () => this._services.pinned.removeFromFolder(uuid, id), id, uuid),
             removeShortcut: (entry, name) => this._undo.removeShortcut(entry, name),
             openSettings: shortcuts => {
                 host.close();
@@ -622,6 +623,11 @@ export class SpawnLayout implements ShortcutHost {
         this._folders.show(uuid);
     }
 
+    /** Dev hook (Ui.CompleteRows): build every row of the Classic All Apps / category list. */
+    completeAppRows(): void {
+        this._views.categories?.completeRows();
+    }
+
     /** Dev hook (Ui.SetPlaces): show fake devices / network locations / bookmarks, null = the real ones. */
     setFakePlaces(specs: FakePlace[] | null): void {
         this._rightPane.setFakePlaces(specs);
@@ -704,8 +710,7 @@ export class SpawnLayout implements ShortcutHost {
         if (this._state.destroyed)
             return;
         // An app may have appeared (a ghost tile becomes real) or vanished (a tile becomes a ghost).
-        if (this._pinned.subscribed)
-            this._services.pinned.invalidate();
+        this._services.pinned.invalidate();
         this._pinned.dirty = true;
         if (this._pinned.showing())
             this._pinned.syncIfNeeded();

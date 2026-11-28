@@ -8,7 +8,8 @@
 //   <n> <unit> <n> <unit> ... <sep> <unit>            "5 ft 10 in in cm", "1 h 30 min in s" (summed, same category)
 //   <unit> <sep> <unit>                               "km in miles", "mile to km" (1; the spelling needs 2+ characters)
 //   how many <unit> [are] in <quantity>               "how many cm in 2 in", "how many feet in a mile" (a/an/one = 1)
-// "." is the decimal point. Units are matched case-insensitively and must belong to the same category:
+// "." is the decimal point. Units are matched case-insensitively (except "kN", the kilonewton, which is
+// case-sensitive because "kn" is the knot) and must belong to the same category:
 //   length       nm µm mm cm dm m km, in ft yd mi nmi, thou (mil) furlong fathom chain au ly pc
 //   mass         µg mg g kg t(onne), oz lb st, ct (carat) gr (grain), short ton, long ton ("ton" alone is ambiguous: no)
 //   temperature  c f k, Rankine (°R)                                       offsets, not just factors
@@ -23,7 +24,7 @@
 //   pressure     Pa hPa kPa MPa bar mbar psi atm torr mmHg inHg
 //   energy       J kJ MJ cal kcal Wh kWh MWh BTU eV ft·lbf
 //   power        W kW MW GW hp (mechanical) PS (metric) BTU/h
-//   force        N kN (kilonewton: "kn" stays the knot) lbf kgf dyn
+//   force        N kN (exactly "kN"; "kn"/"KN"/"Kn" stay the knot) lbf kgf dyn
 //   torque       N·m ("n m", "newton metres"; "nm" is the nanometre) lbf·ft ("lb ft") kgf·m
 //   angle        deg ° rad grad turn (rev) arcmin arcsec
 //   frequency    Hz kHz MHz GHz THz rpm
@@ -239,7 +240,7 @@ function buildTable(): Row[] {
         ['power', 'BTU/h', BTU / 3600, ['btu/h', 'btu/hr', 'btuh', 'btu per hour']],
 
         ['force', 'N', 1, ['n', 'newton', 'newtons']],
-        ['force', 'kN', 1e3, ['kilonewton', 'kilonewtons']], // "kn" is the knot
+        ['force', 'kN', 1e3, ['kilonewton', 'kilonewtons']], // exactly "kN" (see CASED); "kn" is the knot
         ['force', 'lbf', LBF, ['lbf', 'pound force', 'pounds force', 'pound-force']],
         ['force', 'kgf', 9.80665, ['kgf', 'kilogram force', 'kilograms force', 'kilogram-force']],
         ['force', 'dyn', 1e-5, ['dyn', 'dyne', 'dynes']],
@@ -302,9 +303,16 @@ export function duplicateSpellings(): string[] {
     return duplicates.slice();
 }
 
+// Exact-case spellings that would clash once lower-cased: "kN" is the kilonewton, "kn" (any other case) the knot.
+const CASED = new Map([['kN', 'kilonewton']]);
+
 export function findUnit(name: string): Unit | null {
-    const key = name.trim().toLowerCase().replace(/\.$/, '').replace(/\s+/g, ' ');
-    return lookup().get(key) ?? null;
+    const trimmed = name.trim().replace(/\.$/, '').replace(/\s+/g, ' ');
+    const map = lookup();
+    const cased = CASED.get(trimmed);
+    if (cased)
+        return map.get(cased) ?? null;
+    return map.get(trimmed.toLowerCase()) ?? null;
 }
 
 function toBase(value: number, unit: Unit): number {

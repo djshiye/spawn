@@ -71,6 +71,22 @@ echo "groups $groups, built $built, tiles $(all_app tiles) of $(all_app apps)"
 check "tiles are built lazily (built $built of $groups groups)" "$([ "$built" -lt "$groups" ] && echo 0 || echo 1)"
 screenshot grid-allapps-01-start
 
+echo "-- the \"Jump to letter\" tip sits beside the heading, not over the tiles"
+move_class spawn-grid-letter 0; sleep 1.3
+tip="$(rect spawn-tooltip 0)"
+check "the tip shows ($tip)" "$([ -n "$tip" ] && echo 0 || echo 1)"
+# what shows of the tiles: icons and names (the tile's own rect includes a transparent hit area)
+tiles="$(for c in spawn-tile-icon spawn-tile-label; do for i in $(seq 0 40); do r="$(rect $c "$i")"; [ -n "$r" ] || break; echo "$r"; done; done)"
+over="$(python3 -c '
+import json, sys
+tip = json.loads(sys.argv[1] or "[0,0,0,0]")
+def hit(a, b):
+    return a[0] < b[0] + b[2] and b[0] < a[0] + a[2] and a[1] < b[1] + b[3] and b[1] < a[1] + a[3]
+print(sum(1 for t in sys.argv[2].split() if hit(tip, json.loads(t))))' "$tip" "$tiles")"
+expect "the tip covers no tile icon or name ($over of $(echo "$tiles" | wc -l))" "$over" 0
+screenshot grid-allapps-letter-tip
+ui_call Move 5 5 >/dev/null; sleep 0.5
+
 echo "-- keyboard: the first tile, arrows, Home / End, Page keys"
 ui_call Move 5 5 >/dev/null; sleep 0.3
 key Tab 0.3

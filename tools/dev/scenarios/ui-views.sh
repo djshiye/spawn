@@ -6,6 +6,9 @@ screenshot ui-pinned
 ui_call ShowView categories >/dev/null; sleep 0.8
 expect_state "categories view" layout.view categories
 screenshot ui-allapps
+# the column is as wide as its longest name (to a cap): needs an app set with a long category such as "Sound & Video"
+cut="$(ui_call Truncated spawn-category-column 0 | unwrap)"
+expect "no category name is cut off in the column" "$cut" "[]"
 ui_call ShowView default >/dev/null; sleep 0.4
 echo "-- All Apps button (click), then Escape goes back"
 click_class spawn-nav-button 0

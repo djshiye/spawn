@@ -16,10 +16,12 @@ The RPM `Release` is `1.<commit count>.<dist>`, appended by `publish.sh`, so eve
 
 ## Cut a release
 
-1. Finish the work on `main`. CI (`.github/workflows/ci.yml`) must be green; it runs typecheck, lint, tests and the
-   `smoke` / `lifecycle` shell scenarios but not the whole harness, so also run `tools/dev-shell.sh all` locally.
+1. Finish the work on `main`. CI (`.github/workflows/ci.yml`) must be green. It runs typecheck, lint and the unit tests on every pull request
+   and push, and, on pull requests that change the extension, a few headless GNOME Shell 51 scenarios (the list is in
+   `ci.yml`). It does not run the whole harness or the `--with-dtp` variants, so also run `tools/dev-shell.sh all` locally.
+   `tools/release.sh` refuses to release when CI is not green.
    Move the `CHANGELOG.md` "Unreleased" entries under the new version.
-2. `tools/bump-version.sh 1.1.0 "what changed"` (updates package.json, package-lock.json, metadata.json, the spec and its changelog), review and commit.
+2. `tools/bump-version.sh 1.1.0 "what changed"` (updates package.json, package-lock.json, metadata.json, the spec and its changelog), review and commit, then get the commit onto GitHub's main (through a pull request) and wait for CI to pass; `tools/release.sh` only publishes what is on GitHub's main and refuses a red or running CI.
 3. If the supported shells changed: edit `shell-version` in `metadata.json` and `%global min_shell` in `build-aux/spawn.spec`
    (the RPM must not be installable on a shell the extension refuses to load on).
 4. On the release machine: `tools/release.sh`. That is the whole publish (see "One-command releases" below).
@@ -36,9 +38,9 @@ tools/release.sh --no-wait  # push, but do not wait for GitHub Pages
 Run it on the release machine (Dino's Fedora PC, where the signing key lives) from a clean checkout. In order, it:
 
 1. checks the tools (git, gpg, rpm-sign, podman, npm, curl);
-2. switches to `main`, fast-forwards it from GitHub (never merges or rebases), re-runs itself if `release.sh` changed, and checks the versions agree;
+2. switches to `main`, fast-forwards it from GitHub (never merges or rebases), re-runs itself if `release.sh` changed, stops if local `main` has commits GitHub does not, and checks the versions agree;
 3. checks the signing key `D49A 3081 6825 7FDB F9D5 AE14 BD1A C1C6 F56A 7252` is present and able to sign, and that it is the key already published;
-4. checks this machine's git can push to GitHub (a `--dry-run` push, which changes nothing);
+4. checks this machine's git can push to GitHub (a `--dry-run` push, which changes nothing) and that CI passed for this code (`--skip-ci` skips that, by hand only);
 5. stops early, with only the live check, if this exact version and release are already on `gh-pages` (so running it twice never re-signs or republishes);
 6. unlocks the key once, up front: if gpg-agent needs the password it shows its own password box on screen, before the long build rather than in the middle of it;
 7. runs `SPAWN_SIGNING_KEY=<key> tools/publish.sh --push`, which builds in Fedora containers, signs on the host, verifies every
@@ -93,25 +95,30 @@ What it does, in order:
 
 1. Refuses a dirty tree (unless `--allow-dirty`), refuses `--push` off `main`, checks the versions agree.
 2. Exports the tree (`git archive HEAD`) to a temp dir, runs `npm ci` (from `package-lock.json`, `--prefer-offline`) and
-   `tools/build.sh --release` there, and packs the export plus its `build/` into `spawn-<version>.tar.gz`
+   `tools/build.sh --release` there, checks the compiled tree with `tools/check-release.sh` (no test hooks), and packs the export plus its `build/` into `spawn-<version>.tar.gz`
    (sorted, uid 0, mtime = commit time, `gzip -n`).
-3. Creates or updates the `.gh-pages/` git worktree (orphan `gh-pages` branch on first use; fast-forwards from `origin/gh-pages` when it exists).
+3. Creates or updates the `.gh-pages/` git worktree (orphan `gh-pages` branch on first use). A local run fast-forwards from `origin/gh-pages`; a `--push` run starts from exactly `origin/gh-pages`, discarding (and listing) any local commits that were never pushed, so a test build can never be published.
 4. For each of Fedora 43, 44, 45:
    1. `podman run registry.fedoraproject.org/fedora:N`: `dnf install rpm-build glib2`,
-      `rpmbuild -ba --define "release_suffix .<count>"`; the `noarch.rpm` and `src.rpm` come out in a temp directory.
-   2. With a signing key: on the host, `rpmsign --addsign` each package, then verify it (see "Signing").
-   3. Copy them into `.gh-pages/fedora-N/`, drop packages that do not verify against the key, keep the newest 3 of each.
-   4. A second container runs `createrepo_c --update` on that directory; with a key, `repodata/repomd.xml.asc` is then made on the host.
+      `rpmbuild -ba --define "release_suffix .<count>"`; the `noarch.rpm` and `src.rpm` come out in a temp directory. The container
+      sees only the source tarball and that output directory. The image digest it used is printed and recorded in the gh-pages commit message.
+   2. On the host, unpack each package and compare it file by file (sha256) with the host-built tree: the binary rpm must hold exactly
+      `build/` (minus `schemas/`), the schema, `spawn-enable`, `LICENSE` and `README.md`, with no scriptlets, symlinks or setuid files.
+      The src.rpm must hold exactly the tarball and the spec. Any difference stops the publish before anything is signed.
+   3. With a signing key: on the host, `rpmsign --addsign` each package, then verify it (see "Signing").
+   4. Copy them into `.gh-pages/fedora-N/`, drop packages that do not verify against the key, keep the newest 3 of each.
+   5. A second container runs `createrepo_c --update` on that directory; with a key, `repodata/repomd.xml.asc` is then made on the host.
 
    The dnf cache is `~/.cache/spawn-publish/dnf-N`.
 5. With a key: verifies every package and every `repomd.xml.asc` once more against the exported public key file and fails if anything is unsigned.
-   Then writes `spawn.repo` (`gpgcheck=1`, `repo_gpgcheck=1`, `gpgkey=https://djshiye.github.io/spawn/RPM-GPG-KEY-spawn`; `gpgcheck=0` only while no key exists,
+   Then writes `spawn.repo` (`gpgcheck=1`, `repo_gpgcheck=1`, `gpgkey=https://djshiye.github.io/spawn/RPM-GPG-KEY-spawn`, `skip_if_unavailable=True`; `gpgcheck=0` only while no key exists,
    `baseurl=https://djshiye.github.io/spawn/fedora-$releasever/`), `RPM-GPG-KEY-spawn`, `index.html` (with the fingerprint), `icon.svg`, `.nojekyll`
    and commits them to `gh-pages` as Dino Klisura (`GIT_AUTHOR_*`/`GIT_COMMITTER_*` set explicitly, no trailers).
+   With `--push`, it refuses to commit if any `*.dirty*` package is in the tree.
 6. With `--push`: `git push origin main`, then `git -C .gh-pages push origin gh-pages` (a plain, non-forced push; on the very first publish this creates the remote `gh-pages` branch).
 
-A test run (`--allow-dirty`) leaves a local `gh-pages` branch with `.dirty` packages in it. Delete it before the real publish,
-otherwise `publish.sh` builds on top of it: `git worktree remove --force .gh-pages && git branch -D gh-pages`.
+A test run (`--allow-dirty`) leaves a local `gh-pages` commit with `.dirty` packages in it. The next `--push` run discards it automatically
+and starts from `origin/gh-pages`, and as a backstop `--push` refuses to commit any `.dirty` package.
 
 Why the extension is compiled on the host and not in the container: building needs Node, `tsc` and the type packages
 from npm. Doing that in the container would need the npm registry at build time, and Fedora's nodejs differs per release.
@@ -143,21 +150,22 @@ create the key (next section) before the first public publish if you can.
 User commands (also in the README):
 
 ```sh
-sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.github.io/spawn/spawn.repo && sudo dnf install -y spawn && spawn-enable
+sudo dnf config-manager addrepo --overwrite --from-repofile=https://djshiye.github.io/spawn/spawn.repo && sudo dnf install spawn && spawn-enable
 sudo dnf upgrade
 spawn-enable --remove; sudo dnf remove spawn
 ```
 
 ## Signing
 
-Packages and repository metadata are signed with a GPG key that stays on your machine. The layout is the usual best practice:
-an **offline certify-only primary key** (ed25519, no expiry) kept on an encrypted stick, and a **signing subkey** (ed25519, no expiry)
-in your everyday keyring or, better, on a YubiKey. `RPM-GPG-KEY-spawn` is the full public certificate (primary, subkey and their
-binding signatures); its fingerprint is the primary's, and `publish.sh` is always told the primary's fingerprint.
+Packages and repository metadata are signed with a GPG key that stays on your machine. `tools/make-signing-key.sh` creates one
+ed25519 key with no expiry that both certifies and signs, in your everyday keyring. A stronger layout is optional and `publish.sh`
+accepts it too: an **offline certify-only primary key** on an encrypted stick and a **signing subkey** in your keyring or on a
+YubiKey (see "One-time setup", step 3). Either way `RPM-GPG-KEY-spawn` is the full public certificate (the primary, any subkeys and
+their binding signatures), its fingerprint is the primary's, and `publish.sh` is always told the primary's fingerprint.
 
 Why nothing expires: dnf remembers a repository key by the primary key's ID and never refreshes it (its repo keyring is
 `<cachedir>/pubring`). A key that expires, or whose expiry is extended afterwards, breaks every user's `dnf upgrade` until each of them
-re-imports it by hand, so there is no expiry to run into. The protection against a leaked subkey is revocation and replacement (below),
+re-imports it by hand, so there is no expiry to run into. The protection against a leaked key is revocation and replacement (below),
 not a timer.
 Users get `gpgcheck=1` (each package) and `repo_gpgcheck=1` (`repodata/repomd.xml`, which lists every package and its checksum).
 Signing happens on the host (`tools/lib/signing.sh`), never in a container, so the private key and its passphrase never enter one.
@@ -179,7 +187,7 @@ Signing happens on the host (`tools/lib/signing.sh`), never in a container, so t
    curl -sSfO https://djshiye.github.io/spawn/RPM-GPG-KEY-spawn
    gpg --show-keys --fingerprint RPM-GPG-KEY-spawn      # compare with the fingerprint in the README
    sudo rpm --import RPM-GPG-KEY-spawn
-   sudo dnf install -y spawn && spawn-enable
+   sudo dnf install spawn && spawn-enable
    ```
 
    Say that the key comes from the same site as the packages (trust on first use), so users should compare the fingerprint.
@@ -204,10 +212,10 @@ Before it commits to `gh-pages` it verifies, against a temporary keyring that ho
 (`rpmkeys --checksig` with its own `--dbpath`, and `gpg --verify` in an empty `GNUPGHOME`), and fails hard otherwise:
 every `.rpm` and `.src.rpm` in EVERY `fedora-*/` directory of the gh-pages tree (including releases no longer built) is signed by that key,
 and every `repomd.xml.asc` is a good signature of its `repomd.xml` by that key (GOODSIG and a VALIDSIG for the primary's fingerprint).
-A directory that fails stops the publish; remove it (`git -C .gh-pages rm -r fedora-N`) if that release is no longer supported.
+A directory that fails stops the publish; remove it if that release is no longer supported, and push the removal (`git -C .gh-pages rm -r fedora-N && git -C .gh-pages commit -m "Drop Fedora N" && git -C .gh-pages push origin gh-pages`), because a `--push` run starts from `origin/gh-pages`.
 In addition each Fedora container checks its own packages with that release's rpm (`rpmkeys --dbpath /tmp/k --import` of the key,
-then `-K`) before running `createrepo_c`. The gh-pages worktree is reset to its last commit and cleaned at the start of every run, and
-"already published" means what is committed at `HEAD` of `gh-pages`, not what happens to lie in the working copy. `tools/test-signing.sh` runs the same functions against a throwaway key and a dummy package
+then `-K`) before running `createrepo_c`. The gh-pages worktree is reset to its last commit (to `origin/gh-pages` with `--push`) and cleaned at the start of every run, and
+"already published" means what is committed at `HEAD` of `gh-pages`, not what happens to lie in the working copy. `tools/test-ghpages.sh` tests the worktree handling against throwaway git repositories (git only). `tools/test-signing.sh` runs the same functions (signing, verification and the payload check) against a throwaway key and dummy packages
 (needs `rpm`, `rpm-sign`, `createrepo_c` and `gnupg2`; no podman).
 
 Safety rules, enforced by `publish.sh`:
@@ -228,6 +236,8 @@ The same rule removes packages signed by the old key after a rotation.
 
 Use this when the YubiKey or the laptop's subkey is lost, broken or suspected stolen. The primary (from the stick) stays the same, so users keep
 trusting the same identity.
+This only applies to the optional subkey layout. With the single key that `tools/make-signing-key.sh` creates there is no
+subkey: a lost or leaked key means "Rotating to a new primary key" below.
 
 1. Get the primary secret back temporarily (import the backup on a trusted machine, ideally offline), then
    `gpg --edit-key <primary fpr>`, `addkey` (ed25519, sign, no expiry), optionally `keytocard` it, and `save`. If the old subkey was
@@ -246,7 +256,7 @@ Only if the primary itself is lost or leaked (revoke it with the stored revocati
 `RPM-GPG-KEY-spawn`, the new build is signed by it, and packages signed by the old key are dropped. Existing users trust only the old key, so
 with `repo_gpgcheck=1` their next `dnf upgrade` fails until they accept the new one. Announce it with the new fingerprint in the README and
 the release notes. They take it through dnf's normal import prompt, comparing the fingerprint dnf shows with the announced one
-(`sudo dnf clean all` first, so that dnf asks again). Warn them that `dnf -y` and `--assumeyes` accept the key without showing it, which
+(`sudo dnf clean all` first, so that dnf asks again). Warn them that `dnf -y` and `--assumeyes` accept the key without waiting for an answer, which
 defeats the check; they should answer the prompt themselves. They may remove the old key afterwards (`rpm -qa 'gpg-pubkey*'`, then `sudo rpm -e <name>`).
 
 ### Trust on first use
@@ -256,12 +266,13 @@ installs, dnf fetches the key from there and asks them to accept it. Whoever con
 key and the packages together, and the user would not notice. The signature therefore protects against unsigned or altered packages after you
 published them (a mirror, a proxy, a stale cache, a partial compromise of the hosting) and, from the second install on, against anyone who does
 not hold the private key. It does not protect a first install against a compromised GitHub account. To narrow that gap the fingerprint is in the
-README and on the landing page, and users are asked to compare it with the one dnf displays. The primary key lives on an offline stick and the signing subkey on your
-machine or a YubiKey, both outside GitHub and not in an Actions secret, so that one compromised account does not hold both the site and the key.
+README and on the landing page, and users are asked to compare it with the one dnf displays. The private key lives only on the release machine (or, with the optional layout, the primary on an
+offline stick and the signing subkey on that machine or a YubiKey), never on GitHub or in an Actions secret, so that one compromised
+account does not hold both the site and the key.
 
 ## Open items
 
 1. (Closed in 1.2.0.) Releases are built with `tools/build.sh --release`: the developer test code (`ui/devHooks`, `dev/benchmark`, the `Dev`
    and `Ui` D-Bus interfaces) is replaced by empty stubs from `build-aux/release-stubs/` before compiling, and the `dev-mode` key is dropped from the
    packaged schema, so neither the zip nor the RPM contains the hooks and no setting can switch them on. `tools/check-release.sh` (run by
-   `npm test` and CI) fails when a release artefact contains them; run `tools/check-release.sh <zip|extension dir>` on a finished package to check it.
+   `npm test`, CI and `publish.sh` on the tree it packs) fails when a release artefact contains them; run `tools/check-release.sh <zip|extension dir>` on a finished package to check it.

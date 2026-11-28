@@ -12,8 +12,9 @@
 //   unary   := ('-' | '+') unary | power
 //   power   := postfix ('^' unary)?                           right-associative; -2^2 = -(2^2); 2^-1 works
 //   postfix := primary ('%' | '!' | '°' | 'deg' | '²' | '³' | 'squared' | 'cubed')*
-//                                                             a % followed by the end, ')', ',', 'of' or 'off' is a
-//                                                             percentage; ° and deg convert degrees to radians
+//                                                             a % is a percentage unless a value follows it (a number,
+//                                                             '(', a constant, a function, √ or ∛): then it is modulo;
+//                                                             ° and deg convert degrees to radians
 //   primary := number | constant | '(' expr ')'
 //            | ('√' | '∛' | function) ( '(' expr (',' expr)* ')' | unary )
 // A function or root sign followed by "(" takes the bracketed argument list; otherwise it takes ONE unary-level
@@ -24,7 +25,7 @@
 // and never between two numbers ("2 3").
 //
 // Percentages: "15% of 80" = 12, "20% off 80" = 64, "50%" = 0.5, "200 + 10%" = 220 (10 % of 200),
-// "200 - 10%" = 180, "10 % 3" = 1 (modulo: the % is followed by a value).
+// "200 - 10%" = 180, "200 + 10% + 5" = 225, "10% * 50" = 5, "10 % 3" = 1 (modulo: the % is followed by a value).
 //
 // Numbers use "." as the decimal point and have no thousands separator ("1,5" is rejected). An exponent is
 // allowed ("4e2", "1.5E-3"), and so are 0x (hex), 0b (binary) and 0o (octal) integers, any case. A bare literal
@@ -56,8 +57,9 @@
 //   isCalculation(text): boolean             true when text is an expression WITH an operator, percentage or function
 //                                            (a bare number or constant is not a calculation: "2048" must find apps)
 //   calculate(text): {value, text} | null    isCalculation + evaluate + formatNumber; null when not a calculation
-//   formatNumber(x, digits = 12): string     `digits` significant digits, no trailing zeros, "." decimal, never
-//                                            locale dependent, no floating point noise (0.1+0.2 -> 0.3), no "-0"
+//   formatNumber(x, digits = 12): string     `digits` significant digits, except whole numbers up to 2^53, which
+//                                            keep every digit; no trailing zeros, "." decimal, never locale
+//                                            dependent, no floating point noise (0.1+0.2 -> 0.3), no "-0"
 //   groupDigits(text): string                display only: U+00A0 thousands separators in the integer part of a
 //                                            formatNumber() result with 5 or more integer digits; fraction and
 //                                            exponent forms are left alone
@@ -346,6 +348,10 @@ interface Value {
 
 const plain = (v: number): Value => ({v, pct: false});
 
+/** Tokens after which a "%" is a percentage: anything that cannot start a value (a value means modulo). */
+const PERCENT_BEFORE_OPS = new Set([')', ',', '+', '-', '*', '/', '^', '&', '|', '<<', '>>']);
+const PERCENT_BEFORE_WORDS = new Set(['of', 'off', 'mod', 'xor']);
+
 class Parser {
     private _i = 0;
     private _depth = 0;
@@ -414,7 +420,7 @@ class Parser {
             this._i++;
             this.operations++;
             const right = this._term();
-            const rv = right.pct ? left.v * right.v : right.v;
+            const rv = right.pct && !left.pct ? left.v * right.v : right.v;
             left = plain(t.v === '+' ? left.v + rv : left.v - rv);
             check(left.v);
         }
@@ -523,9 +529,20 @@ class Parser {
         return r;
     }
 
+    /** A constant (not e) written straight after a number: "2pi" is one value even as a bare function argument. */
+    private _constantJoins(): boolean {
+        const t = this._peek();
+        const prev = this._tokens[this._i - 1];
+        return t?.t === 'id' && t.v !== 'e' && Object.hasOwn(CONSTANTS, t.v) && prev?.t === 'num';
+    }
+
     private _percentFollows(at: number): boolean {
         const n = this._tokens[at];
-        return !n || (n.t === 'op' && (n.v === ')' || n.v === ',')) || (n.t === 'id' && (n.v === 'of' || n.v === 'off'));
+        if (!n)
+            return true;
+        if (n.t === 'op')
+            return PERCENT_BEFORE_OPS.has(n.v);
+        return n.t === 'id' && PERCENT_BEFORE_WORDS.has(n.v);
     }
 
     private _primary(): Value {
@@ -576,8 +593,15 @@ class Parser {
             if (fn.max === Infinity)
                 fail('function needs (');
             this._enter();
-            args.push(this._unary().v);
+            let v = this._unary().v;
+            // "sin 2pi" is sin(2π): a number written against a constant is one value, as on paper.
+            if (this._constantJoins()) {
+                this.operations++;
+                v *= this._unary().v;
+                check(v);
+            }
             this._leave();
+            args.push(v);
         }
         if (args.length < fn.min || args.length > fn.max)
             fail('wrong number of arguments');
@@ -591,6 +615,11 @@ class Parser {
 const LEADING_WORD = /^\s*([a-zπτφ]+)\s*/i;
 const START_WORDS = new Set(['what', 'whats', 'calc', 'calculate']);
 const LEADING_NOISE = /^\s*(?:=|(?:what\s+is|what['’]?s|calculate|calc)(?![a-zπτφ\d]))/i;
+// A numeric date ("2026-12-25", "25/12/2026", "25-12-2026") is the date answer's (answers/dates.ts), never a
+// subtraction or division: anywhere in the text, so "2026-12-25 - 2026-01-01" is left to the date difference too.
+// The dash class matches the minus signs the tokenizer and dates.ts both accept. The shape counts, not whether the
+// date is valid: a division of three numbers ending in a four-digit year is never meant, and no row beats a wrong one.
+const DATE_SHAPE = /(?<![\w.])(?:\d{4}[-−–—]\d{1,2}[-−–—]\d{1,2}|\d{1,2}[/\-−–—]\d{1,2}[/\-−–—]\d{4})(?![\w.])/;
 const TRAILING_NOISE = /\s*[=?]+\s*$/;
 
 /** Cheap rejection (no exception) of a lone word or of a first word that can never start an expression: app names. */
@@ -636,7 +665,7 @@ export function isCalculation(text: string): boolean {
 }
 
 export function calculate(text: string): {value: number; text: string} | null {
-    if (!mayBeCalculation(text, false))
+    if (!mayBeCalculation(text, false) || DATE_SHAPE.test(text))
         return null;
     try {
         const p = parseText(text);
@@ -657,6 +686,12 @@ export function formatNumber(x: number, digits = 12): string {
     const r = Number(x.toPrecision(digits));
     if (r === 0)
         return '0';
+    // Whole numbers up to 2^53 are exact in a double: show every digit ("2^40" is 1099511627776, not
+    // 1099511627780), unless the difference from the rounded value is small enough to be float noise
+    // ("sqrt(2)^2*4e15" is 8000000000000002 in floating point and stays 8000000000000000). Known limit: a real
+    // integer within a few units of a round number above 1e15 is still shown rounded.
+    if (Number.isInteger(x) && Math.abs(x) <= 2 ** 53 && Math.abs(x - r) > 4 * Number.EPSILON * Math.abs(x))
+        return String(x);
     // String() is plain decimal from 1e-7 up to 1e21 and "1.5e+21" outside; both are locale independent.
     return String(r).replace('e+', 'e');
 }

@@ -12,8 +12,9 @@
 //     running: version-name this code was loaded with
 //     notify:  (installedVersion) => void, shows the message
 //     state:   {notified: boolean}, kept by the Extension object so a disable / enable does not repeat the message
-//   watch.start(): void    start monitoring; metadata.json is read asynchronously (after a settle delay), and the
-//                          monitor is stopped once the message was shown
+//   watch.start(): void    start monitoring; metadata.json is read once shortly after start (it may have changed
+//                          while Spawn was disabled) and again whenever it changes, always asynchronously and
+//                          after a settle delay; the monitor is stopped once the message was shown
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -59,6 +60,9 @@ export class UpdateWatch {
         } catch (e) {
             error('cannot watch metadata.json', e);
         }
+        // The file may have changed while Spawn was disabled (lock screen, update installed meanwhile): look once
+        // now. The monitor is installed first, so a change arriving meanwhile only re-arms the same debounce.
+        this._check.call();
     }
 
     private _checkNow(): void {
