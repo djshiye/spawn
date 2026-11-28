@@ -40,6 +40,19 @@ function verdictOf(check, path, ms = 100) {
     return out;
 }
 
+/**
+ * Like verdictOf, but spins the main loop until the check answers (at most `ms`). For real files: the first
+ * gdk-pixbuf call of a process may start a sandboxed image loader, which is much slower on a CI machine.
+ */
+function settledVerdictOf(check, path, ms) {
+    let out;
+    check.check(path).then(v => { out = v; });
+    const deadline = GLib.get_monotonic_time() + ms * 1000;
+    while (out === undefined && GLib.get_monotonic_time() < deadline)
+        sleep(10);
+    return out;
+}
+
 function make(options = {}) {
     const scope = new Scope('t');
     const fs = fakeFs();
@@ -122,16 +135,20 @@ test('disposing the scope while a check is pending resolves timeout; later check
 });
 
 test('real files: a bundled icon is ok, a text file and a missing file are bad', () => {
+    // The deadlines and 'timeout' are covered above with a simulated file system; this test is about the verdicts
+    // of the real gdk-pixbuf, so it gives a slow first image loader start plenty of time.
     const scope = new Scope('t');
-    const check = new IconFileCheck(scope);
+    const check = new IconFileCheck(scope, {timeoutMs: 10000});
     const here = GLib.path_get_dirname(GLib.filename_from_uri(import.meta.url)[0]);
     const icon = GLib.build_filenamev([here, '..', 'data', 'icons', 'distro-arch-symbolic.svg']);
-    assertEquals(verdictOf(check, icon, 300), 'ok');
+    const start = GLib.get_monotonic_time();
+    assertEquals(settledVerdictOf(check, icon, 12000), 'ok');
+    print(`    first real check: ${Math.round((GLib.get_monotonic_time() - start) / 1000)} ms`);
     const [file] = Gio.File.new_tmp('spawn-icon-XXXXXX');
     GLib.file_set_contents(file.get_path(), 'this is not an image');
-    assertEquals(verdictOf(check, file.get_path(), 300), 'bad');
+    assertEquals(settledVerdictOf(check, file.get_path(), 12000), 'bad');
     file.delete(null);
-    assertEquals(verdictOf(check, `${file.get_path()}-gone`, 300), 'bad');
+    assertEquals(settledVerdictOf(check, `${file.get_path()}-gone`, 12000), 'bad');
     scope.dispose();
 });
 
